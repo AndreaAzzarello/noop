@@ -1,0 +1,51 @@
+
+name: Build NOOP TestFlight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and Upload NOOP
+    runs-on: xcode-27
+    timeout-minutes: 120
+
+    env:
+      TEAMID: ${{ secrets.TEAMID }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+      FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+      FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify credentials
+        shell: bash
+        run: |
+          for key in TEAMID GH_PAT MATCH_PASSWORD FASTLANE_KEY_ID FASTLANE_ISSUER_ID FASTLANE_KEY; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "::error::Missing secret: $key"
+              exit 1
+            fi
+          done
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Configure Apple signing
+        shell: bash
+        run: |
+          printf 'BUNDLE_ID_PREFIX = com.andreaazzarello\nDEVELOPMENT_TEAM = %s\n' "$TEAMID" > Config/BundleIdSecrets.xcconfig
+          xcodegen generate
+
+      - name: Install Fastlane dependencies
+        run: bundle install
+
+      - name: Build and upload to TestFlight
+        run: bundle exec fastlane ios noop_testflight
