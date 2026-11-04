@@ -1,0 +1,100 @@
+
+require "base64"
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Compila NOOP e carica su TestFlight"
+
+  lane :noop_testflight do
+    setup_ci if ENV["CI"]
+
+    team_id = ENV.fetch("TEAMID")
+
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("FASTLANE_KEY_ID"),
+      issuer_id: ENV.fetch("FASTLANE_ISSUER_ID"),
+      key_content: ENV.fetch("FASTLANE_KEY")
+    )
+
+    app_ids = {
+      "NOOPiOS" => "com.andreaazzarello.noop",
+      "NOOPiOSWidgets" => "com.andreaazzarello.noop.widgets",
+      "NOOPWatch" => "com.andreaazzarello.noop.watch",
+      "NOOPWatchComplications" => "com.andreaazzarello.noop.watch.complications"
+    }
+
+    # Recupera o crea i profili necessari.
+    # Non revoca i certificati esistenti.
+    match(
+      type: "appstore",
+      readonly: false,
+      api_key: api_key,
+      team_id: team_id,
+      git_url: "https://github.com/AndreaAzzarello/Match-Secrets.git",
+      git_branch: "master",
+      git_basic_authorization: Base64.strict_encode64(
+        "#{ENV.fetch('GITHUB_REPOSITORY_OWNER')}:#{ENV.fetch('GH_PAT')}"
+      ),
+      app_identifier: app_ids.values
+    )
+
+    version = get_version_number(
+      xcodeproj: "Strand.xcodeproj",
+      target: "NOOPiOS"
+    )
+
+    latest = latest_testflight_build_number(
+      app_identifier: app_ids.fetch("NOOPiOS"),
+      version: version,
+      api_key: api_key,
+      initial_build_number: 0
+    )
+
+    next_build = [latest.to_i + 1, 1000].max
+
+    increment_build_number(
+      xcodeproj: "Strand.xcodeproj",
+      build_number: next_build
+    )
+
+    profiles = Actions.lane_context[
+      SharedValues::MATCH_PROVISIONING_PROFILE_MAPPING
+    ]
+
+    app_ids.each do |target, bundle_id|
+      profile = profiles[bundle_id]
+      UI.user_error!("Profilo mancante: #{bundle_id}") unless profile
+
+      update_code_signing_settings(
+        path: "Strand.xcodeproj",
+        use_automatic_signing: false,
+        targets: [target],
+        team_id: team_id,
+        code_sign_identity: "Apple Distribution",
+        profile_name: profile
+      )
+    end
+
+    build_app(
+      project: "Strand.xcodeproj",
+      scheme: "NOOPiOS",
+      configuration: "Release",
+      destination: "generic/platform=iOS",
+      export_method: "app-store",
+      export_team_id: team_id,
+      export_options: {
+        signingStyle: "manual",
+        provisioningProfiles: profiles
+      },
+      output_directory: "build",
+      output_name: "NOOP.ipa"
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: "build/NOOP.ipa",
+      skip_waiting_for_build_processing: true
+    )
+  end
+end
