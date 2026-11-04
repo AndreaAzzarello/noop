@@ -10,7 +10,7 @@ permissions:
 jobs:
   build:
     name: Build and Upload NOOP
-    runs-on: xcode-27
+    runs-on: macos-26
     timeout-minutes: 120
 
     env:
