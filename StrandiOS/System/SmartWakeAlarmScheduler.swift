@@ -89,7 +89,7 @@ final class SmartWakeAlarmScheduler {
             if earlyIsPresent {
                 // Recover a crash between scheduling the early alert and cancelling its fallback.
                 defaults.set(true, forKey: earlyAlarmScheduledKey)
-                if fallbackIsPresent { try? await manager.cancel(id: fallbackID) }
+                if fallbackIsPresent { try? manager.cancel(id: fallbackID) }
             } else if defaults.bool(forKey: earlyAlarmScheduledKey) {
                 // The early alert was scheduled and has now been dismissed. Skip today's maximum
                 // time, then resume the normal weekly recurrence from the following week.
@@ -207,10 +207,10 @@ final class SmartWakeAlarmScheduler {
             try await manager.schedule(id: earlyID, configuration: configuration)
             defaults.set(true, forKey: earlyAlarmScheduledKey)
             do {
-                try await manager.cancel(id: fallbackID)
+                try manager.cancel(id: fallbackID)
             } catch {
                 // Never leave two alarms armed for the same morning.
-                try? await manager.cancel(id: earlyID)
+                try? manager.cancel(id: earlyID)
                 defaults.removeObject(forKey: earlyAlarmIDKey)
                 defaults.removeObject(forKey: earlyAlarmWeekdayKey)
                 defaults.removeObject(forKey: earlyAlarmScheduledKey)
@@ -240,7 +240,7 @@ final class SmartWakeAlarmScheduler {
         let minutes = schedule.wakeMinutes(onWeekday: weekday)
         do {
             // Clear the previous recurring or one-shot fallback before replacing its schedule.
-            try? await AlarmManager.shared.cancel(id: id)
+            try? AlarmManager.shared.cancel(id: id)
             let configuration: AlarmManager.AlarmConfiguration<SmartWakeAlarmMetadata>
             if skipCurrentOccurrence {
                 let calendar = Calendar.current
@@ -299,11 +299,11 @@ final class SmartWakeAlarmScheduler {
 
     private func cancelAllManagedAlarms() async {
         for id in Self.fallbackIDs.values {
-            try? await manager.cancel(id: id)
+            try? manager.cancel(id: id)
         }
         if let raw = defaults.string(forKey: earlyAlarmIDKey),
            let id = UUID(uuidString: raw) {
-            try? await manager.cancel(id: id)
+            try? manager.cancel(id: id)
         }
         defaults.removeObject(forKey: earlyAlarmIDKey)
         defaults.removeObject(forKey: earlyAlarmWeekdayKey)
