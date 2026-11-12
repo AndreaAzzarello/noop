@@ -1694,6 +1694,9 @@ final class AppModel: ObservableObject {
     }
 
     func applySmartAlarm() {
+        #if os(iOS) && canImport(AlarmKit)
+        applySmartWakeSchedule()
+        #endif
         let overrides = WindDownNudge.perDayWakeOverrides
         guard behavior.smartAlarmEnabled else {
             ble.disableStrapAlarm()
@@ -1720,6 +1723,25 @@ final class AppModel: ObservableObject {
                                                       Task { @MainActor in self?.live.append(log: line) }
                                                   })
     }
+
+    #if os(iOS) && canImport(AlarmKit)
+    /// Reconcile the independent phone Smart Wake alarm without touching the WHOOP firmware alarm.
+    /// The maximum time, weekdays and per-day overrides are read from the existing alarm settings.
+    func applySmartWakeSchedule() {
+        let schedule = SmartWakeSchedule(
+            wakeMinutes: behavior.smartAlarmMinutes,
+            weekdays: behavior.smartAlarmWeekdays,
+            overrides: WindDownNudge.perDayWakeOverrides,
+            windowDuration: TimeInterval(behavior.smartWakeWindowMinutes * 60)
+        )
+        Task {
+            await SmartWakeAlarmScheduler.shared.sync(
+                enabled: behavior.smartWakeEnabled,
+                schedule: schedule
+            )
+        }
+    }
+    #endif
 
     /// Compute the next fire date for the smart alarm, honouring the weekday selection.
     /// - `minutes`: target wake time, minutes since local midnight.
