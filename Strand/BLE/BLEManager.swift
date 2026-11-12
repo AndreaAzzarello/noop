@@ -5733,7 +5733,7 @@ public final class BLEManager: NSObject, ObservableObject {
         // live perf: only publish on a real change so a steady resting HR doesn't re-render the whole
         // Live console every second.
         if readable {
-            state.onSmartWakeHeartRateSample?(m.hr, now)
+            if router.family == .whoop5 { state.onSmartWakeHeartRateSample?(m.hr, now) }
             state.noteReadableHeartRate()
             if state.heartRate != m.hr { state.heartRate = m.hr }
         }
