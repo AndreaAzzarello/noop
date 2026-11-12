@@ -89,9 +89,9 @@ final class SmartWakeAlarmScheduler {
         else { return }
 
         let calendar = Calendar.current
-        let weekday = calendar.component(.weekday, from: receivedAt)
+        guard let maximumWakeTime = schedule.nextMaximumWakeTime(after: receivedAt, calendar: calendar) else { return }
+        let weekday = calendar.component(.weekday, from: maximumWakeTime)
         guard schedule.isEnabled(onWeekday: weekday),
-              let maximumWakeTime = schedule.maximumWakeTime(on: receivedAt, calendar: calendar),
               receivedAt < maximumWakeTime,
               receivedAt >= maximumWakeTime.addingTimeInterval(-schedule.windowDuration),
               let fallbackID = Self.fallbackIDs[weekday]
