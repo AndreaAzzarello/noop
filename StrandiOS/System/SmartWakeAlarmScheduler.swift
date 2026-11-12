@@ -26,6 +26,7 @@ final class SmartWakeAlarmScheduler {
     private let earlyAlarmWeekdayKey = "smartWake.alarmKit.earlyAlarmWeekday"
     private let earlyAlarmScheduledKey = "smartWake.alarmKit.earlyAlarmScheduled"
     private var updatesTask: Task<Void, Never>?
+    private var authorizationTask: Task<Void, Never>?
     private var handoffInProgress = false
 
     private static let fallbackIDs: [Int: UUID] = [
@@ -51,10 +52,27 @@ final class SmartWakeAlarmScheduler {
     /// Observe the system's alarm list so a dismissed one-shot early alarm restores its
     /// recurring fallback even if the stop intent could not run while the app was suspended.
     func startObserving() {
-        guard updatesTask == nil else { return }
-        updatesTask = Task { [weak self] in
-            for await alarms in AlarmManager.shared.alarmUpdates {
-                await self?.reconcileEarlyAlarm(with: alarms)
+        if let currentAlarms = try? manager.alarms {
+            Task { [weak self] in
+                await self?.reconcileEarlyAlarm(with: currentAlarms)
+            }
+        }
+
+        if updatesTask == nil {
+            updatesTask = Task { [weak self] in
+                for await alarms in AlarmManager.shared.alarmUpdates {
+                    await self?.reconcileEarlyAlarm(with: alarms)
+                }
+            }
+        }
+
+        if authorizationTask == nil {
+            authorizationTask = Task { [weak self] in
+                for await state in AlarmManager.shared.authorizationUpdates {
+                    if state == .denied {
+                        await self?.disable()
+                    }
+                }
             }
         }
     }
