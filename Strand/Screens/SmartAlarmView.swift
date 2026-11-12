@@ -218,26 +218,38 @@ struct SmartAlarmView: View {
                             .foregroundStyle(StrandPalette.textTertiary)
                     }
                     if smartWakeAuthorizationFailed {
-                        Text("Alarm permission is required. Allow NOOP alarms in iPhone Settings, then enable Smart Wake again.")
-                            .font(StrandFont.footnote)
-                            .foregroundStyle(StrandPalette.statusWarning)
-                            .fixedSize(horizontal: false, vertical: true)
+                        if #available(iOS 26.0, *) {
+                            Text("Alarm permission is required. Allow NOOP alarms in iPhone Settings, then enable Smart Wake again.")
+                                .font(StrandFont.footnote)
+                                .foregroundStyle(StrandPalette.statusWarning)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            Text("System Smart Wake alarms require iOS 26 or later.")
+                                .font(StrandFont.footnote)
+                                .foregroundStyle(StrandPalette.statusWarning)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
             }
         }
         .onChangeCompat(of: behavior.smartWakeEnabled) { enabled in
             if enabled {
-                Task {
-                    let authorized = await SmartWakeAlarmScheduler.shared.enable(schedule: smartWakeSchedule)
-                    if !authorized {
-                        behavior.smartWakeEnabled = false
-                        smartWakeAuthorizationFailed = true
-                    } else {
-                        smartWakeAuthorizationFailed = false
+                if #available(iOS 26.0, *) {
+                    Task {
+                        let authorized = await SmartWakeAlarmScheduler.shared.enable(schedule: smartWakeSchedule)
+                        if !authorized {
+                            behavior.smartWakeEnabled = false
+                            smartWakeAuthorizationFailed = true
+                        } else {
+                            smartWakeAuthorizationFailed = false
+                        }
                     }
+                } else {
+                    behavior.smartWakeEnabled = false
+                    smartWakeAuthorizationFailed = true
                 }
-            } else {
+            } else if #available(iOS 26.0, *) {
                 Task { await SmartWakeAlarmScheduler.shared.disable() }
             }
         }
