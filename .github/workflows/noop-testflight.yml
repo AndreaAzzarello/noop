@@ -102,7 +102,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: AndreaAzzarello/noop
-          ref: feature/ios-smart-wake
+          ref: ${{ needs.detect.outputs.fork_sha }}
           path: automation
           persist-credentials: true
 
