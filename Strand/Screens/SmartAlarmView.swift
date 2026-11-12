@@ -51,7 +51,7 @@ struct SmartAlarmView: View {
             VStack(alignment: .leading, spacing: NoopMetrics.sectionGap) {
                 windowHero
                 strapAlarmCard
-                #if os(iOS)
+                #if os(iOS) && canImport(AlarmKit)
                 smartWakeCard
                 #endif
                 strapRejectedCard   // #34: only shows when the strap keeps refusing the alarm
@@ -163,7 +163,7 @@ struct SmartAlarmView: View {
         }
     }
 
-    #if os(iOS)
+    #if os(iOS) && canImport(AlarmKit)
     /// Phone-based Smart Wake. Its maximum time and weekday rules are shared with the WHOOP alarm;
     /// only the early-detection window is configured separately.
     private var smartWakeCard: some View {
