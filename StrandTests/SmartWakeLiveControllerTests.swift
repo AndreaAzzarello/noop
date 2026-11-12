@@ -86,6 +86,19 @@ final class SmartWakeLiveControllerTests: XCTestCase {
         XCTAssertEqual(schedule.maximumWakeTime(on: friday, calendar: calendar), date(8, 15, day: 13))
     }
 
+    func testNextWakeSkipsPassedOccurrenceAndHonorsSelectedWeekdayOverride() {
+        let schedule = SmartWakeSchedule(
+            wakeMinutes: 7 * 60,
+            weekdays: [6],
+            overrides: [6: 8 * 60 + 15]
+        )
+        let afterFridayWake = date(9, 0, day: 13)
+        XCTAssertEqual(
+            schedule.nextMaximumWakeTime(after: afterFridayWake, calendar: calendar),
+            date(8, 15, day: 20)
+        )
+    }
+
     func testBaselineFromPreviousDaySurvivesMidnightForCrossDayWindow() {
         let schedule = SmartWakeSchedule(
             wakeHour: 0,
