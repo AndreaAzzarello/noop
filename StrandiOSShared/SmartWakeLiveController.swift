@@ -85,7 +85,7 @@ struct SmartWakeSchedule: Equatable, Codable {
 final class SmartWakeLiveController {
     private let calendar: Calendar
     private let defaults: UserDefaults
-    private let baselineStorageKey = "smartWake.localBaseline.v1"
+    private static let baselineStorageKey = "smartWake.localBaseline.v1"
     private let maximumBufferedSamples = 4_000
     private let persistenceInterval: TimeInterval = 30
 
@@ -108,8 +108,9 @@ final class SmartWakeLiveController {
         self.calendar = calendar
         self.defaults = defaults
         self.schedule = schedule
-        self.baselineSamples = Self.loadBaseline(from: defaults, key: baselineStorageKey)
-        self.lastReceivedTimestamp = baselineSamples.last?.timestamp
+        let loadedBaseline = Self.loadBaseline(from: defaults, key: Self.baselineStorageKey)
+        self.baselineSamples = loadedBaseline
+        self.lastReceivedTimestamp = loadedBaseline.last?.timestamp
         self.engine = SmartWakeEngine(
             configuration: .standard(maximumWakeTime: .distantFuture),
             baselineSamples: []
@@ -226,7 +227,7 @@ final class SmartWakeLiveController {
             return
         }
         guard let data = try? JSONEncoder().encode(baselineSamples) else { return }
-        defaults.set(data, forKey: baselineStorageKey)
+        defaults.set(data, forKey: Self.baselineStorageKey)
         lastPersistedTimestamp = date
     }
 
