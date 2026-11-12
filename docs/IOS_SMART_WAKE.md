@@ -51,7 +51,7 @@ CoreBluetooth state restoration and the `bluetooth-central` background mode can 
 
 AlarmKit is available only on iOS 26+. On earlier iOS versions, the Smart Wake control is not compiled when the SDK lacks AlarmKit, and enabling it is rejected when the runtime OS is earlier than iOS 26. The one-shot fallback immediately after an early wake uses an absolute date for the following week; the normal recurring schedule then returns to AlarmKit's timezone-relative weekly schedule.
 
-The AlarmKit fallback and early-alert lifecycle still require physical-device verification, including authorization denied/granted, phone locked, Focus/Silent mode, background suspension, reconnect, early dismissal, and weekly recurrence. AlarmKit's actual behavior must be checked on the target iOS release.
+Apple documents that AlarmKit alerts break through Silent mode and Focus when authorized. However, developers have reported delayed or missed overnight AlarmKit alerts on iOS 26 and early iOS 27 builds. This is not proof that the issue remains in iOS 27.2, but it means the system alarm must not be treated as infallible until tested on the actual device and OS version. Keep the iPhone Clock alarm as a backup during validation.\n\nThe AlarmKit fallback and early-alert lifecycle still require physical-device verification, including authorization denied/granted, phone locked, Focus/Silent mode, background suspension, reconnect, early dismissal, and weekly recurrence. AlarmKit's actual behavior must be checked on the target iOS release.
 
 ## Verification
 
