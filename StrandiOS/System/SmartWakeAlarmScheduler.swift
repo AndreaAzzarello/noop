@@ -4,6 +4,7 @@ import AppIntents
 import Foundation
 import SwiftUI
 
+@available(iOS 26.0, *)
 private struct SmartWakeAlarmMetadata: AlarmMetadata {}
 
 /// The system-owned maximum-time alarm and the early-wake handoff.
@@ -11,6 +12,7 @@ private struct SmartWakeAlarmMetadata: AlarmMetadata {}
 /// A separate recurring AlarmKit alarm is kept for each weekday. When Smart Wake detects
 /// a valid early trigger, it schedules a one-shot alarm first, then replaces only that
 /// weekday's fallback. Dismissing the early alarm re-arms that weekday through its stop intent.
+@available(iOS 26.0, *)
 @MainActor
 final class SmartWakeAlarmScheduler {
     static let shared = SmartWakeAlarmScheduler()
@@ -229,6 +231,7 @@ final class SmartWakeAlarmScheduler {
 
 /// Runs when the user dismisses an early Smart Wake alert, restoring the recurring
 /// maximum-time fallback for that weekday.
+@available(iOS 26.0, *)
 public struct SmartWakeRearmIntent: LiveActivityIntent {
     public static var title: LocalizedStringResource = "Restore Smart Wake fallback"
 
