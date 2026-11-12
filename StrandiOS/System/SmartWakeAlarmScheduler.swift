@@ -90,8 +90,11 @@ final class SmartWakeAlarmScheduler {
         // Recover any weekday alarm removed by the system or a previous interrupted scheduling pass.
         guard let schedule = loadSchedule() else { return }
         let selectedDays = schedule.weekdays.isEmpty ? Set(1...7) : schedule.weekdays
-        for weekday in selectedDays where !alarms.contains(where: { $0.id == Self.fallbackIDs[weekday] }) {
-            await Self.rearmFallback(for: weekday, skipCurrentOccurrence: false)
+        for weekday in selectedDays {
+            guard let fallbackID = Self.fallbackIDs[weekday] else { continue }
+            if !alarms.contains(where: { $0.id == fallbackID }) {
+                await Self.rearmFallback(for: weekday, skipCurrentOccurrence: false)
+            }
         }
     }
 
