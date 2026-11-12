@@ -24,6 +24,7 @@ final class SmartWakeAlarmScheduler {
     private let scheduleKey = "smartWake.alarmKit.schedule"
     private let earlyAlarmIDKey = "smartWake.alarmKit.earlyAlarmID"
     private let earlyAlarmWeekdayKey = "smartWake.alarmKit.earlyAlarmWeekday"
+    private let earlyAlarmScheduledKey = "smartWake.alarmKit.earlyAlarmScheduled"
     private var updatesTask: Task<Void, Never>?
     private var handoffInProgress = false
 
@@ -69,14 +70,20 @@ final class SmartWakeAlarmScheduler {
             let fallbackIsPresent = alarms.contains(where: { $0.id == fallbackID })
             if earlyIsPresent {
                 // Recover a crash between scheduling the early alert and cancelling its fallback.
+                defaults.set(true, forKey: earlyAlarmScheduledKey)
                 if fallbackIsPresent { try? await manager.cancel(id: fallbackID) }
+            } else if defaults.bool(forKey: earlyAlarmScheduledKey) {
+                // The early alert was scheduled and has now been dismissed. Skip today's maximum
+                // time, then resume the normal weekly recurrence from the following week.
+                await Self.rearmFallback(for: weekday, skipCurrentOccurrence: true)
             } else if fallbackIsPresent {
-                // The early alert was never scheduled or has already been dismissed; the fallback
-                // exists, so clear the handoff marker without creating a duplicate alarm.
+                // The process died before the early alert was actually scheduled; preserve today's fallback.
                 defaults.removeObject(forKey: earlyAlarmIDKey)
                 defaults.removeObject(forKey: earlyAlarmWeekdayKey)
+        defaults.removeObject(forKey: earlyAlarmScheduledKey)
+                defaults.removeObject(forKey: earlyAlarmScheduledKey)
             } else {
-                await Self.rearmFallback(for: weekday)
+                await Self.rearmFallback(for: weekday, skipCurrentOccurrence: false)
             }
             return
         }
@@ -85,7 +92,7 @@ final class SmartWakeAlarmScheduler {
         guard let schedule = loadSchedule() else { return }
         let selectedDays = schedule.weekdays.isEmpty ? Set(1...7) : schedule.weekdays
         for weekday in selectedDays where !alarms.contains(where: { $0.id == Self.fallbackIDs[weekday] }) {
-            await Self.rearmFallback(for: weekday)
+            await Self.rearmFallback(for: weekday, skipCurrentOccurrence: false)
         }
     }
 
@@ -167,16 +174,18 @@ final class SmartWakeAlarmScheduler {
         let earlySchedule = Alarm.Schedule.fixed(Date().addingTimeInterval(8))
         let configuration = Self.alarmConfiguration(
             schedule: earlySchedule,
-            stopIntent: SmartWakeRearmIntent(weekday: weekday)
+            stopIntent: SmartWakeRearmIntent(weekday: weekday, skipCurrentOccurrence: true)
         )
 
         // Persist the handoff before the first async system call. If iOS kills the process between
         // scheduling and cancellation, the alarmUpdates observer can finish the reconciliation.
         defaults.set(earlyID.uuidString, forKey: earlyAlarmIDKey)
         defaults.set(weekday, forKey: earlyAlarmWeekdayKey)
+        defaults.set(false, forKey: earlyAlarmScheduledKey)
         do {
             // Schedule first. If this fails, the maximum-time fallback is still armed.
             try await manager.schedule(id: earlyID, configuration: configuration)
+            defaults.set(true, forKey: earlyAlarmScheduledKey)
             do {
                 try await manager.cancel(id: fallbackID)
             } catch {
@@ -184,15 +193,17 @@ final class SmartWakeAlarmScheduler {
                 try? await manager.cancel(id: earlyID)
                 defaults.removeObject(forKey: earlyAlarmIDKey)
                 defaults.removeObject(forKey: earlyAlarmWeekdayKey)
+                defaults.removeObject(forKey: earlyAlarmScheduledKey)
             }
         } catch {
             defaults.removeObject(forKey: earlyAlarmIDKey)
             defaults.removeObject(forKey: earlyAlarmWeekdayKey)
+            defaults.removeObject(forKey: earlyAlarmScheduledKey)
             // Keep the maximum-time fallback; early wake is best-effort.
         }
     }
 
-    fileprivate static func rearmFallback(for weekday: Int) async {
+    fileprivate static func rearmFallback(for weekday: Int, skipCurrentOccurrence: Bool) async {
         guard #available(iOS 26.0, *),
               (1...7).contains(weekday)
         else { return }
@@ -207,15 +218,31 @@ final class SmartWakeAlarmScheduler {
         else { return }
 
         let minutes = schedule.wakeMinutes(onWeekday: weekday)
-        let relative = Alarm.Schedule.Relative(
-            time: Alarm.Schedule.Relative.Time(hour: minutes / 60, minute: minutes % 60),
-            repeats: .weekly([localeWeekday])
-        )
-        let configuration = alarmConfiguration(schedule: .relative(relative), stopIntent: nil)
         do {
+            // Clear the previous recurring or one-shot fallback before replacing its schedule.
+            try? await AlarmManager.shared.cancel(id: id)
+            let configuration: AlarmManager.AlarmConfiguration<SmartWakeAlarmMetadata>
+            if skipCurrentOccurrence {
+                let calendar = Calendar.current
+                let today = calendar.startOfDay(for: Date())
+                guard let nextWeek = calendar.date(byAdding: .day, value: 7, to: today),
+                      let nextOccurrence = calendar.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0, of: nextWeek)
+                else { return }
+                configuration = alarmConfiguration(
+                    schedule: .fixed(nextOccurrence),
+                    stopIntent: SmartWakeRearmIntent(weekday: weekday, skipCurrentOccurrence: false)
+                )
+            } else {
+                let relative = Alarm.Schedule.Relative(
+                    time: Alarm.Schedule.Relative.Time(hour: minutes / 60, minute: minutes % 60),
+                    repeats: .weekly([localeWeekday])
+                )
+                configuration = alarmConfiguration(schedule: .relative(relative), stopIntent: nil)
+            }
             try await AlarmManager.shared.schedule(id: id, configuration: configuration)
             defaults.removeObject(forKey: "smartWake.alarmKit.earlyAlarmID")
             defaults.removeObject(forKey: "smartWake.alarmKit.earlyAlarmWeekday")
+            defaults.removeObject(forKey: "smartWake.alarmKit.earlyAlarmScheduled")
         } catch {
             // The next foreground reconciliation can restore the fallback.
         }
@@ -311,16 +338,21 @@ public struct SmartWakeRearmIntent: LiveActivityIntent {
     @Parameter(title: "Weekday")
     public var weekday: Int
 
-    public init(weekday: Int) {
+    @Parameter(title: "Skip current occurrence")
+    public var skipCurrentOccurrence: Bool
+
+    public init(weekday: Int, skipCurrentOccurrence: Bool = true) {
         self.weekday = weekday
+        self.skipCurrentOccurrence = skipCurrentOccurrence
     }
 
     public init() {
         self.weekday = 1
+        self.skipCurrentOccurrence = false
     }
 
     public func perform() async throws -> some IntentResult {
-        await SmartWakeAlarmScheduler.rearmFallback(for: weekday)
+        await SmartWakeAlarmScheduler.rearmFallback(for: weekday, skipCurrentOccurrence: skipCurrentOccurrence)
         return .result()
     }
 }
