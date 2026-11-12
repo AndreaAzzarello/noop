@@ -240,14 +240,18 @@ struct SmartAlarmView: View {
                             smartWakeAuthorizationFailed = true
                         } else {
                             smartWakeAuthorizationFailed = false
+                            model.applySmartWakeSchedule()
                         }
                     }
                 } else {
                     behavior.smartWakeEnabled = false
                     smartWakeAuthorizationFailed = true
                 }
-            } else if #available(iOS 26.0, *) {
-                Task { await SmartWakeAlarmScheduler.shared.disable() }
+            } else {
+                smartWakeAuthorizationFailed = false
+                if #available(iOS 26.0, *) {
+                    Task { await SmartWakeAlarmScheduler.shared.disable() }
+                }
             }
         }
         .onChangeCompat(of: behavior.smartWakeWindowMinutes) { _ in
