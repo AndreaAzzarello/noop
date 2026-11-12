@@ -217,7 +217,7 @@ struct SmartAlarmView: View {
                 }
                 if smartWakeAuthorizationFailed {
                     if #available(iOS 26.0, *) {
-                        Text("Alarm permission is required. Allow NOOP alarms in iPhone Settings, then enable Smart Wake again.")
+                        Text("NOOP couldn't keep a system alarm scheduled. Check that Alarms permission is enabled for NOOP in iPhone Settings, then enable Smart Wake again.")
                             .font(StrandFont.footnote)
                             .foregroundStyle(StrandPalette.statusWarning)
                             .fixedSize(horizontal: false, vertical: true)
