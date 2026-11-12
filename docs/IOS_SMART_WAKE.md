@@ -23,7 +23,7 @@ Smart Wake does not maintain a second maximum-wake-time setting. It reads the ex
 
 The WHOOP firmware alarm and phone Smart Wake have separate enable switches. Changing the shared time, weekday selection, or per-day override reconciles the AlarmKit schedule without sending an additional BLE command. The existing WHOOP alarm implementation is not replaced.
 
-AlarmKit keeps a separate weekly fallback for each weekday so an early wake can replace only the current weekday's fallback. When the user dismisses the early alert, its `LiveActivityIntent` restores that weekday's recurring maximum-time alarm. The other weekdays remain scheduled.
+AlarmKit keeps a separate weekly fallback for each weekday so an early wake can replace only the current weekday's fallback. When the user dismisses the early alert, its `LiveActivityIntent` skips the current day's maximum-time occurrence and schedules the same weekday for the following week. After that one-shot fires, its stop intent restores the normal weekly recurrence. The other weekdays remain scheduled.
 
 ## Data path
 
@@ -49,7 +49,7 @@ The controller retains a bounded local baseline in UserDefaults, periodically pe
 
 CoreBluetooth state restoration and the `bluetooth-central` background mode can deliver BLE events while the app is backgrounded, but iOS does not promise continuous execution. The detector can only evaluate samples delivered to the process. The system-owned AlarmKit maximum-time fallback is what protects against suspension, disconnection, force quit, or missing HR data.
 
-AlarmKit is available only on iOS 26+. On earlier iOS versions, the Smart Wake control is not compiled when the SDK lacks AlarmKit, and enabling it is rejected when the runtime OS is earlier than iOS 26.
+AlarmKit is available only on iOS 26+. On earlier iOS versions, the Smart Wake control is not compiled when the SDK lacks AlarmKit, and enabling it is rejected when the runtime OS is earlier than iOS 26. The one-shot fallback immediately after an early wake uses an absolute date for the following week; the normal recurring schedule then returns to AlarmKit's timezone-relative weekly schedule.
 
 The AlarmKit fallback and early-alert lifecycle still require physical-device verification, including authorization denied/granted, phone locked, Focus/Silent mode, background suspension, reconnect, early dismissal, and weekly recurrence. AlarmKit's actual behavior must be checked on the target iOS release.
 
