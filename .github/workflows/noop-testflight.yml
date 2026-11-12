@@ -6,6 +6,15 @@ name: Build NOOP TestFlight
 # schedule runs become active only if that branch is made the default branch.
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "validate = compile and test only; publish = upload to TestFlight"
+        required: true
+        default: validate
+        type: choice
+        options:
+          - validate
+          - publish
   schedule:
     - cron: '17 6 * * 0'
     - cron: '29 6 1 * *'
@@ -78,10 +87,79 @@ jobs:
             echo "- Build required: **${should_build}** (${reason})"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  validate:
+    name: Validate Smart Wake and iOS build (no TestFlight upload)
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'validate'
+    runs-on: macos-26
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    env:
+      FORK_SHA: ${{ needs.detect.outputs.fork_sha }}
+      UPSTREAM_SHA: ${{ needs.detect.outputs.upstream_sha }}
+    needs: detect
+    steps:
+      - name: Checkout the customized NOOP feature branch
+        uses: actions/checkout@v5
+        with:
+          repository: AndreaAzzarello/noop
+          ref: ${{ needs.detect.outputs.fork_sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Merge the pinned upstream revision into the validation workspace
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add upstream https://github.com/ryanbr/noop.git
+          git fetch --no-tags upstream "$UPSTREAM_SHA"
+          if ! git merge --no-edit --no-ff FETCH_HEAD; then
+            git merge --abort || true
+            echo '::error::Upstream changes conflict with the customized feature branch. Nothing was pushed or changed on GitHub.'
+            exit 1
+          fi
+
+      - name: Install XcodeGen
+        run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+
+      - name: Generate the Xcode project without signing credentials
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'BUNDLE_ID_PREFIX = com.andreaazzarello\nDEVELOPMENT_TEAM =\n' > Config/BundleIdSecrets.xcconfig
+          xcodegen generate
+          xcodebuild -version
+
+      - name: Run Smart Wake unit tests
+        working-directory: source
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -scheme Strand \
+            -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Compile the iOS app and embedded targets
+        working-directory: source
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -scheme NOOPiOS \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO
+
   build:
     name: Merge upstream temporarily, build and upload
     needs: detect
-    if: needs.detect.outputs.should_build == 'true'
+    if: needs.detect.outputs.should_build == 'true' && (github.event_name != 'workflow_dispatch' || inputs.mode == 'publish')
     runs-on: macos-26
     timeout-minutes: 120
     permissions:
