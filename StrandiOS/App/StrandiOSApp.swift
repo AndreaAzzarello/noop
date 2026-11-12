@@ -26,6 +26,8 @@ struct StrandiOSApp: App {
     @StateObject private var router: NavRouter
     /// NOOP's live heart rate banner. Built in `init` and fed from there (`LiveActivityController.follow`), not from
     /// a view: a process iOS starts in the background need not build one.
+    /// In-memory HR detector; deliberately does not schedule or trigger an alarm yet.
+    @State private var smartWakeController: SmartWakeLiveController
     @State private var liveActivity: LiveActivityController
     /// The Lift Log session's own Live Activity. Separate from the live-HR one above: while a gym
     /// session is open this is the banner that matters (it carries the heart rate too), so the HR
@@ -86,6 +88,11 @@ struct StrandiOSApp: App {
         NotificationPresenter.shared.onCoachBriefTapped = { [weak router] in router?.openCoach() }
         let model = AppModel()
         _model = StateObject(wrappedValue: model)
+        let smartWakeController = SmartWakeLiveController()
+        model.live.onSmartWakeHeartRateSample = { [weak smartWakeController] bpm, timestamp in
+            smartWakeController?.ingest(bpm: bpm, at: timestamp)
+        }
+        _smartWakeController = State(initialValue: smartWakeController)
         CoachBriefScheduler.register(generateBrief: { [weak coach = model.coach] in
             await coach?.generateBrief()
         }, log: { [weak model] line in
