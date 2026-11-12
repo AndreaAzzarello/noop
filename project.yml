@@ -178,6 +178,8 @@ targets:
       # And the widget cost counters, for the same reason again: pure, iOS-only, and the arithmetic is
       # exactly the part that has been wrong twice on the Android side.
       - StrandiOSShared/WidgetTelemetry.swift
+      # Pure Smart Wake detector; compiled into tests without adding it to the macOS app.
+      - StrandiOSShared/SmartWakeEngine.swift
     # Same wrapper as the app target, so the OURA_CLOUD_IMPORT-gated Oura tests compile exactly
     # when the app's Oura lane does (flag + creds both come from the untracked OuraSecrets.xcconfig).
     configFiles:
