@@ -45,10 +45,18 @@ struct SmartWakeSchedule: Equatable, Codable {
         )
     }
 
+    func isEnabled(onWeekday weekday: Int) -> Bool {
+        weekdays.isEmpty || weekdays.contains(weekday)
+    }
+
+    func wakeMinutes(onWeekday weekday: Int) -> Int {
+        overrides[weekday] ?? wakeMinutes
+    }
+
     func maximumWakeTime(on day: Date, calendar: Calendar) -> Date? {
         let weekday = calendar.component(.weekday, from: day)
-        guard weekdays.isEmpty || weekdays.contains(weekday) else { return nil }
-        let minutes = overrides[weekday] ?? wakeMinutes
+        guard isEnabled(onWeekday: weekday) else { return nil }
+        let minutes = wakeMinutes(onWeekday: weekday)
         var components = calendar.dateComponents([.year, .month, .day], from: day)
         components.hour = minutes / 60
         components.minute = minutes % 60
