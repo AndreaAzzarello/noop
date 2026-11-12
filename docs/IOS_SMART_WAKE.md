@@ -11,6 +11,15 @@ BLE write has been introduced.
 This is detector integration only: it does not wake the user, schedule an alarm, send haptics,
 or replace the existing alarm.
 
+## Configurable schedule
+
+`SmartWakeSchedule` holds the selected maximum wake hour/minute, the early-wake window duration,
+and the baseline lookback duration. The current 07:20 maximum and 30-minute window are defaults
+only. The detector derives the window start from the configured maximum time; changing the
+schedule does not change the detection principle. The schedule is injected into the controller,
+so a future settings UI/persisted preference can supply different values without changing the
+BLE pipeline or the engine logic.
+
 ## Data path
 
 `BLEManager.parseStandardHR` decodes the standard HR measurement and checks
@@ -23,18 +32,17 @@ Do not use `AppModel.bpm` as detector input: it is a smoothed display value and 
 republished when its median changes. Do not use `LiveState.heartRate` as the sole event source:
 it is also updated only when the integer value changes.
 
-## Current detector behavior
+## Detection and fail-safe behavior
 
-- Maximum wake time is fixed at 07:20 local time; the detection window is 06:50–07:20.
-- Keep a bounded, process-local buffer of readable HR samples from the preceding 60 minutes.
-- At the first sample in the window, construct the engine from the pre-window samples.
+- Collect a bounded, process-local baseline before the configured detection window.
+- Construct the engine at the beginning of the configured window.
 - Require the engine's configured minimum baseline (20 samples); if unavailable, early wake is
   disabled for that cycle.
 - Ignore invalid, duplicate, and out-of-order samples. The engine also enforces freshness and
   maximum sample gaps.
 - A sustained rise is a heuristic, not a sleep-stage classification.
-- The controller can evaluate the 07:20 hard deadline when explicitly called, but no timer,
-  notification, AlarmKit alarm, or fallback wake is wired in this phase.
+- The maximum wake deadline remains independent of HR detection and must be backed by a
+  separately scheduled system alarm before real-world use.
 
 ## Explicit non-goals and limitations
 
@@ -43,7 +51,7 @@ it is also updated only when the integer value changes.
 - No changes to `SmartAlarmView` or the existing alarm behavior.
 - No background-execution guarantee is claimed. iOS may suspend or terminate the app; HR
   samples are event-driven and may be unavailable while the process is suspended.
-- The 07:20 detector decision is not yet connected to a real wake mechanism. A separate,
+- The maximum-time detector decision is not yet connected to a real wake mechanism. A separate,
   independently scheduled system fallback and real-device verification are required before
   this can be used as an actual alarm.
 - No cloud, telemetry, or persistent storage of the temporary HR buffer.
@@ -52,6 +60,6 @@ it is also updated only when the integer value changes.
 ## Verification
 
 Unit tests cover the pure engine and live controller, including sustained rise, insufficient
-baseline, out-of-order samples, and late launch. They have been added but have **not yet been
-executed**. Build/test results must be reported only after actually running them. The BLE path
-still requires testing with a real WHOOP 5.0 and iPhone; compile success alone is insufficient.
+baseline, out-of-order samples, late launch, and changing the maximum wake time/window. They
+have been added but have **not yet been executed**. The BLE path still requires testing with a
+real WHOOP 5.0 and iPhone; compile success alone is insufficient.
