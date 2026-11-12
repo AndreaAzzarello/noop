@@ -106,7 +106,7 @@ struct StrandiOSApp: App {
             smartWakeController?.updateSchedule(schedule)
             let decision = smartWakeController?.ingest(bpm: bpm, at: timestamp) ?? .waiting
             #if canImport(AlarmKit)
-            if case .wake(.sustainedHeartRateRise) = decision {
+            if case .wake(.sustainedHeartRateRise) = decision, #available(iOS 26.0, *) {
                 Task {
                     await SmartWakeAlarmScheduler.shared.triggerEarlyWake(at: timestamp, schedule: schedule)
                 }
