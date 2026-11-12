@@ -60,6 +60,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>NOOP schedules a maximum-time Smart Wake alarm and can move it earlier when your WHOOP heart-rate data supports an early wake.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>NOOP connects directly to your WHOOP strap over Bluetooth to read heart rate, R-R intervals, battery, and sensor data locally on your iPhone. Nothing leaves your device.</string>
 	<key>NSHealthShareUsageDescription</key>
