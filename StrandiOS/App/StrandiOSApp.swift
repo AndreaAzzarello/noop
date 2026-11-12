@@ -26,7 +26,7 @@ struct StrandiOSApp: App {
     @StateObject private var router: NavRouter
     /// NOOP's live heart rate banner. Built in `init` and fed from there (`LiveActivityController.follow`), not from
     /// a view: a process iOS starts in the background need not build one.
-    /// In-memory HR detector; deliberately does not schedule or trigger an alarm yet.
+    /// Live HR detector. Valid early decisions hand off to AlarmKit; its system scheduler owns the independent maximum-time fallback.
     @State private var smartWakeController: SmartWakeLiveController
     @State private var liveActivity: LiveActivityController
     /// The Lift Log session's own Live Activity. Separate from the live-HR one above: while a gym
