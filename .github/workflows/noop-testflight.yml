@@ -1,11 +1,13 @@
 name: Build NOOP TestFlight
 
-# Monitor upstream on days 2-31. On the first day of each month,
-# rebuild even if the app version has not changed (TestFlight builds expire).
+# Weekly upstream check (Sunday) plus a monthly renewal.
+# GitHub scheduled workflows run only from the repository's default branch.
+# This workflow is intentionally kept on feature/ios-smart-wake; therefore
+# schedule runs become active only if that branch is made the default branch.
 on:
   workflow_dispatch:
   schedule:
-    - cron: '17 6 2-31 * *'
+    - cron: '17 6 * * 0'
     - cron: '29 6 1 * *'
 
 concurrency:
@@ -14,41 +16,46 @@ concurrency:
 
 jobs:
   detect:
-    name: Check latest upstream NOOP version
+    name: Check fork and upstream revisions
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      sha: ${{ steps.version.outputs.sha }}
-      should_build: ${{ steps.version.outputs.should_build }}
+      fork_sha: ${{ steps.revisions.outputs.fork_sha }}
+      upstream_sha: ${{ steps.revisions.outputs.upstream_sha }}
+      version: ${{ steps.revisions.outputs.version }}
+      marker: ${{ steps.revisions.outputs.marker }}
+      should_build: ${{ steps.revisions.outputs.should_build }}
     steps:
-      - name: Checkout automation repository
-        uses: actions/checkout@v5
-
-      - name: Check version and last successful upload
-        id: version
+      - name: Check latest revisions and last successful upload
+        id: revisions
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
           SCHEDULE: ${{ github.event.schedule }}
         run: |
           set -euo pipefail
 
-          # Pin the upstream checkout to the commit inspected here.
-          sha="$(gh api repos/ryanbr/noop/commits/main --jq '.sha')"
-          project="$(curl --fail --silent --show-error --location --retry 3 "https://raw.githubusercontent.com/ryanbr/noop/${sha}/project.yml")"
+          fork_sha="$(git ls-remote https://github.com/AndreaAzzarello/noop.git refs/heads/feature/ios-smart-wake | awk '{print $1}')"
+          upstream_sha="$(git ls-remote https://github.com/ryanbr/noop.git refs/heads/main | awk '{print $1}')"
+          if [[ ! "$fork_sha" =~ ^[0-9a-f]{40}$ || ! "$upstream_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::Could not resolve the fork feature branch or upstream main'
+            exit 1
+          fi
+
+          project="$(curl --fail --silent --show-error --location --retry 3 "https://raw.githubusercontent.com/ryanbr/noop/${upstream_sha}/project.yml")"
           version="$(printf '%s\n' "$project" | sed -nE 's/^[[:space:]]*MARKETING_VERSION:[[:space:]]*"([0-9]+\.[0-9]+\.[0-9]+)".*$/\1/p' | head -n 1)"
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo '::error::Could not read MARKETING_VERSION from upstream project.yml'
             exit 1
           fi
 
+          marker="noop-testflight-${fork_sha}-${upstream_sha}"
+          echo "fork_sha=$fork_sha" >> "$GITHUB_OUTPUT"
+          echo "upstream_sha=$upstream_sha" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          marker="noop-testflight-v${version}"
-          existing="$(git ls-remote --tags --refs origin "refs/tags/${marker}")"
+          echo "marker=$marker" >> "$GITHUB_OUTPUT"
 
+          existing="$(git ls-remote --tags --refs "https://github.com/AndreaAzzarello/noop.git" "refs/tags/${marker}")"
           if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
             reason='Manual run'
             should_build=true
@@ -56,28 +63,29 @@ jobs:
             reason='Monthly renewal'
             should_build=true
           elif [[ -z "$existing" ]]; then
-            reason='Upstream version not yet uploaded by this automation'
+            reason='Fork or upstream revision has not yet been uploaded'
             should_build=true
           else
-            reason='Already uploaded this upstream version'
+            reason='This exact fork/upstream revision pair was already uploaded'
             should_build=false
           fi
 
           echo "should_build=$should_build" >> "$GITHUB_OUTPUT"
           {
             echo "### NOOP upstream: ${version}"
-            echo "- Revision: ${sha}"
+            echo "- Fork revision: ${fork_sha}"
+            echo "- Upstream revision: ${upstream_sha}"
             echo "- Build required: **${should_build}** (${reason})"
           } >> "$GITHUB_STEP_SUMMARY"
 
   build:
-    name: Build and Upload NOOP
+    name: Merge upstream temporarily, build and upload
     needs: detect
     if: needs.detect.outputs.should_build == 'true'
     runs-on: macos-26
     timeout-minutes: 120
     permissions:
-      contents: write # Only to record a successfully uploaded version as a tag.
+      contents: write # Only to record an upload that completed successfully.
 
     env:
       TEAMID: ${{ secrets.TEAMID }}
@@ -86,21 +94,40 @@ jobs:
       FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
       FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
       FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+      FORK_SHA: ${{ needs.detect.outputs.fork_sha }}
+      UPSTREAM_SHA: ${{ needs.detect.outputs.upstream_sha }}
 
     steps:
       - name: Checkout fork automation configuration
         uses: actions/checkout@v5
         with:
+          repository: AndreaAzzarello/noop
+          ref: feature/ios-smart-wake
           path: automation
           persist-credentials: true
 
-      - name: Checkout upstream NOOP source at verified revision
+      - name: Checkout the customized NOOP feature branch
         uses: actions/checkout@v5
         with:
-          repository: ryanbr/noop
-          ref: ${{ needs.detect.outputs.sha }}
+          repository: AndreaAzzarello/noop
+          ref: ${{ needs.detect.outputs.fork_sha }}
           path: source
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Merge the pinned upstream revision into the build workspace
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/ryanbr/noop.git
+          git fetch --no-tags upstream "$UPSTREAM_SHA"
+          if ! git merge --no-edit --no-ff FETCH_HEAD; then
+            git merge --abort || true
+            echo '::error::Upstream changes conflict with the customized feature branch. Nothing was pushed or changed on GitHub.'
+            exit 1
+          fi
+          echo "Built from fork $FORK_SHA plus upstream $UPSTREAM_SHA." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify credentials
         shell: bash
@@ -121,20 +148,20 @@ jobs:
           mkdir -p source/fastlane
           cp automation/fastlane/Fastfile source/fastlane/Fastfile
 
-          # The owner confirmed NOOP uses no non-exempt encryption.
-          # Add the matching declaration to the iOS app's generated Info.plist.
+          # Preserve the existing project configuration and add only the
+          # export-compliance declaration to the generated iOS app plist.
           python3 - <<'PY'
           from pathlib import Path
           path = Path('source/project.yml')
           text = path.read_text()
-          start = text.index('\n  NOOPiOS:\n')
-          end = text.index('\n  NOOPiOSWidgets:\n', start)
+          start = text.index('\\n  NOOPiOS:\\n')
+          end = text.index('\\n  NOOPiOSWidgets:\\n', start)
           ios = text[start:end]
           if 'ITSAppUsesNonExemptEncryption:' not in ios:
-              anchor = '        CFBundleDisplayName: NOOP\n'
+              anchor = '        CFBundleDisplayName: NOOP\\n'
               if anchor not in ios:
-                  raise SystemExit('iOS Info.plist structure changed; review export compliance declaration')
-              ios = ios.replace(anchor, anchor + '        ITSAppUsesNonExemptEncryption: false\n', 1)
+                  raise SystemExit('iOS Info.plist structure changed; review export-compliance declaration')
+              ios = ios.replace(anchor, anchor + '        ITSAppUsesNonExemptEncryption: false\\n', 1)
               text = text[:start] + ios + text[end:]
               path.write_text(text)
           PY
@@ -147,7 +174,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf 'BUNDLE_ID_PREFIX = com.andreaazzarello\nDEVELOPMENT_TEAM = %s\n' "$TEAMID" > Config/BundleIdSecrets.xcconfig
+          printf 'BUNDLE_ID_PREFIX = com.andreaazzarello\\nDEVELOPMENT_TEAM = %s\\n' "$TEAMID" > Config/BundleIdSecrets.xcconfig
           xcodegen generate
 
       - name: Install Fastlane dependencies
@@ -158,18 +185,17 @@ jobs:
         working-directory: source
         run: bundle exec fastlane ios noop_testflight
 
-      - name: Record successful upstream version
+      - name: Record the exact successfully uploaded revision pair
+        working-directory: automation
         shell: bash
         env:
-          UPSTREAM_VERSION: ${{ needs.detect.outputs.version }}
+          MARKER: ${{ needs.detect.outputs.marker }}
         run: |
           set -euo pipefail
-          tag="noop-testflight-v${UPSTREAM_VERSION}"
-          existing="$(git -C automation ls-remote --tags --refs origin "refs/tags/${tag}")"
-          if [[ -z "$existing" ]]; then
-            git -C automation config user.name 'github-actions[bot]'
-            git -C automation config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git -C automation tag "$tag"
-            git -C automation push origin "refs/tags/${tag}"
+          if ! git ls-remote --exit-code --tags origin "refs/tags/${MARKER}" >/dev/null 2>&1; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag "$MARKER"
+            git push origin "refs/tags/$MARKER"
           fi
-          echo "Uploaded NOOP ${UPSTREAM_VERSION} to TestFlight." >> "$GITHUB_STEP_SUMMARY"
+          echo "Uploaded NOOP ${{ needs.detect.outputs.version }} to TestFlight." >> "$GITHUB_STEP_SUMMARY"
