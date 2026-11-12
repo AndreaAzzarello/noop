@@ -94,10 +94,10 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: read
-    env:
-      FORK_SHA: ${{ needs.detect.outputs.fork_sha }}
-      UPSTREAM_SHA: ${{ needs.detect.outputs.upstream_sha }}
     needs: detect
+    env:
+      FORK_SHA: ${{ github.sha }}
+      UPSTREAM_SHA: ${{ needs.detect.outputs.sha }}
     steps:
       - name: Checkout the customized NOOP feature branch
         uses: actions/checkout@v5
