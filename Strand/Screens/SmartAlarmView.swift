@@ -8,12 +8,9 @@ import AppKit
 
 /// Smart alarm (#207) — the iOS/macOS surface.
 ///
-/// HONEST by design: a sideloaded, backgrounded app on iOS can't fire a dependable LOUD wake alarm
-/// (that needs the critical-alert entitlement, which a non-App-Store build doesn't have), so this
-/// platform deliberately does NOT offer a wake alarm. The dependable phone wake lives on Android,
-/// which has the exact-alarm primitive. Here we offer the cross-platform WIND-DOWN nudge — a gentle
-/// evening reminder — and we say plainly why there's no wake alarm, rather than promising one we
-/// can't keep.
+/// iOS phone-based Smart Wake uses AlarmKit on iOS 26+ with explicit system authorization.
+/// Its maximum-time alarm is independent of HR delivery; the WHOOP firmware alarm remains a separate,
+/// silent wrist buzz and its existing controls/behavior are preserved.
 struct SmartAlarmView: View {
     // #766: this is now the ONE alarm surface. The strap's silent firmware wake-alarm used to live in a
     // separate card over in Automations, which let users conflate it with the wind-down reminder; it's
@@ -317,9 +314,7 @@ struct SmartAlarmView: View {
         }
     }
 
-    // The up-front, honest note about the difference between the strap's silent buzz (above) and a loud
-    // phone wake. The strap alarm is real, but it's a gentle wrist buzz, not a sound, so we say plainly
-    // to keep a backup, and that the louder smart wake lives on Android.
+    // Distinguish the strap's silent wrist buzz from the separate AlarmKit phone alarm.
     private var honestyCard: some View {
         StrandCard(padding: 20) {
             HStack(alignment: .top, spacing: 12) {
@@ -330,7 +325,7 @@ struct SmartAlarmView: View {
                     Text("The strap alarm is a silent buzz, not a sound")
                         .font(StrandFont.headline)
                         .foregroundStyle(StrandPalette.textPrimary)
-                    Text("The wake-alarm above buzzes your wrist from the strap's own firmware. It can't sound a loud alarm. We also schedule a backup notification at your wake time, but a sideloaded app can't sound a guaranteed wake on this device (that needs a critical-alert permission this build doesn't have), so Focus or silent mode can still mute it. Keep your phone's built-in Clock alarm as your real backup. NOOP's phone-based smart wake (light-sleep detection) is available on the Android app.")
+                    Text("The wake-alarm above buzzes your wrist from the strap's own firmware. For a phone alarm, enable Smart Wake below and allow NOOP to schedule system alarms (iOS 26 or later). AlarmKit can alert through Silent mode and Focus, and its maximum-time alarm stays scheduled even when WHOOP heart-rate data is unavailable. Keep your built-in Clock alarm as a backup until you have tested Smart Wake on this iPhone.")
                         .font(StrandFont.footnote)
                         .foregroundStyle(StrandPalette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
