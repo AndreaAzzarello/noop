@@ -12,7 +12,7 @@ final class SmartWakeLiveControllerTests: XCTestCase {
     }
 
     private func makeController(schedule: SmartWakeSchedule = .standard) -> SmartWakeLiveController {
-        let defaults = UserDefaults(suiteName: "SmartWakeLiveControllerTests.\\(UUID().uuidString)")!
+        let defaults = UserDefaults(suiteName: "SmartWakeLiveControllerTests.\(UUID().uuidString)")!
         return SmartWakeLiveController(schedule: schedule, calendar: calendar, defaults: defaults)
     }
 
@@ -105,7 +105,7 @@ final class SmartWakeLiveControllerTests: XCTestCase {
     }
 
     func testBaselineIsRestoredAcrossControllerRestart() {
-        let defaults = UserDefaults(suiteName: "SmartWakeRestartTests.\\(UUID().uuidString)")!
+        let defaults = UserDefaults(suiteName: "SmartWakeRestartTests.\(UUID().uuidString)")!
         let schedule = SmartWakeSchedule(wakeHour: 7, wakeMinute: 20)
         let first = SmartWakeLiveController(schedule: schedule, calendar: calendar, defaults: defaults)
 
