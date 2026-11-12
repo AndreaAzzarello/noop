@@ -358,6 +358,7 @@ final class SmartWakeAlarmScheduler {
 @available(iOS 26.0, *)
 public struct SmartWakeRearmIntent: LiveActivityIntent {
     public static var title: LocalizedStringResource = "Restore Smart Wake fallback"
+    public static var isDiscoverable: Bool = false
 
     @Parameter(title: "Weekday")
     public var weekday: Int
