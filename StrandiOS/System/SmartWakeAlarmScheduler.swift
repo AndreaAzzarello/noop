@@ -25,6 +25,7 @@ final class SmartWakeAlarmScheduler {
     private let earlyAlarmIDKey = "smartWake.alarmKit.earlyAlarmID"
     private let earlyAlarmWeekdayKey = "smartWake.alarmKit.earlyAlarmWeekday"
     private var updatesTask: Task<Void, Never>?
+    private var handoffInProgress = false
 
     private static let fallbackIDs: [Int: UUID] = [
         1: UUID(uuidString: "A1000000-0000-4000-8000-000000000001")!,
@@ -58,7 +59,7 @@ final class SmartWakeAlarmScheduler {
     }
 
     private func reconcileEarlyAlarm(with alarms: [Alarm]) async {
-        guard defaults.bool(forKey: enabledKey) else { return }
+        guard !handoffInProgress, defaults.bool(forKey: enabledKey) else { return }
 
         if let raw = defaults.string(forKey: earlyAlarmIDKey),
            let earlyID = UUID(uuidString: raw),
@@ -160,6 +161,8 @@ final class SmartWakeAlarmScheduler {
               let fallbackID = Self.fallbackIDs[weekday]
         else { return }
 
+        handoffInProgress = true
+        defer { handoffInProgress = false }
         let earlyID = UUID()
         let earlySchedule = Alarm.Schedule.fixed(Date().addingTimeInterval(8))
         let configuration = Self.alarmConfiguration(
