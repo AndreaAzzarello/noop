@@ -1,5 +1,41 @@
 import Foundation
 
+/// User-adjustable schedule for the daily Smart Wake cycle.
+/// The 07:20 / 30-minute values are defaults only, not detector assumptions.
+struct SmartWakeSchedule: Equatable {
+    let wakeHour: Int
+    let wakeMinute: Int
+    let windowDuration: TimeInterval
+    let baselineLookback: TimeInterval
+
+    static let standard = SmartWakeSchedule(
+        wakeHour: 7,
+        wakeMinute: 20,
+        windowDuration: 30 * 60,
+        baselineLookback: 60 * 60
+    )
+
+    init(
+        wakeHour: Int,
+        wakeMinute: Int,
+        windowDuration: TimeInterval = 30 * 60,
+        baselineLookback: TimeInterval = 60 * 60
+    ) {
+        self.wakeHour = min(max(wakeHour, 0), 23)
+        self.wakeMinute = min(max(wakeMinute, 0), 59)
+        self.windowDuration = max(0, windowDuration)
+        self.baselineLookback = max(0, baselineLookback)
+    }
+
+    func maximumWakeTime(on day: Date, calendar: Calendar) -> Date? {
+        var components = calendar.dateComponents([.year, .month, .day], from: day)
+        components.hour = wakeHour
+        components.minute = wakeMinute
+        components.second = 0
+        return calendar.date(from: components)
+    }
+}
+
 /// Connects readable WHOOP HR notifications to the pure Smart Wake detector.
 ///
 /// This controller only evaluates and records decisions. It deliberately does not schedule
@@ -7,10 +43,7 @@ import Foundation
 /// samples are event-driven and cannot be assumed continuous.
 final class SmartWakeLiveController {
     private let calendar: Calendar
-    private let maximumWakeHour = 7
-    private let maximumWakeMinute = 20
-    private let windowDuration: TimeInterval = 30 * 60
-    private let baselineLookback: TimeInterval = 60 * 60
+    private let schedule: SmartWakeSchedule
     private let maximumBufferedSamples = 4_000
 
     private var activeDay: Date?
@@ -20,9 +53,14 @@ final class SmartWakeLiveController {
     private var engine: SmartWakeEngine
 
     private(set) var latestDecision: SmartWakeDecision = .waiting
+    private var engineNotStarted = true
 
-    init(calendar: Calendar = .current) {
+    init(
+        schedule: SmartWakeSchedule = .standard,
+        calendar: Calendar = .current
+    ) {
         self.calendar = calendar
+        self.schedule = schedule
         self.engine = SmartWakeEngine(
             configuration: .standard(maximumWakeTime: .distantFuture),
             baselineSamples: []
@@ -41,12 +79,12 @@ final class SmartWakeLiveController {
         lastReceivedTimestamp = timestamp
 
         guard let maximumWakeTime else { return latestDecision }
-        let windowStart = maximumWakeTime.addingTimeInterval(-windowDuration)
+        let windowStart = maximumWakeTime.addingTimeInterval(-schedule.windowDuration)
         let sample = SmartWakeHeartRateSample(bpm: bpm, timestamp: timestamp)
 
         if timestamp < windowStart {
             baselineSamples.append(sample)
-            let cutoff = timestamp.addingTimeInterval(-baselineLookback)
+            let cutoff = timestamp.addingTimeInterval(-schedule.baselineLookback)
             baselineSamples.removeAll { $0.timestamp < cutoff }
             if baselineSamples.count > maximumBufferedSamples {
                 baselineSamples.removeFirst(baselineSamples.count - maximumBufferedSamples)
@@ -55,10 +93,7 @@ final class SmartWakeLiveController {
         }
 
         if engineNotStarted {
-            engine = SmartWakeEngine(
-                configuration: .standard(maximumWakeTime: maximumWakeTime),
-                baselineSamples: baselineSamples
-            )
+            engine = makeEngine(maximumWakeTime: maximumWakeTime)
             engineNotStarted = false
         }
 
@@ -73,37 +108,35 @@ final class SmartWakeLiveController {
         prepareDay(containing: date)
         guard let maximumWakeTime else { return latestDecision }
         if engineNotStarted {
-            engine = SmartWakeEngine(
-                configuration: .standard(maximumWakeTime: maximumWakeTime),
-                baselineSamples: baselineSamples
-            )
+            engine = makeEngine(maximumWakeTime: maximumWakeTime)
             engineNotStarted = false
         }
         latestDecision = engine.evaluate(at: date)
         return latestDecision
     }
 
-    private var engineNotStarted = true
+    private func makeEngine(maximumWakeTime: Date) -> SmartWakeEngine {
+        SmartWakeEngine(
+            configuration: .standard(
+                maximumWakeTime: maximumWakeTime,
+                windowDuration: schedule.windowDuration
+            ),
+            baselineSamples: baselineSamples
+        )
+    }
 
     private func prepareDay(containing date: Date) {
         let dayStart = calendar.startOfDay(for: date)
         guard activeDay != dayStart else { return }
 
         activeDay = dayStart
-        var components = calendar.dateComponents([.year, .month, .day], from: dayStart)
-        components.hour = maximumWakeHour
-        components.minute = maximumWakeMinute
-        components.second = 0
-        maximumWakeTime = calendar.date(from: components)
+        maximumWakeTime = schedule.maximumWakeTime(on: dayStart, calendar: calendar)
         baselineSamples.removeAll(keepingCapacity: true)
         lastReceivedTimestamp = nil
         engineNotStarted = true
         latestDecision = .waiting
         if let maximumWakeTime {
-            engine = SmartWakeEngine(
-                configuration: .standard(maximumWakeTime: maximumWakeTime),
-                baselineSamples: []
-            )
+            engine = makeEngine(maximumWakeTime: maximumWakeTime)
         }
     }
 }
