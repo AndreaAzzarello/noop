@@ -209,10 +209,9 @@ final class SmartWakeLiveController {
         guard let data = defaults.data(forKey: key),
               let samples = try? JSONDecoder().decode([SmartWakeHeartRateSample].self, from: data)
         else { return [] }
-        let cutoff = Date().addingTimeInterval(-6 * 60 * 60)
-        return samples
-            .filter { $0.timestamp >= cutoff && (30...220).contains($0.bpm) }
+        return Array(samples
+            .filter { (30...220).contains($0.bpm) }
             .sorted { $0.timestamp < $1.timestamp }
-            .suffix(4_000)
+            .suffix(4_000))
     }
 }
