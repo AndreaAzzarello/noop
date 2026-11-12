@@ -180,6 +180,7 @@ targets:
       - StrandiOSShared/WidgetTelemetry.swift
       # Pure Smart Wake detector; compiled into tests without adding it to the macOS app.
       - StrandiOSShared/SmartWakeEngine.swift
+      - StrandiOSShared/SmartWakeLiveController.swift
     # Same wrapper as the app target, so the OURA_CLOUD_IMPORT-gated Oura tests compile exactly
     # when the app's Oura lane does (flag + creds both come from the untracked OuraSecrets.xcconfig).
     configFiles:
