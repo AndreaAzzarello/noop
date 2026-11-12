@@ -80,7 +80,6 @@ final class SmartWakeAlarmScheduler {
                 // The process died before the early alert was actually scheduled; preserve today's fallback.
                 defaults.removeObject(forKey: earlyAlarmIDKey)
                 defaults.removeObject(forKey: earlyAlarmWeekdayKey)
-        defaults.removeObject(forKey: earlyAlarmScheduledKey)
                 defaults.removeObject(forKey: earlyAlarmScheduledKey)
             } else {
                 await Self.rearmFallback(for: weekday, skipCurrentOccurrence: false)
@@ -284,6 +283,7 @@ final class SmartWakeAlarmScheduler {
         }
         defaults.removeObject(forKey: earlyAlarmIDKey)
         defaults.removeObject(forKey: earlyAlarmWeekdayKey)
+        defaults.removeObject(forKey: earlyAlarmScheduledKey)
     }
 
     private func loadSchedule() -> SmartWakeSchedule? {
