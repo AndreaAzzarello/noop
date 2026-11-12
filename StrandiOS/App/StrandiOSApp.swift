@@ -88,6 +88,11 @@ struct StrandiOSApp: App {
         NotificationPresenter.shared.onCoachBriefTapped = { [weak router] in router?.openCoach() }
         let model = AppModel()
         _model = StateObject(wrappedValue: model)
+        #if canImport(AlarmKit)
+        if #available(iOS 26.0, *) {
+            Task { @MainActor in SmartWakeAlarmScheduler.shared.startObserving() }
+        }
+        #endif
         let initialSmartWakeSchedule = SmartWakeSchedule(
             wakeMinutes: model.behavior.smartAlarmMinutes,
             weekdays: model.behavior.smartAlarmWeekdays,
