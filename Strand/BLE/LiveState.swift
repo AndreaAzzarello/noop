@@ -551,6 +551,8 @@ public final class LiveState: ObservableObject {
     /// Fired (live only) when the strap reports it executed its firmware alarm
     /// (STRAP_DRIVEN_ALARM_EXECUTED). Wired by AppModel to re-arm the next day's alarm.
     public var onSmartAlarmFired: (() -> Void)?
+    /// Non-published callback for each readable standard WHOOP HR sample; does not trigger SwiftUI updates.
+    public var onSmartWakeHeartRateSample: ((Int, Date) -> Void)?
 
     /// True when the stuck-strap watchdog finds the strap has newer records than us but our frontier
     /// won't advance (likely needs a manual reboot; ~never after high-freq-sync removal). Banner-only.
