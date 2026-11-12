@@ -40,6 +40,10 @@ final class SmartWakeAlarmScheduler {
         manager.authorizationState == .authorized
     }
 
+    var isConfigured: Bool {
+        defaults.bool(forKey: enabledKey) && isAuthorized
+    }
+
     /// Called only after the user explicitly enables Smart Wake.
     func enable(schedule: SmartWakeSchedule) async -> Bool {
         guard #available(iOS 26.0, *) else { return false }
