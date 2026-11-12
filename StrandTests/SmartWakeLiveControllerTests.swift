@@ -11,7 +11,7 @@ final class SmartWakeLiveControllerTests: XCTestCase {
         calendar.date(from: DateComponents(year: 2026, month: 11, day: 12, hour: hour, minute: minute))!
     }
 
-    func testSustainedRiseTriggersOnlyAfterWindowAndBaseline() {
+    func testDefaultScheduleTriggersWithConfiguredWindow() {
         let controller = SmartWakeLiveController(calendar: calendar)
 
         for minute in 30..<50 {
@@ -22,6 +22,29 @@ final class SmartWakeLiveControllerTests: XCTestCase {
         XCTAssertEqual(controller.ingest(bpm: 67, at: date(6, 51)), .waiting)
         XCTAssertEqual(
             controller.ingest(bpm: 67, at: date(6, 52)),
+            .wake(.sustainedHeartRateRise)
+        )
+    }
+
+    func testChangingMaximumWakeTimeAndWindowKeepsSameDetectionPrinciple() {
+        let schedule = SmartWakeSchedule(
+            wakeHour: 9,
+            wakeMinute: 30,
+            windowDuration: 45 * 60
+        )
+        let controller = SmartWakeLiveController(schedule: schedule, calendar: calendar)
+
+        for minute in 45..<60 {
+            XCTAssertEqual(controller.ingest(bpm: 60, at: date(8, minute)), .waiting)
+        }
+        for minute in 0..<30 {
+            XCTAssertEqual(controller.ingest(bpm: 60, at: date(9, minute)), .waiting)
+        }
+
+        XCTAssertEqual(controller.ingest(bpm: 66, at: date(8, 45)), .waiting)
+        XCTAssertEqual(controller.ingest(bpm: 67, at: date(9, 1)), .waiting)
+        XCTAssertEqual(
+            controller.ingest(bpm: 67, at: date(9, 2)),
             .wake(.sustainedHeartRateRise)
         )
     }
