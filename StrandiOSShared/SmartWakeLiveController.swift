@@ -53,6 +53,18 @@ struct SmartWakeSchedule: Equatable, Codable {
         overrides[weekday] ?? wakeMinutes
     }
 
+    func nextMaximumWakeTime(after date: Date, calendar: Calendar) -> Date? {
+        let start = calendar.startOfDay(for: date)
+        for offset in 0...7 {
+            guard let day = calendar.date(byAdding: .day, value: offset, to: start),
+                  let candidate = maximumWakeTime(on: day, calendar: calendar),
+                  candidate > date
+            else { continue }
+            return candidate
+        }
+        return nil
+    }
+
     func maximumWakeTime(on day: Date, calendar: Calendar) -> Date? {
         let weekday = calendar.component(.weekday, from: day)
         guard isEnabled(onWeekday: weekday) else { return nil }
@@ -177,7 +189,7 @@ final class SmartWakeLiveController {
         guard activeDay != dayStart else { return }
 
         activeDay = dayStart
-        maximumWakeTime = schedule.maximumWakeTime(on: dayStart, calendar: calendar)
+        maximumWakeTime = schedule.nextMaximumWakeTime(after: date, calendar: calendar)
         engineNotStarted = true
         latestDecision = .waiting
 
