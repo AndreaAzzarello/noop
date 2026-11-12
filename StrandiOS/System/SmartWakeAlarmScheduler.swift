@@ -52,8 +52,7 @@ final class SmartWakeAlarmScheduler {
         guard updatesTask == nil else { return }
         updatesTask = Task { [weak self] in
             for await alarms in AlarmManager.shared.alarmUpdates {
-                guard let self else { return }
-                await self.reconcileEarlyAlarm(with: alarms)
+                await self?.reconcileEarlyAlarm(with: alarms)
             }
         }
     }
