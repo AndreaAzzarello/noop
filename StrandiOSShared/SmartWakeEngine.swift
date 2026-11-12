@@ -24,10 +24,13 @@ struct SmartWakeConfiguration {
         maximumWakeTime.addingTimeInterval(-windowDuration)
     }
 
-    static func standard(maximumWakeTime: Date) -> SmartWakeConfiguration {
+    static func standard(
+        maximumWakeTime: Date,
+        windowDuration: TimeInterval = 30 * 60
+    ) -> SmartWakeConfiguration {
         SmartWakeConfiguration(
             maximumWakeTime: maximumWakeTime,
-            windowDuration: 30 * 60,
+            windowDuration: max(0, windowDuration),
             riseThresholdBPM: 6,
             minimumBaselineSamples: 20,
             requiredElevatedSamples: 3,
