@@ -1,65 +1,60 @@
-# iOS Smart Wake — live heart-rate integration
+# iOS Smart Wake
 
 ## Status
 
-The isolated live-sample path is implemented on `feature/ios-smart-wake`. It observes readable
-WHOOP 5.0 standard Heart Rate Measurement notifications (GATT 0x2A37) and feeds the pure
-`SmartWakeEngine` through an in-memory, non-published callback. GitHub Issues are disabled in
-this repository; this document records the safety rationale instead. No new WHOOP command or
-BLE write has been introduced.
+The iOS Smart Wake path is implemented on `feature/ios-smart-wake` as an opt-in feature:
 
-This is detector integration only: it does not wake the user, schedule an alarm, send haptics,
-or replace the existing alarm.
+- It consumes only readable WHOOP 5.0 standard Heart Rate Measurement notifications (GATT 0x2A37).
+- The pure detector looks for a sustained rise above a robust baseline. It is a heuristic, not sleep-stage classification.
+- AlarmKit schedules the independent maximum-time phone alarm. It is recurring, with one system alarm per selected weekday.
+- When the detector finds a valid early trigger, NOOP schedules a one-shot AlarmKit alert and only then replaces that weekday's maximum-time fallback. Dismissing the early alert re-arms the recurring fallback through a stop intent.
+- If HR samples are missing, stale, insufficient, or interrupted by iOS suspension, the maximum-time AlarmKit alarm remains scheduled.
 
-## Configurable schedule
+AlarmKit requires iOS 26 or later and the user's explicit alarm authorization. The app declares `NSAlarmKitUsageDescription`; if authorization is denied or unavailable, Smart Wake cannot be enabled. AlarmKit alerts can break through Silent mode and Focus when authorized, as documented by Apple.
 
-`SmartWakeSchedule` holds the selected maximum wake hour/minute, the early-wake window duration,
-and the baseline lookback duration. The current 07:20 maximum and 30-minute window are defaults
-only. The detector derives the window start from the configured maximum time; changing the
-schedule does not change the detection principle. The schedule is injected into the controller,
-so a future settings UI/persisted preference can supply different values without changing the
-BLE pipeline or the engine logic.
+## Shared wake schedule
+
+Smart Wake does not maintain a second maximum-wake-time setting. It reads the existing WHOOP alarm settings:
+
+- Base wake time: `BehaviorStore.smartAlarmMinutes`.
+- Active weekdays: `BehaviorStore.smartAlarmWeekdays` (empty means every day).
+- Per-weekday overrides: `WindDownNudge.perDayWakeOverrides`.
+- Early window: independent Smart Wake preference, selectable as 15, 20, 30, 45, or 60 minutes.
+
+The WHOOP firmware alarm and phone Smart Wake have separate enable switches. Changing the shared time, weekday selection, or per-day override reconciles the AlarmKit schedule without sending an additional BLE command. The existing WHOOP alarm implementation is not replaced.
+
+AlarmKit keeps a separate weekly fallback for each weekday so an early wake can replace only the current weekday's fallback. When the user dismisses the early alert, its `LiveActivityIntent` restores that weekday's recurring maximum-time alarm. The other weekdays remain scheduled.
 
 ## Data path
 
-`BLEManager.parseStandardHR` decodes the standard HR measurement and checks
-`LiveHeartRateReadability`. Only readable WHOOP 5.0 samples are forwarded with their receive
-timestamp through `LiveState.onSmartWakeHeartRateSample`. The iOS root retains a
-`SmartWakeLiveController`, which feeds the pure `SmartWakeEngine`.
+`BLEManager.parseStandardHR` decodes the standard HR measurement and checks `LiveHeartRateReadability`. Only readable WHOOP 5.0 samples are forwarded with their receive timestamp through `LiveState.onSmartWakeHeartRateSample`. The iOS root feeds them to `SmartWakeLiveController`.
 
-The callback is not `@Published`, so it does not cause SwiftUI updates for every HR sample.
-Do not use `AppModel.bpm` as detector input: it is a smoothed display value and is only
-republished when its median changes. Do not use `LiveState.heartRate` as the sole event source:
-it is also updated only when the integer value changes.
+The callback is not `@Published`, so it does not cause SwiftUI updates for every HR sample. Do not use `AppModel.bpm` as detector input: it is a smoothed display value and is only republished when its median changes.
 
-## Detection and fail-safe behavior
+The controller retains a bounded local baseline in UserDefaults, periodically persisted, so a process relaunch does not automatically discard the entire pre-window baseline. It retains samples across midnight for schedules whose detection window crosses the day boundary. The baseline is filtered to the configured lookback before it is passed to the engine. If there are fewer than 20 valid baseline samples, early wake is disabled for that cycle.
 
-- Collect a bounded, process-local baseline before the configured detection window.
-- Construct the engine at the beginning of the configured window.
-- Require the engine's configured minimum baseline (20 samples); if unavailable, early wake is
-  disabled for that cycle.
-- Ignore invalid, duplicate, and out-of-order samples. The engine also enforces freshness and
-  maximum sample gaps.
-- A sustained rise is a heuristic, not a sleep-stage classification.
-- The maximum wake deadline remains independent of HR detection and must be backed by a
-  separately scheduled system alarm before real-world use.
+## Detection and safety
 
-## Explicit non-goals and limitations
+- Baseline: median of valid pre-window samples.
+- Early trigger: at least 3 consecutive elevated samples, at least 6 BPM above baseline, spanning at least 120 seconds.
+- Sample validity: 30–220 BPM; duplicates and out-of-order samples are ignored.
+- Maximum sample age: 300 seconds; maximum gap between elevated samples: 180 seconds.
+- Missing/poor data never causes an early wake.
+- The maximum-time alarm is scheduled independently by AlarmKit, not by an in-process timer.
+- An early AlarmKit alarm is scheduled before the current weekday's fallback is cancelled. If scheduling the early alert fails, the maximum-time fallback remains.
+- The WHOOP BLE path remains read-only for this feature: no new command, GATT write, haptic/vibration command, firmware alarm change, or second CoreBluetooth manager.
+- The existing WHOOP firmware alarm retains its own switch and code path.
 
-- No new BLE command, GATT write, haptic/vibration command, firmware alarm change, or second
-  CoreBluetooth manager.
-- No changes to `SmartAlarmView` or the existing alarm behavior.
-- No background-execution guarantee is claimed. iOS may suspend or terminate the app; HR
-  samples are event-driven and may be unavailable while the process is suspended.
-- The maximum-time detector decision is not yet connected to a real wake mechanism. A separate,
-  independently scheduled system fallback and real-device verification are required before
-  this can be used as an actual alarm.
-- No cloud, telemetry, or persistent storage of the temporary HR buffer.
-- No edits to `main`, GitHub Actions, signing, TestFlight, or release configuration.
+## iOS lifecycle and limitations
+
+CoreBluetooth state restoration and the `bluetooth-central` background mode can deliver BLE events while the app is backgrounded, but iOS does not promise continuous execution. The detector can only evaluate samples delivered to the process. The system-owned AlarmKit maximum-time fallback is what protects against suspension, disconnection, force quit, or missing HR data.
+
+AlarmKit is available only on iOS 26+. On earlier iOS versions, the Smart Wake control is not compiled when the SDK lacks AlarmKit, and enabling it is rejected when the runtime OS is earlier than iOS 26.
+
+The AlarmKit fallback and early-alert lifecycle still require physical-device verification, including authorization denied/granted, phone locked, Focus/Silent mode, background suspension, reconnect, early dismissal, and weekly recurrence. AlarmKit's actual behavior must be checked on the target iOS release.
 
 ## Verification
 
-Unit tests cover the pure engine and live controller, including sustained rise, insufficient
-baseline, out-of-order samples, late launch, and changing the maximum wake time/window. They
-have been added but have **not yet been executed**. The BLE path still requires testing with a
-real WHOOP 5.0 and iPhone; compile success alone is insufficient.
+Unit tests cover the pure engine and live controller, including sustained rise, insufficient baseline, out-of-order samples, late launch, configurable windows, weekday overrides, midnight-crossing windows, and restoration of the local baseline after controller recreation.
+
+**The tests have been added but have not yet been executed.** This environment has no Xcode/iOS SDK or connected iPhone/WHOOP hardware, so no iOS build or hardware test is claimed. No GitHub Actions, TestFlight, signing, release, merge, or changes to `main` have been performed.
