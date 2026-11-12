@@ -5,7 +5,7 @@ import Foundation
 /// This is deliberately not a sleep-stage classifier. It looks for a sustained rise
 /// above a robust pre-window baseline and never treats missing/poor data as a reason
 /// to wake early. The separately scheduled maximum-time alarm remains the fallback.
-struct SmartWakeHeartRateSample: Equatable {
+struct SmartWakeHeartRateSample: Equatable, Codable {
     let bpm: Int
     let timestamp: Date
 }
