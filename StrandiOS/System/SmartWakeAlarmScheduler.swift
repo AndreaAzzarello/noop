@@ -62,10 +62,19 @@ final class SmartWakeAlarmScheduler {
 
         if let raw = defaults.string(forKey: earlyAlarmIDKey),
            let earlyID = UUID(uuidString: raw),
-           let weekday = defaults.object(forKey: earlyAlarmWeekdayKey) as? Int {
-            // While the early alert exists, its same-day fallback is intentionally absent.
-            // Once the one-shot disappears, restore the weekly maximum-time fallback.
-            if !alarms.contains(where: { $0.id == earlyID }) {
+           let weekday = defaults.object(forKey: earlyAlarmWeekdayKey) as? Int,
+           let fallbackID = Self.fallbackIDs[weekday] {
+            let earlyIsPresent = alarms.contains(where: { $0.id == earlyID })
+            let fallbackIsPresent = alarms.contains(where: { $0.id == fallbackID })
+            if earlyIsPresent {
+                // Recover a crash between scheduling the early alert and cancelling its fallback.
+                if fallbackIsPresent { try? await manager.cancel(id: fallbackID) }
+            } else if fallbackIsPresent {
+                // The early alert was never scheduled or has already been dismissed; the fallback
+                // exists, so clear the handoff marker without creating a duplicate alarm.
+                defaults.removeObject(forKey: earlyAlarmIDKey)
+                defaults.removeObject(forKey: earlyAlarmWeekdayKey)
+            } else {
                 await Self.rearmFallback(for: weekday)
             }
             return
@@ -158,18 +167,24 @@ final class SmartWakeAlarmScheduler {
             stopIntent: SmartWakeRearmIntent(weekday: weekday)
         )
 
+        // Persist the handoff before the first async system call. If iOS kills the process between
+        // scheduling and cancellation, the alarmUpdates observer can finish the reconciliation.
+        defaults.set(earlyID.uuidString, forKey: earlyAlarmIDKey)
+        defaults.set(weekday, forKey: earlyAlarmWeekdayKey)
         do {
             // Schedule first. If this fails, the maximum-time fallback is still armed.
             try await manager.schedule(id: earlyID, configuration: configuration)
             do {
                 try await manager.cancel(id: fallbackID)
-                defaults.set(earlyID.uuidString, forKey: earlyAlarmIDKey)
-                defaults.set(weekday, forKey: earlyAlarmWeekdayKey)
             } catch {
                 // Never leave two alarms armed for the same morning.
                 try? await manager.cancel(id: earlyID)
+                defaults.removeObject(forKey: earlyAlarmIDKey)
+                defaults.removeObject(forKey: earlyAlarmWeekdayKey)
             }
         } catch {
+            defaults.removeObject(forKey: earlyAlarmIDKey)
+            defaults.removeObject(forKey: earlyAlarmWeekdayKey)
             // Keep the maximum-time fallback; early wake is best-effort.
         }
     }
