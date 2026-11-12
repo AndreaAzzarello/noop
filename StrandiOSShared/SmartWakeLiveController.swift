@@ -175,12 +175,17 @@ final class SmartWakeLiveController {
     }
 
     private func makeEngine(maximumWakeTime: Date) -> SmartWakeEngine {
-        SmartWakeEngine(
+        let windowStart = maximumWakeTime.addingTimeInterval(-schedule.windowDuration)
+        let baselineStart = windowStart.addingTimeInterval(-schedule.baselineLookback)
+        let relevantBaseline = baselineSamples.filter {
+            $0.timestamp >= baselineStart && $0.timestamp < windowStart
+        }
+        return SmartWakeEngine(
             configuration: .standard(
                 maximumWakeTime: maximumWakeTime,
                 windowDuration: schedule.windowDuration
             ),
-            baselineSamples: baselineSamples
+            baselineSamples: relevantBaseline
         )
     }
 
