@@ -1736,10 +1736,14 @@ final class AppModel: ObservableObject {
         )
         if #available(iOS 26.0, *) {
             Task {
+                let wasEnabled = behavior.smartWakeEnabled
                 await SmartWakeAlarmScheduler.shared.sync(
-                    enabled: behavior.smartWakeEnabled,
+                    enabled: wasEnabled,
                     schedule: schedule
                 )
+                if wasEnabled && !SmartWakeAlarmScheduler.shared.isConfigured {
+                    behavior.smartWakeEnabled = false
+                }
             }
         }
     }
