@@ -201,14 +201,14 @@ struct SmartAlarmView: View {
                             .foregroundStyle(StrandPalette.textPrimary)
                         Spacer()
                         Picker("Early window", selection: $behavior.smartWakeWindowMinutes) {
-                            ForEach([15, 20, 30, 45, 60], id: \\.self) { minutes in
-                                Text("\\(minutes) min").tag(minutes)
+                            ForEach([15, 20, 30, 45, 60], id: \.self) { minutes in
+                                Text("\(minutes) min").tag(minutes)
                             }
                         }
                         .labelsHidden()
                         .accessibilityLabel("Smart Wake early window")
                     }
-                    Text("Uses the same active weekdays and per-day wake times as the WHOOP alarm: \\(Self.alarmWeekdaySummary(behavior.smartAlarmWeekdays)).")
+                    Text("Uses the same active weekdays and per-day wake times as the WHOOP alarm: \(Self.alarmWeekdaySummary(behavior.smartAlarmWeekdays)).")
                         .font(StrandFont.footnote)
                         .foregroundStyle(StrandPalette.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
