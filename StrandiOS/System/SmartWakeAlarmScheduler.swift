@@ -59,13 +59,25 @@ final class SmartWakeAlarmScheduler {
     }
 
     private func reconcileEarlyAlarm(with alarms: [Alarm]) async {
-        guard defaults.bool(forKey: enabledKey),
-              let raw = defaults.string(forKey: earlyAlarmIDKey),
-              let earlyID = UUID(uuidString: raw),
-              let weekday = defaults.object(forKey: earlyAlarmWeekdayKey) as? Int
-        else { return }
-        guard !alarms.contains(where: { $0.id == earlyID }) else { return }
-        await Self.rearmFallback(for: weekday)
+        guard defaults.bool(forKey: enabledKey) else { return }
+
+        if let raw = defaults.string(forKey: earlyAlarmIDKey),
+           let earlyID = UUID(uuidString: raw),
+           let weekday = defaults.object(forKey: earlyAlarmWeekdayKey) as? Int {
+            // While the early alert exists, its same-day fallback is intentionally absent.
+            // Once the one-shot disappears, restore the weekly maximum-time fallback.
+            if !alarms.contains(where: { $0.id == earlyID }) {
+                await Self.rearmFallback(for: weekday)
+            }
+            return
+        }
+
+        // Recover any weekday alarm removed by the system or a previous interrupted scheduling pass.
+        guard let schedule = loadSchedule() else { return }
+        let selectedDays = schedule.weekdays.isEmpty ? Set(1...7) : schedule.weekdays
+        for weekday in selectedDays where !alarms.contains(where: { $0.id == Self.fallbackIDs[weekday] }) {
+            await Self.rearmFallback(for: weekday)
+        }
     }
 
     /// Called only after the user explicitly enables Smart Wake.
