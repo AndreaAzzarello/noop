@@ -154,14 +154,14 @@ jobs:
           from pathlib import Path
           path = Path('source/project.yml')
           text = path.read_text()
-          start = text.index('\\n  NOOPiOS:\\n')
-          end = text.index('\\n  NOOPiOSWidgets:\\n', start)
+          start = text.index('\n  NOOPiOS:\n')
+          end = text.index('\n  NOOPiOSWidgets:\n', start)
           ios = text[start:end]
           if 'ITSAppUsesNonExemptEncryption:' not in ios:
-              anchor = '        CFBundleDisplayName: NOOP\\n'
+              anchor = '        CFBundleDisplayName: NOOP\n'
               if anchor not in ios:
                   raise SystemExit('iOS Info.plist structure changed; review export-compliance declaration')
-              ios = ios.replace(anchor, anchor + '        ITSAppUsesNonExemptEncryption: false\\n', 1)
+              ios = ios.replace(anchor, anchor + '        ITSAppUsesNonExemptEncryption: false\n', 1)
               text = text[:start] + ios + text[end:]
               path.write_text(text)
           PY
@@ -174,7 +174,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf 'BUNDLE_ID_PREFIX = com.andreaazzarello\\nDEVELOPMENT_TEAM = %s\\n' "$TEAMID" > Config/BundleIdSecrets.xcconfig
+          printf 'BUNDLE_ID_PREFIX = com.andreaazzarello\nDEVELOPMENT_TEAM = %s\n' "$TEAMID" > Config/BundleIdSecrets.xcconfig
           xcodegen generate
 
       - name: Install Fastlane dependencies
