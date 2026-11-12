@@ -23,6 +23,8 @@ final class SmartWakeAlarmScheduler {
     private let enabledKey = "smartWake.alarmKit.enabled"
     private let scheduleKey = "smartWake.alarmKit.schedule"
     private let earlyAlarmIDKey = "smartWake.alarmKit.earlyAlarmID"
+    private let earlyAlarmWeekdayKey = "smartWake.alarmKit.earlyAlarmWeekday"
+    private var updatesTask: Task<Void, Never>?
 
     private static let fallbackIDs: [Int: UUID] = [
         1: UUID(uuidString: "A1000000-0000-4000-8000-000000000001")!,
@@ -42,6 +44,28 @@ final class SmartWakeAlarmScheduler {
 
     var isConfigured: Bool {
         defaults.bool(forKey: enabledKey) && isAuthorized
+    }
+
+    /// Observe the system's alarm list so a dismissed one-shot early alarm restores its
+    /// recurring fallback even if the stop intent could not run while the app was suspended.
+    func startObserving() {
+        guard updatesTask == nil else { return }
+        updatesTask = Task { [weak self] in
+            for await alarms in AlarmManager.shared.alarmUpdates {
+                guard let self else { return }
+                await self.reconcileEarlyAlarm(with: alarms)
+            }
+        }
+    }
+
+    private func reconcileEarlyAlarm(with alarms: [Alarm]) async {
+        guard defaults.bool(forKey: enabledKey),
+              let raw = defaults.string(forKey: earlyAlarmIDKey),
+              let earlyID = UUID(uuidString: raw),
+              let weekday = defaults.object(forKey: earlyAlarmWeekdayKey) as? Int
+        else { return }
+        guard !alarms.contains(where: { $0.id == earlyID }) else { return }
+        await Self.rearmFallback(for: weekday)
     }
 
     /// Called only after the user explicitly enables Smart Wake.
@@ -129,6 +153,7 @@ final class SmartWakeAlarmScheduler {
             do {
                 try await manager.cancel(id: fallbackID)
                 defaults.set(earlyID.uuidString, forKey: earlyAlarmIDKey)
+                defaults.set(weekday, forKey: earlyAlarmWeekdayKey)
             } catch {
                 // Never leave two alarms armed for the same morning.
                 try? await manager.cancel(id: earlyID)
@@ -161,6 +186,7 @@ final class SmartWakeAlarmScheduler {
         do {
             try await AlarmManager.shared.schedule(id: id, configuration: configuration)
             defaults.removeObject(forKey: "smartWake.alarmKit.earlyAlarmID")
+            defaults.removeObject(forKey: "smartWake.alarmKit.earlyAlarmWeekday")
         } catch {
             // The next foreground reconciliation can restore the fallback.
         }
@@ -201,6 +227,7 @@ final class SmartWakeAlarmScheduler {
             try? await manager.cancel(id: id)
         }
         defaults.removeObject(forKey: earlyAlarmIDKey)
+        defaults.removeObject(forKey: earlyAlarmWeekdayKey)
     }
 
     private func loadSchedule() -> SmartWakeSchedule? {
