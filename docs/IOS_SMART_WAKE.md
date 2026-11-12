@@ -7,7 +7,7 @@ The iOS Smart Wake path is implemented on `feature/ios-smart-wake` as an opt-in 
 - It consumes only readable WHOOP 5.0 standard Heart Rate Measurement notifications (GATT 0x2A37).
 - The pure detector looks for a sustained rise above a robust baseline. It is a heuristic, not sleep-stage classification.
 - AlarmKit schedules the independent maximum-time phone alarm. It is recurring, with one system alarm per selected weekday.
-- When the detector finds a valid early trigger, NOOP schedules a one-shot AlarmKit alert and only then replaces that weekday's maximum-time fallback. Dismissing the early alert re-arms the recurring fallback through a stop intent.
+- When the detector finds a valid early trigger, NOOP schedules a one-shot AlarmKit alert and only then replaces that weekday's maximum-time fallback. Dismissing the early alert schedules the next week's occurrence; the normal weekly recurrence resumes after that alarm is dismissed.
 - If HR samples are missing, stale, insufficient, or interrupted by iOS suspension, the maximum-time AlarmKit alarm remains scheduled.
 
 AlarmKit requires iOS 26 or later and the user's explicit alarm authorization. The app declares `NSAlarmKitUsageDescription`; if authorization is denied or unavailable, Smart Wake cannot be enabled. AlarmKit alerts can break through Silent mode and Focus when authorized, as documented by Apple.
