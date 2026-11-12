@@ -168,10 +168,10 @@ struct SmartAlarmView: View {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("SMART WAKE").strandOverline()
-                    Text("Wake during a lighter-sleep window")
+                    Text("Earlier wake from heart-rate trends")
                         .font(StrandFont.title2)
                         .foregroundStyle(StrandPalette.textPrimary)
-                    Text("NOOP watches readable WHOOP heart-rate samples and can move the phone alarm earlier when it detects a sustained rise. If data is missing, the maximum-time alarm remains armed.")
+                    Text("NOOP uses a sustained rise in WHOOP heart rate as a rough wake-readiness signal; it does not identify sleep stages. If samples are missing or insufficient, the maximum-time AlarmKit alarm remains scheduled.")
                         .font(StrandFont.footnote)
                         .foregroundStyle(StrandPalette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
