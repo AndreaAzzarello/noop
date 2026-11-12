@@ -102,6 +102,34 @@ final class SmartWakeEngineTests: XCTestCase {
         XCTAssertEqual(engine.ingest(.init(bpm: 68, timestamp: fresh), at: fresh), .waiting)
     }
 
+    func testRejectsOutOfOrderSampleAfterNonElevatedSample() {
+        var (engine, start, _) = makeEngine()
+        let firstStable = start.addingTimeInterval(60)
+        XCTAssertEqual(
+            engine.ingest(.init(bpm: 61, timestamp: firstStable), at: firstStable),
+            .waiting
+        )
+
+        // This timestamp is older than the last valid sample, but there is no
+        // elevated sample yet. It must not seed a false sustained-rise sequence.
+        let outOfOrder = start.addingTimeInterval(30)
+        XCTAssertEqual(
+            engine.ingest(.init(bpm: 68, timestamp: outOfOrder), at: firstStable),
+            .waiting
+        )
+
+        let secondElevated = start.addingTimeInterval(90)
+        XCTAssertEqual(
+            engine.ingest(.init(bpm: 68, timestamp: secondElevated), at: secondElevated),
+            .waiting
+        )
+        let thirdElevated = start.addingTimeInterval(150)
+        XCTAssertEqual(
+            engine.ingest(.init(bpm: 68, timestamp: thirdElevated), at: thirdElevated),
+            .waiting
+        )
+    }
+
     func testSamplesOutsideWakeWindowCannotTriggerEarlyWake() {
         var (engine, start, _) = makeEngine()
         let beforeWindow = start.addingTimeInterval(-1)
