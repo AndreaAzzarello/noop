@@ -88,9 +88,30 @@ struct StrandiOSApp: App {
         NotificationPresenter.shared.onCoachBriefTapped = { [weak router] in router?.openCoach() }
         let model = AppModel()
         _model = StateObject(wrappedValue: model)
-        let smartWakeController = SmartWakeLiveController()
-        model.live.onSmartWakeHeartRateSample = { [weak smartWakeController] bpm, timestamp in
-            smartWakeController?.ingest(bpm: bpm, at: timestamp)
+        let initialSmartWakeSchedule = SmartWakeSchedule(
+            wakeMinutes: model.behavior.smartAlarmMinutes,
+            weekdays: model.behavior.smartAlarmWeekdays,
+            overrides: WindDownNudge.perDayWakeOverrides,
+            windowDuration: TimeInterval(model.behavior.smartWakeWindowMinutes * 60)
+        )
+        let smartWakeController = SmartWakeLiveController(schedule: initialSmartWakeSchedule)
+        model.live.onSmartWakeHeartRateSample = { [weak smartWakeController, weak model] bpm, timestamp in
+            guard let model, model.behavior.smartWakeEnabled else { return }
+            let schedule = SmartWakeSchedule(
+                wakeMinutes: model.behavior.smartAlarmMinutes,
+                weekdays: model.behavior.smartAlarmWeekdays,
+                overrides: WindDownNudge.perDayWakeOverrides,
+                windowDuration: TimeInterval(model.behavior.smartWakeWindowMinutes * 60)
+            )
+            smartWakeController?.updateSchedule(schedule)
+            let decision = smartWakeController?.ingest(bpm: bpm, at: timestamp) ?? .waiting
+            #if canImport(AlarmKit)
+            if case .wake(.sustainedHeartRateRise) = decision {
+                Task {
+                    await SmartWakeAlarmScheduler.shared.triggerEarlyWake(at: timestamp, schedule: schedule)
+                }
+            }
+            #endif
         }
         _smartWakeController = State(initialValue: smartWakeController)
         CoachBriefScheduler.register(generateBrief: { [weak coach = model.coach] in
