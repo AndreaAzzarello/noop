@@ -41,6 +41,10 @@ final class BehaviorStore: ObservableObject {
     /// Weekdays the alarm fires on (Calendar weekday numbers: 1 = Sun … 7 = Sat). An empty set means
     /// "every day" — the backward-compatible default for anyone upgrading from before per-day scheduling.
     @Published var smartAlarmWeekdays: Set<Int> { didSet { d.set(Array(smartAlarmWeekdays).sorted(), forKey: K.alarmWeekdays) } }
+    /// Enables phone-based Smart Wake independently of the existing WHOOP firmware alarm.
+    @Published var smartWakeEnabled: Bool { didSet { d.set(smartWakeEnabled, forKey: K.smartWakeEnabled) } }
+    /// Early-wake detection window, in minutes before the shared WHOOP maximum wake time.
+    @Published var smartWakeWindowMinutes: Int { didSet { d.set(smartWakeWindowMinutes, forKey: K.smartWakeWindowMinutes) } }
 
     // MARK: Illness early-warning
     @Published var illnessWatch: Bool { didSet { d.set(illnessWatch, forKey: K.illness) } }
@@ -73,6 +77,8 @@ final class BehaviorStore: ObservableObject {
         static let alarmOn = "behavior.smartAlarmEnabled"
         static let alarmTime = "behavior.smartAlarmMinutes"
         static let alarmWeekdays = "behavior.smartAlarmWeekdays"
+        static let smartWakeEnabled = "behavior.smartWakeEnabled"
+        static let smartWakeWindowMinutes = "behavior.smartWakeWindowMinutes"
         // "behavior.smartAlarmWindow" retired: it was stored but never read (no wake-window
         // watcher ever shipped). The defaults key is left orphaned on purpose — harmless, and
         // preserved should a real light-sleep watcher ever land.
@@ -98,6 +104,9 @@ final class BehaviorStore: ObservableObject {
         // Stored as a plain [Int]; only valid weekday numbers (1…7) are kept so a corrupted defaults
         // entry can never schedule against a bogus day. Empty (or all 7) = every day.
         smartAlarmWeekdays = Set((d.array(forKey: K.alarmWeekdays) as? [Int] ?? []).filter { (1...7).contains($0) })
+        smartWakeEnabled = d.object(forKey: K.smartWakeEnabled) as? Bool ?? false
+        let storedWindow = d.object(forKey: K.smartWakeWindowMinutes) as? Int ?? 30
+        smartWakeWindowMinutes = [15, 20, 30, 45, 60].contains(storedWindow) ? storedWindow : 30
         illnessWatch = d.object(forKey: K.illness) as? Bool ?? false
         batteryAlerts = d.object(forKey: K.batteryAlerts) as? Bool ?? true
         batteryPredictiveAlerts = d.object(forKey: K.batteryPredictiveAlerts) as? Bool ?? true
