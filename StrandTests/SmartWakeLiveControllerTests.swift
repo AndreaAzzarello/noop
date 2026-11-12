@@ -34,17 +34,14 @@ final class SmartWakeLiveControllerTests: XCTestCase {
         )
         let controller = SmartWakeLiveController(schedule: schedule, calendar: calendar)
 
-        for minute in 45..<60 {
+        for minute in 0..<45 {
             XCTAssertEqual(controller.ingest(bpm: 60, at: date(8, minute)), .waiting)
-        }
-        for minute in 0..<30 {
-            XCTAssertEqual(controller.ingest(bpm: 60, at: date(9, minute)), .waiting)
         }
 
         XCTAssertEqual(controller.ingest(bpm: 66, at: date(8, 45)), .waiting)
-        XCTAssertEqual(controller.ingest(bpm: 67, at: date(9, 1)), .waiting)
+        XCTAssertEqual(controller.ingest(bpm: 67, at: date(8, 46)), .waiting)
         XCTAssertEqual(
-            controller.ingest(bpm: 67, at: date(9, 2)),
+            controller.ingest(bpm: 67, at: date(8, 47)),
             .wake(.sustainedHeartRateRise)
         )
     }
