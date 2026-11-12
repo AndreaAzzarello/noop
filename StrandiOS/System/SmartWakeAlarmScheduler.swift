@@ -224,8 +224,11 @@ final class SmartWakeAlarmScheduler {
             if skipCurrentOccurrence {
                 let calendar = Calendar.current
                 let today = calendar.startOfDay(for: Date())
-                guard let nextWeek = calendar.date(byAdding: .day, value: 7, to: today),
-                      let nextOccurrence = calendar.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0, of: nextWeek)
+                let todayWeekday = calendar.component(.weekday, from: today)
+                let daysUntilWeekday = (weekday - todayWeekday + 7) % 7
+                let nextOccurrenceOffset = daysUntilWeekday == 0 ? 7 : daysUntilWeekday
+                guard let nextWeekday = calendar.date(byAdding: .day, value: nextOccurrenceOffset, to: today),
+                      let nextOccurrence = calendar.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0, of: nextWeekday)
                 else { return }
                 configuration = alarmConfiguration(
                     schedule: .fixed(nextOccurrence),
