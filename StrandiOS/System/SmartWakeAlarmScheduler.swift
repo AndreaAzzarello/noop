@@ -36,6 +36,10 @@ final class SmartWakeAlarmScheduler {
 
     private init() {}
 
+    var isAuthorized: Bool {
+        manager.authorizationState == .authorized
+    }
+
     /// Called only after the user explicitly enables Smart Wake.
     func enable(schedule: SmartWakeSchedule) async -> Bool {
         guard #available(iOS 26.0, *) else { return false }
@@ -46,13 +50,18 @@ final class SmartWakeAlarmScheduler {
             } else {
                 authorization = manager.authorizationState
             }
-            guard authorization == .authorized else { return false }
+            guard authorization == .authorized else {
+                defaults.set(false, forKey: enabledKey)
+                await cancelAllManagedAlarms()
+                return false
+            }
 
             defaults.set(true, forKey: enabledKey)
             try await replaceFallbacks(with: schedule)
             return true
         } catch {
             defaults.set(false, forKey: enabledKey)
+            await cancelAllManagedAlarms()
             return false
         }
     }
@@ -70,15 +79,19 @@ final class SmartWakeAlarmScheduler {
             await disable()
             return
         }
-        guard manager.authorizationState == .authorized else { return }
+        guard manager.authorizationState == .authorized else {
+            await disable()
+            return
+        }
         if defaults.bool(forKey: enabledKey), loadSchedule() == schedule { return }
 
         defaults.set(true, forKey: enabledKey)
         do {
             try await replaceFallbacks(with: schedule)
         } catch {
-            // Do not clear the user's preference. The UI can report that AlarmKit is not armed;
-            // the existing WHOOP firmware alarm remains untouched.
+            await cancelAllManagedAlarms()
+            defaults.set(false, forKey: enabledKey)
+            // The existing WHOOP firmware alarm remains untouched.
         }
     }
 
