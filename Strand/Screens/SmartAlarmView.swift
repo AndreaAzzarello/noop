@@ -247,11 +247,11 @@ struct SmartAlarmView: View {
                     behavior.smartWakeEnabled = false
                     smartWakeAuthorizationFailed = true
                 }
+            } else if #available(iOS 26.0, *) {
+                smartWakeAuthorizationFailed = !SmartWakeAlarmScheduler.shared.isConfigured
+                Task { await SmartWakeAlarmScheduler.shared.disable() }
             } else {
                 smartWakeAuthorizationFailed = false
-                if #available(iOS 26.0, *) {
-                    Task { await SmartWakeAlarmScheduler.shared.disable() }
-                }
             }
         }
         .onChangeCompat(of: behavior.smartWakeWindowMinutes) { _ in
