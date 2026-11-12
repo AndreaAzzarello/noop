@@ -56,6 +56,7 @@ struct SmartWakeEngine {
     private let configuration: SmartWakeConfiguration
     private let baselineMedianBPM: Double?
     private var elevatedSamples: [SmartWakeHeartRateSample] = []
+    private var lastSampleTimestamp: Date?
     private var trigger: SmartWakeTrigger?
 
     init(configuration: SmartWakeConfiguration, baselineSamples: [SmartWakeHeartRateSample]) {
@@ -99,6 +100,12 @@ struct SmartWakeEngine {
         else {
             return .waiting
         }
+
+        // Enforce monotonic timestamps for every valid sample, not only elevated ones.
+        if let lastSampleTimestamp, sample.timestamp <= lastSampleTimestamp {
+            return .waiting
+        }
+        lastSampleTimestamp = sample.timestamp
 
         if let previous = elevatedSamples.last {
             guard sample.timestamp > previous.timestamp else { return .waiting }
