@@ -191,7 +191,7 @@ struct SmartAlarmView: View {
                             .font(StrandFont.body)
                             .foregroundStyle(StrandPalette.textPrimary)
                         Spacer()
-                        Text(timeLabel(behavior.smartAlarmMinutes))
+                        Text(smartWakeMaximumLabel)
                             .font(StrandFont.number(18))
                             .foregroundStyle(StrandPalette.accent)
                     }
@@ -268,6 +268,18 @@ struct SmartAlarmView: View {
                 smartWakeAuthorizationFailed = true
             }
         }
+    }
+
+    private var smartWakeMaximumLabel: String {
+        guard let next = AppModel.nextSmartAlarmDate(
+            minutes: behavior.smartAlarmMinutes,
+            weekdays: behavior.smartAlarmWeekdays,
+            overrides: WindDownNudge.perDayWakeOverrides
+        ) else { return String(localized: "No active wake days") }
+        let formatter = DateFormatter()
+        formatter.locale = AppLanguage.activeLocale
+        formatter.setLocalizedDateFormatFromTemplate("EEE jj:mm")
+        return formatter.string(from: next)
     }
 
     private var smartWakeSchedule: SmartWakeSchedule {
