@@ -1734,11 +1734,13 @@ final class AppModel: ObservableObject {
             overrides: WindDownNudge.perDayWakeOverrides,
             windowDuration: TimeInterval(behavior.smartWakeWindowMinutes * 60)
         )
-        Task {
-            await SmartWakeAlarmScheduler.shared.sync(
-                enabled: behavior.smartWakeEnabled,
-                schedule: schedule
-            )
+        if #available(iOS 26.0, *) {
+            Task {
+                await SmartWakeAlarmScheduler.shared.sync(
+                    enabled: behavior.smartWakeEnabled,
+                    schedule: schedule
+                )
+            }
         }
     }
     #endif
