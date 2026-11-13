@@ -90,7 +90,7 @@ jobs:
   validate:
     name: Validate Smart Wake and iOS build (no TestFlight upload)
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'validate'
-    runs-on: macos-26
+    runs-on: macos-26-intel
     timeout-minutes: 120
     permissions:
       contents: read
@@ -169,7 +169,7 @@ jobs:
     name: Merge upstream temporarily, build and upload
     needs: detect
     if: needs.detect.outputs.should_build == 'true' && (github.event_name != 'workflow_dispatch' || inputs.mode == 'publish')
-    runs-on: macos-26
+    runs-on: macos-26-intel
     timeout-minutes: 120
     permissions:
       contents: write # Only to record an upload that completed successfully.
