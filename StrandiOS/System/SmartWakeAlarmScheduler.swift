@@ -25,6 +25,7 @@ final class SmartWakeAlarmScheduler {
     private let earlyAlarmIDKey = "smartWake.alarmKit.earlyAlarmID"
     private let earlyAlarmWeekdayKey = "smartWake.alarmKit.earlyAlarmWeekday"
     private let earlyAlarmScheduledKey = "smartWake.alarmKit.earlyAlarmScheduled"
+    private let lastErrorKey = "smartWake.alarmKit.lastError"
     private var updatesTask: Task<Void, Never>?
     private var authorizationTask: Task<Void, Never>?
     private var handoffInProgress = false
@@ -47,6 +48,11 @@ final class SmartWakeAlarmScheduler {
 
     var isConfigured: Bool {
         defaults.bool(forKey: enabledKey) && isAuthorized
+    }
+
+    /// The last concrete AlarmKit failure, retained locally for the Smart Wake settings UI.
+    var lastErrorDescription: String? {
+        defaults.string(forKey: lastErrorKey)
     }
 
     /// Observe the system's alarm list so a dismissed one-shot early alarm restores its
@@ -127,6 +133,7 @@ final class SmartWakeAlarmScheduler {
                 authorization = manager.authorizationState
             }
             guard authorization == .authorized else {
+                defaults.set("AlarmKit authorization state: \\(String(describing: authorization)). NOOP is not authorized to schedule system alarms.", forKey: lastErrorKey)
                 defaults.set(false, forKey: enabledKey)
                 await cancelAllManagedAlarms()
                 return false
@@ -134,8 +141,10 @@ final class SmartWakeAlarmScheduler {
 
             defaults.set(true, forKey: enabledKey)
             try await replaceFallbacks(with: schedule)
+            defaults.removeObject(forKey: lastErrorKey)
             return true
         } catch {
+            defaults.set("AlarmKit scheduling failed: \\(error.localizedDescription)", forKey: lastErrorKey)
             defaults.set(false, forKey: enabledKey)
             await cancelAllManagedAlarms()
             return false
@@ -165,6 +174,7 @@ final class SmartWakeAlarmScheduler {
         do {
             try await replaceFallbacks(with: schedule)
         } catch {
+            defaults.set("AlarmKit schedule update failed: \\(error.localizedDescription)", forKey: lastErrorKey)
             await cancelAllManagedAlarms()
             defaults.set(false, forKey: enabledKey)
             // The existing WHOOP firmware alarm remains untouched.
@@ -289,7 +299,15 @@ final class SmartWakeAlarmScheduler {
                 schedule: .relative(relative),
                 stopIntent: nil
             )
-            try await manager.schedule(id: id, configuration: configuration)
+            do {
+                try await manager.schedule(id: id, configuration: configuration)
+            } catch {
+                throw SmartWakeSchedulingError.weekday(
+                    weekday: weekday,
+                    time: String(format: "%02d:%02d", minutes / 60, minutes % 60),
+                    reason: error.localizedDescription
+                )
+            }
         }
 
         if let data = try? JSONEncoder().encode(schedule) {
@@ -349,6 +367,17 @@ final class SmartWakeAlarmScheduler {
         case 6: .friday
         case 7: .saturday
         default: nil
+        }
+    }
+}
+
+private enum SmartWakeSchedulingError: LocalizedError {
+    case weekday(weekday: Int, time: String, reason: String)
+
+    var errorDescription: String? {
+        switch self {
+        case let .weekday(weekday, time, reason):
+            return "Could not schedule the maximum-time fallback for weekday \\(weekday) at \\(time): \\(reason)"
         }
     }
 }
