@@ -133,7 +133,7 @@ final class SmartWakeAlarmScheduler {
                 authorization = manager.authorizationState
             }
             guard authorization == .authorized else {
-                defaults.set("AlarmKit authorization state: \\(String(describing: authorization)). NOOP is not authorized to schedule system alarms.", forKey: lastErrorKey)
+                defaults.set("AlarmKit authorization state: \(String(describing: authorization)). NOOP is not authorized to schedule system alarms.", forKey: lastErrorKey)
                 defaults.set(false, forKey: enabledKey)
                 await cancelAllManagedAlarms()
                 return false
@@ -144,7 +144,7 @@ final class SmartWakeAlarmScheduler {
             defaults.removeObject(forKey: lastErrorKey)
             return true
         } catch {
-            defaults.set("AlarmKit scheduling failed: \\(error.localizedDescription)", forKey: lastErrorKey)
+            defaults.set("AlarmKit scheduling failed: \(error.localizedDescription)", forKey: lastErrorKey)
             defaults.set(false, forKey: enabledKey)
             await cancelAllManagedAlarms()
             return false
@@ -174,7 +174,7 @@ final class SmartWakeAlarmScheduler {
         do {
             try await replaceFallbacks(with: schedule)
         } catch {
-            defaults.set("AlarmKit schedule update failed: \\(error.localizedDescription)", forKey: lastErrorKey)
+            defaults.set("AlarmKit schedule update failed: \(error.localizedDescription)", forKey: lastErrorKey)
             await cancelAllManagedAlarms()
             defaults.set(false, forKey: enabledKey)
             // The existing WHOOP firmware alarm remains untouched.
@@ -377,7 +377,7 @@ private enum SmartWakeSchedulingError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case let .weekday(weekday, time, reason):
-            return "Could not schedule the maximum-time fallback for weekday \\(weekday) at \\(time): \\(reason)"
+            return "Could not schedule the maximum-time fallback for weekday \(weekday) at \(time): \(reason)"
         }
     }
 }
