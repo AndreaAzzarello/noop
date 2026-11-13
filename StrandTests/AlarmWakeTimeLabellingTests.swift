@@ -108,17 +108,32 @@ final class AlarmWakeTimeLabellingTests: XCTestCase {
         let src = try Self.alarmViewSource()
         XCTAssertTrue(src.contains("private var strapAlarmWillArm: Bool {"),
                       "the arm condition must be named once, not spelled out at each call site")
-        // Every readout resolves through one funnel, and the funnel carries the gate. Counting gated call
-        // sites was the weaker test and it passed while `nextStrapAlarmLabel` went ungated: it resolved
-        // the alarm by itself, so the wind-down card still promised a buzz a 5/MG would never give.
-        XCTAssertEqual(src.components(separatedBy: "AppModel.nextSmartAlarmDate(").count - 1, 1,
-                       "exactly one resolver call: every alarm readout must come through nextStrapAlarm")
+        // There are two legitimate direct resolver calls in this file:
+        // - smartWakeMaximumLabel computes Smart Wake's configured maximum independently;
+        // - nextStrapAlarm is the single gated funnel used by alarm readouts.
+        // The test must distinguish the Smart Wake setting label from the actual strap-alarm readouts.
+        let resolver = "AppModel.nextSmartAlarmDate("
+        XCTAssertEqual(src.components(separatedBy: resolver).count - 1, 2,
+                       "only Smart Wake's maximum label and nextStrapAlarm may call the resolver directly")
+
+        guard let maximum = src.range(of: "private var smartWakeMaximumLabel: String {") else {
+            return XCTFail("smartWakeMaximumLabel not found")
+        }
+        let maximumAfter = src[maximum.upperBound...]
+        let maximumClose = try XCTUnwrap(maximumAfter.range(of: "\n    }"),
+                                         "smartWakeMaximumLabel's closing brace not found")
+        let maximumBody = String(maximumAfter[..<maximumClose.lowerBound])
+        XCTAssertEqual(maximumBody.components(separatedBy: resolver).count - 1, 1,
+                       "the independent Smart Wake maximum label must have its own resolver call")
+
         guard let funnel = src.range(of: "private func nextStrapAlarm(from now: Date = Date()) -> Date? {") else {
             return XCTFail("nextStrapAlarm funnel not found")
         }
         let after = src[funnel.upperBound...]
         let close = try XCTUnwrap(after.range(of: "\n    }"), "nextStrapAlarm's closing brace not found")
         let body = String(after[..<close.lowerBound])
+        XCTAssertEqual(body.components(separatedBy: resolver).count - 1, 1,
+                       "the strap alarm must be resolved exactly once, inside the gated funnel")
         XCTAssertTrue(body.contains("guard behavior.smartAlarmEnabled, strapAlarmWillArm else"),
                       "the funnel is where the gate belongs, so no readout can skip it")
     }
