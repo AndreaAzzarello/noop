@@ -97,7 +97,7 @@ jobs:
     needs: detect
     env:
       FORK_SHA: ${{ github.sha }}
-      UPSTREAM_SHA: ${{ needs.detect.outputs.sha }}
+      UPSTREAM_SHA: ${{ needs.detect.outputs.upstream_sha }}
     steps:
       - name: Checkout the customized NOOP feature branch
         uses: actions/checkout@v5
