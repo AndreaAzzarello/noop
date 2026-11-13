@@ -26,6 +26,7 @@ struct SmartAlarmView: View {
     /// Earliest wake time the nudge is derived from (minutes since midnight). Seeded from the store.
     @State private var wakeMinutes = WindDownNudge.wakeMinutes
     @State private var smartWakeAuthorizationFailed = false
+    @State private var smartWakeErrorMessage: String?
 
     // PR#554 (MumiZed) — per-day wake overrides. `perDayOn` reflects whether ANY override is set; the
     // `overrides` map mirrors the store so the pickers stay in sync. Additive: with none set, the nudge
@@ -217,7 +218,7 @@ struct SmartAlarmView: View {
                 }
                 if smartWakeAuthorizationFailed {
                     if #available(iOS 26.0, *) {
-                        Text("NOOP couldn't keep a system alarm scheduled. Check that Alarms permission is enabled for NOOP in iPhone Settings, then enable Smart Wake again.")
+                        Text(smartWakeErrorMessage ?? "NOOP could not schedule the system alarm. Check the Alarms permission and try again.")
                             .font(StrandFont.footnote)
                             .foregroundStyle(StrandPalette.statusWarning)
                             .fixedSize(horizontal: false, vertical: true)
@@ -236,9 +237,11 @@ struct SmartAlarmView: View {
                     Task {
                         let authorized = await SmartWakeAlarmScheduler.shared.enable(schedule: smartWakeSchedule)
                         if !authorized {
+                            smartWakeErrorMessage = SmartWakeAlarmScheduler.shared.lastErrorDescription
                             behavior.smartWakeEnabled = false
                             smartWakeAuthorizationFailed = true
                         } else {
+                            smartWakeErrorMessage = nil
                             smartWakeAuthorizationFailed = false
                             model.applySmartWakeSchedule()
                         }
@@ -261,6 +264,7 @@ struct SmartAlarmView: View {
             guard behavior.smartWakeEnabled else { return }
             if #available(iOS 26.0, *) {
                 if !SmartWakeAlarmScheduler.shared.isConfigured {
+                    smartWakeErrorMessage = SmartWakeAlarmScheduler.shared.lastErrorDescription
                     behavior.smartWakeEnabled = false
                     smartWakeAuthorizationFailed = true
                 }
