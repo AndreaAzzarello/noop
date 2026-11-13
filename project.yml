@@ -261,6 +261,7 @@ targets:
             AppIcon-Navy:
               CFBundleIconFiles: []
               UIPrerenderedIcon: false
+        NSAlarmKitUsageDescription: "NOOP schedules a maximum-time Smart Wake alarm and can move it earlier when your WHOOP heart-rate data supports an early wake."
         NSSupportsLiveActivities: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
