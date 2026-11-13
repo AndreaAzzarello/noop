@@ -133,6 +133,15 @@ jobs:
           set -euo pipefail
           printf 'BUNDLE_ID_PREFIX = com.andreaazzarello\nDEVELOPMENT_TEAM =\n' > Config/BundleIdSecrets.xcconfig
           xcodegen generate
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          info = plistlib.loads(Path("StrandiOS/Resources/Info.plist").read_bytes())
+          value = info.get("NSAlarmKitUsageDescription")
+          if not isinstance(value, str) or not value.strip():
+              raise SystemExit("Missing required NSAlarmKitUsageDescription in generated iOS Info.plist")
+          print("Verified NSAlarmKitUsageDescription in generated iOS Info.plist")
+          PY
           xcodebuild -version
 
       - name: Run Smart Wake unit tests
@@ -256,6 +265,15 @@ jobs:
           set -euo pipefail
           printf 'BUNDLE_ID_PREFIX = com.andreaazzarello\nDEVELOPMENT_TEAM = %s\n' "$TEAMID" > Config/BundleIdSecrets.xcconfig
           xcodegen generate
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          info = plistlib.loads(Path("StrandiOS/Resources/Info.plist").read_bytes())
+          value = info.get("NSAlarmKitUsageDescription")
+          if not isinstance(value, str) or not value.strip():
+              raise SystemExit("Missing required NSAlarmKitUsageDescription in generated iOS Info.plist")
+          print("Verified NSAlarmKitUsageDescription in generated iOS Info.plist")
+          PY
 
       - name: Install Fastlane dependencies
         working-directory: source
