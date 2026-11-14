@@ -1743,9 +1743,9 @@ final class AppModel: ObservableObject {
                     isEnabled: { [weak self] in self?.behavior.smartWakeEnabled ?? false },
                     schedule: schedule
                 )
-                // Only an explicit refusal (or a failed update, until it is made non-destructive)
-                // switches the toggle off; an undecided or transient authorization never does.
-                if outcome == .denied || outcome == .failed {
+                // Only an explicit refusal switches the toggle off. A failed update keeps the alarms
+                // that are already armed and is retried on the next foreground.
+                if outcome == .denied {
                     behavior.smartWakeEnabled = false
                 }
             }
