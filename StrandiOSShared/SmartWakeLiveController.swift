@@ -77,6 +77,37 @@ struct SmartWakeSchedule: Equatable, Codable {
     }
 }
 
+/// What the heart-rate stream actually delivered during one Smart Wake window: counts and times
+/// only, so a log can show whether 0x2A37 keeps arriving with the phone locked.
+struct SmartWakeWindowStats: Equatable, Codable {
+    var sampleCount = 0
+    var firstSampleAt: Date?
+    var lastSampleAt: Date?
+    var maximumGap: TimeInterval = 0
+    var foregroundCount = 0
+    var backgroundCount = 0
+
+    mutating func add(at timestamp: Date, isForeground: Bool?) {
+        if let lastSampleAt {
+            maximumGap = max(maximumGap, timestamp.timeIntervalSince(lastSampleAt))
+        }
+        if firstSampleAt == nil { firstSampleAt = timestamp }
+        lastSampleAt = timestamp
+        sampleCount += 1
+        if let isForeground {
+            if isForeground { foregroundCount += 1 } else { backgroundCount += 1 }
+        }
+    }
+
+    var summary: String {
+        func time(_ date: Date?) -> String {
+            date.map { $0.formatted(date: .omitted, time: .standard) } ?? "none"
+        }
+        return "samples=\(sampleCount) first=\(time(firstSampleAt)) last=\(time(lastSampleAt)) "
+            + "maxGap=\(Int(maximumGap.rounded()))s foreground=\(foregroundCount) background=\(backgroundCount)"
+    }
+}
+
 /// Connects readable WHOOP HR notifications to the pure Smart Wake detector.
 ///
 /// The short HR baseline is retained locally across process restarts and midnight. If it is
@@ -100,6 +131,14 @@ final class SmartWakeLiveController {
     private(set) var latestDecision: SmartWakeDecision = .waiting
     private var engineNotStarted = true
 
+    /// Stream statistics for the current window, and the key under which the latest summary is kept
+    /// for the diagnostics section.
+    private(set) var windowStats = SmartWakeWindowStats()
+    static let windowSummaryStorageKey = "smartWake.diagnostics.windowStats"
+    private var lastWindowStatsPersistedAt: Date?
+    /// Called once with the summary when a window ends.
+    var onWindowSummary: ((String) -> Void)?
+
     init(
         schedule: SmartWakeSchedule = .standard,
         calendar: Calendar = .current,
@@ -119,6 +158,7 @@ final class SmartWakeLiveController {
 
     func updateSchedule(_ schedule: SmartWakeSchedule) {
         guard self.schedule != schedule else { return }
+        finalizeWindowStats()
         self.schedule = schedule
         activeDay = nil
         maximumWakeTime = nil
@@ -127,7 +167,7 @@ final class SmartWakeLiveController {
     }
 
     @discardableResult
-    func ingest(bpm: Int, at timestamp: Date) -> SmartWakeDecision {
+    func ingest(bpm: Int, at timestamp: Date, isForeground: Bool? = nil) -> SmartWakeDecision {
         guard (30...220).contains(bpm) else { return latestDecision }
         prepareDay(containing: timestamp)
 
@@ -152,6 +192,13 @@ final class SmartWakeLiveController {
             return latestDecision
         }
 
+        if timestamp >= maximumWakeTime {
+            finalizeWindowStats()
+        } else {
+            windowStats.add(at: timestamp, isForeground: isForeground)
+            persistWindowStatsIfNeeded(at: timestamp)
+        }
+
         if engineNotStarted {
             engine = makeEngine(maximumWakeTime: maximumWakeTime)
             engineNotStarted = false
@@ -159,6 +206,24 @@ final class SmartWakeLiveController {
 
         latestDecision = engine.ingest(sample, at: timestamp)
         return latestDecision
+    }
+
+    /// Ends the current window's statistics: reports the summary once and keeps it for the diagnostics section.
+    func finalizeWindowStats() {
+        guard windowStats.sampleCount > 0 else { return }
+        let summary = windowStats.summary
+        defaults.set("ended: \(summary)", forKey: Self.windowSummaryStorageKey)
+        windowStats = SmartWakeWindowStats()
+        onWindowSummary?("HR window ended: \(summary)")
+    }
+
+    private func persistWindowStatsIfNeeded(at date: Date) {
+        if let lastWindowStatsPersistedAt,
+           date.timeIntervalSince(lastWindowStatsPersistedAt) < persistenceInterval {
+            return
+        }
+        defaults.set("in progress: \(windowStats.summary)", forKey: Self.windowSummaryStorageKey)
+        lastWindowStatsPersistedAt = date
     }
 
     /// Allows deterministic tests and foreground reconciliation to evaluate the hard deadline.
@@ -194,6 +259,7 @@ final class SmartWakeLiveController {
         let dayStart = calendar.startOfDay(for: date)
         guard activeDay != dayStart else { return }
 
+        finalizeWindowStats()
         activeDay = dayStart
         maximumWakeTime = schedule.nextMaximumWakeTime(after: date, calendar: calendar)
         engineNotStarted = true

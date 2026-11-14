@@ -163,6 +163,41 @@ final class SmartWakeAlarmScheduler {
         defaults.string(forKey: lastErrorKey)
     }
 
+    private func log(_ message: String) {
+        SmartWakeDiagnostics.record(message, defaults: defaults)
+    }
+
+    /// Current state for the Diagnostics section: authorization, what is saved and which of each
+    /// weekday's two slots actually exist in the system alarm list. No heart-rate data.
+    func diagnosticsSnapshot() -> String {
+        let present = presentAlarmIDs()
+        func flag(_ id: UUID?) -> String { id.map { present.contains($0) ? "armed" : "-" } ?? "n/a" }
+        func clock(_ minutes: Int) -> String { String(format: "%02d:%02d", minutes / 60, minutes % 60) }
+        var rows = [
+            "iOS build: \(Self.currentOSVersion)",
+            "Authorization: \(String(describing: manager.authorizationState))",
+            "Enabled: \(defaults.bool(forKey: enabledKey))",
+            "Last error: \(lastErrorDescription ?? "none")",
+            "Fallbacks reinstalled for build: \(defaults.string(forKey: lastOSVersionKey) ?? "never")"
+        ]
+        if let schedule = loadSchedule() {
+            let days = schedule.weekdays.isEmpty ? "every day" : schedule.weekdays.sorted().map(String.init).joined(separator: ",")
+            rows.append("Saved schedule: maximum \(clock(schedule.wakeMinutes)), window \(Int(schedule.windowDuration / 60)) min, days \(days), \(schedule.overrides.count) day override(s)")
+        } else {
+            rows.append("Saved schedule: none")
+        }
+        let names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        for weekday in 1...7 {
+            rows.append("\(names[weekday - 1]): live slot \(activeSlot(for: weekday) == 0 ? "A" : "B"), A \(flag(Self.fallbackID(weekday: weekday, slot: 0))), B \(flag(Self.fallbackID(weekday: weekday, slot: 1)))")
+        }
+        if let raw = defaults.string(forKey: earlyAlarmIDKey), let id = UUID(uuidString: raw) {
+            rows.append("Early alarm: \(present.contains(id) ? "armed" : "not armed"), weekday \(defaults.integer(forKey: earlyAlarmWeekdayKey)), scheduled flag \(defaults.bool(forKey: earlyAlarmScheduledKey))")
+        } else {
+            rows.append("Early alarm: none")
+        }
+        return rows.joined(separator: "\n")
+    }
+
     /// Observe the system's alarm list so a dismissed one-shot early alarm restores its
     /// recurring fallback even if the stop intent could not run while the app was suspended.
     func startObserving() {
@@ -200,6 +235,7 @@ final class SmartWakeAlarmScheduler {
     }
 
     private func disableForRevokedAuthorization() async {
+        log("authorization revoked; Smart Wake switched off and its alarms removed")
         defaults.set(Self.revokedAuthorizationMessage, forKey: lastErrorKey)
         defaults.set(false, forKey: enabledKey)
         await cancelAllManagedAlarms()
@@ -224,6 +260,7 @@ final class SmartWakeAlarmScheduler {
             } else if defaults.bool(forKey: earlyAlarmScheduledKey) {
                 // The early alert was scheduled and has now been dismissed. Skip today's maximum
                 // time, then resume the normal weekly recurrence from the following week.
+                log("reconcile: early alarm for weekday \(weekday) was dismissed; restoring its fallback")
                 await Self.performRearmFallback(for: weekday, skipCurrentOccurrence: true)
             } else if fallbackIsPresent {
                 // The process died before the early alert was actually scheduled; preserve today's fallback.
@@ -252,6 +289,7 @@ final class SmartWakeAlarmScheduler {
             }
             switch presentSlots.count {
             case 0:
+                log("reconcile: weekday \(weekday) has no fallback; re-arming")
                 await rearm(weekday: weekday, skipCurrentOccurrence: false)
             case 1:
                 // Adopt whichever slot is live, e.g. after a pass that died between scheduling the
@@ -263,6 +301,7 @@ final class SmartWakeAlarmScheduler {
                 // but it must not last).
                 let live = activeSlot(for: weekday)
                 if let idleID = Self.fallbackID(weekday: weekday, slot: 1 - live) {
+                    log("reconcile: weekday \(weekday) has both slots armed; removing the superseded one")
                     do {
                         try manager.cancel(id: idleID)
                     } catch {
@@ -280,6 +319,7 @@ final class SmartWakeAlarmScheduler {
     }
 
     private func performEnable(schedule: SmartWakeSchedule) async -> EnableOutcome {
+        log("enable requested; authorization \(String(describing: manager.authorizationState))")
         let authorization: AlarmManager.AuthorizationState
         if manager.authorizationState == .notDetermined {
             do {
@@ -303,8 +343,10 @@ final class SmartWakeAlarmScheduler {
         do {
             try await replaceFallbacks(with: schedule)
             defaults.removeObject(forKey: lastErrorKey)
+            log("enable finished: all fallbacks scheduled")
             return .enabled
         } catch {
+            log("enable finished with an error, existing alarms kept: \(error.localizedDescription)")
             // Authorized but AlarmKit refused (some of) the schedule. Keep whatever is already armed
             // and stay enabled: the next foreground sync retries, and the error stays visible.
             defaults.set("AlarmKit scheduling failed: \(error.localizedDescription)", forKey: lastErrorKey)
@@ -317,6 +359,7 @@ final class SmartWakeAlarmScheduler {
     }
 
     private func performDisable() async {
+        log("disable requested; removing all Smart Wake alarms")
         defaults.set(false, forKey: enabledKey)
         await cancelAllManagedAlarms()
     }
@@ -344,6 +387,7 @@ final class SmartWakeAlarmScheduler {
             return .denied
         default:
             // Not decided yet: leave the toggle and any existing alarms alone.
+            log("sync skipped: authorization not decided, nothing changed")
             return .unchanged
         }
         // Every foreground (and launch) reconciles against the system's actual alarm list. This is
@@ -359,11 +403,14 @@ final class SmartWakeAlarmScheduler {
         let osChanged = defaults.string(forKey: lastOSVersionKey) != Self.currentOSVersion
         if defaults.bool(forKey: enabledKey), loadSchedule() == schedule, !osChanged { return .unchanged }
 
+        log("sync: reinstalling fallbacks (\(osChanged ? "iOS build changed" : "schedule changed"))")
         defaults.set(true, forKey: enabledKey)
         do {
             try await replaceFallbacks(with: schedule)
+            log("sync finished: all fallbacks scheduled")
             return .synced
         } catch {
+            log("sync failed, existing alarms kept, will retry: \(error.localizedDescription)")
             // Keep the alarms that are already armed and stay enabled; the next sync retries
             // (the saved schedule was not advanced, so it still differs). The WHOOP firmware alarm
             // is untouched.
@@ -395,6 +442,7 @@ final class SmartWakeAlarmScheduler {
 
         handoffInProgress = true
         defer { handoffInProgress = false }
+        log("early wake accepted for weekday \(weekday); scheduling one-shot alarm")
         let earlyID = UUID()
         let earlySchedule = Alarm.Schedule.fixed(Date().addingTimeInterval(8))
         let configuration = Self.alarmConfiguration(
@@ -411,11 +459,13 @@ final class SmartWakeAlarmScheduler {
             // Schedule first. If this fails, the maximum-time fallback is still armed.
             try await manager.schedule(id: earlyID, configuration: configuration)
             defaults.set(true, forKey: earlyAlarmScheduledKey)
+            log("early alarm scheduled; removing weekday \(weekday) fallback")
             do {
                 try manager.cancel(id: fallbackID)
                 // The idle slot normally holds nothing; clear a leftover so it cannot ring as well.
                 for id in fallbackIDs(for: weekday) where id != fallbackID { try? manager.cancel(id: id) }
             } catch {
+                log("fallback removal failed (\(error.localizedDescription)); early alarm withdrawn, fallback kept")
                 // Never leave two alarms armed for the same morning.
                 try? manager.cancel(id: earlyID)
                 defaults.removeObject(forKey: earlyAlarmIDKey)
@@ -423,6 +473,7 @@ final class SmartWakeAlarmScheduler {
                 defaults.removeObject(forKey: earlyAlarmScheduledKey)
             }
         } catch {
+            log("early alarm could not be scheduled (\(error.localizedDescription)); fallback kept")
             defaults.removeObject(forKey: earlyAlarmIDKey)
             defaults.removeObject(forKey: earlyAlarmWeekdayKey)
             defaults.removeObject(forKey: earlyAlarmScheduledKey)
@@ -503,13 +554,20 @@ final class SmartWakeAlarmScheduler {
 
         // The idle slot is not the live fallback; clear a leftover so schedule(id:) cannot collide with it.
         try? manager.cancel(id: newID)
-        try await manager.schedule(id: newID, configuration: configuration)
+        do {
+            try await manager.schedule(id: newID, configuration: configuration)
+        } catch {
+            log("weekday \(weekday): scheduling slot \(1 - live == 0 ? "A" : "B") failed, slot \(live == 0 ? "A" : "B") kept: \(error.localizedDescription)")
+            throw error
+        }
         setActiveSlot(1 - live, for: weekday)
+        log("weekday \(weekday): slot \(1 - live == 0 ? "A" : "B") is now live")
 
         guard presentAlarmIDs().contains(oldID) else { return }
         do {
             try manager.cancel(id: oldID)
         } catch {
+            log("weekday \(weekday): superseded alarm could not be removed, both kept: \(error.localizedDescription)")
             defaults.set("Could not remove a superseded Smart Wake alarm (will retry): \(error.localizedDescription)", forKey: lastErrorKey)
         }
     }

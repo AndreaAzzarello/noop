@@ -229,6 +229,7 @@ struct SmartAlarmView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                if #available(iOS 26.0, *) { SmartWakeDiagnosticsView() }
             }
         }
         .onChangeCompat(of: behavior.smartWakeEnabled) { enabled in

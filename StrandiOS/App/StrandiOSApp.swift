@@ -100,6 +100,8 @@ struct StrandiOSApp: App {
             windowDuration: TimeInterval(model.behavior.smartWakeWindowMinutes * 60)
         )
         let smartWakeController = SmartWakeLiveController(schedule: initialSmartWakeSchedule)
+        smartWakeController.onWindowSummary = { SmartWakeDiagnostics.record($0) }
+        SmartWakeDiagnostics.onRecord = { [weak model] line in model?.live.append(log: AppModel.stamped(line)) }
         model.live.onSmartWakeHeartRateSample = { [weak smartWakeController, weak model] bpm, timestamp in
             guard let model, model.behavior.smartWakeEnabled else { return }
             let schedule = SmartWakeSchedule(
@@ -109,7 +111,7 @@ struct StrandiOSApp: App {
                 windowDuration: TimeInterval(model.behavior.smartWakeWindowMinutes * 60)
             )
             smartWakeController?.updateSchedule(schedule)
-            let decision = smartWakeController?.ingest(bpm: bpm, at: timestamp) ?? .waiting
+            let decision = smartWakeController?.ingest(bpm: bpm, at: timestamp, isForeground: UIApplication.shared.applicationState == .active) ?? .waiting
             #if canImport(AlarmKit)
             if case .wake(.sustainedHeartRateRise) = decision, #available(iOS 26.0, *) {
                 Task {

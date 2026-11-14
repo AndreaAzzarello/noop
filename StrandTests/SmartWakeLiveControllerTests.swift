@@ -132,6 +132,40 @@ final class SmartWakeLiveControllerTests: XCTestCase {
         XCTAssertEqual(relaunched.ingest(bpm: 67, at: date(6, 52)), .wake(.sustainedHeartRateRise))
     }
 
+    func testWindowStatsCountSamplesGapAndForegroundState() {
+        let controller = makeController(schedule: SmartWakeSchedule(wakeHour: 7, wakeMinute: 20))
+        for minute in 30..<50 { _ = controller.ingest(bpm: 60, at: date(6, minute)) }
+        XCTAssertEqual(controller.windowStats.sampleCount, 0, "baseline samples are not window samples")
+
+        _ = controller.ingest(bpm: 60, at: date(6, 50), isForeground: false)
+        _ = controller.ingest(bpm: 60, at: date(6, 51), isForeground: false)
+        _ = controller.ingest(bpm: 60, at: date(6, 55), isForeground: true)
+
+        let stats = controller.windowStats
+        XCTAssertEqual(stats.sampleCount, 3)
+        XCTAssertEqual(stats.firstSampleAt, date(6, 50))
+        XCTAssertEqual(stats.lastSampleAt, date(6, 55))
+        XCTAssertEqual(stats.maximumGap, 240)
+        XCTAssertEqual(stats.backgroundCount, 2)
+        XCTAssertEqual(stats.foregroundCount, 1)
+    }
+
+    func testWindowSummaryIsReportedOnceWhenTheWindowEnds() {
+        let controller = makeController(schedule: SmartWakeSchedule(wakeHour: 7, wakeMinute: 20))
+        var summaries: [String] = []
+        controller.onWindowSummary = { summaries.append($0) }
+
+        _ = controller.ingest(bpm: 60, at: date(6, 50))
+        _ = controller.ingest(bpm: 60, at: date(6, 51))
+        XCTAssertTrue(summaries.isEmpty)
+
+        _ = controller.ingest(bpm: 60, at: date(7, 21))
+        _ = controller.ingest(bpm: 60, at: date(7, 22))
+        XCTAssertEqual(summaries.count, 1)
+        XCTAssertTrue(summaries[0].contains("samples=2"))
+        XCTAssertEqual(controller.windowStats.sampleCount, 0)
+    }
+
     func testLateLaunchDoesNotTriggerEarlyAndUsesMaximumDeadline() {
         let controller = makeController(schedule: SmartWakeSchedule(wakeHour: 7, wakeMinute: 20))
 
