@@ -130,6 +130,56 @@ final class SmartWakeEngineTests: XCTestCase {
         )
     }
 
+    // MARK: 1 Hz streams (the real 0x2A37 cadence). Baseline is 60 bpm, so >= 66 is elevated.
+
+    /// Feeds one sample per second at `start + second` and returns the first second that woke.
+    private func firstWakeSecond(
+        _ engine: inout SmartWakeEngine,
+        start: Date,
+        seconds: [Int],
+        bpm: (Int) -> Int
+    ) -> Int? {
+        for second in seconds {
+            let time = start.addingTimeInterval(Double(second))
+            if engine.ingest(.init(bpm: bpm(second), timestamp: time), at: time) == .wake(.sustainedHeartRateRise) {
+                return second
+            }
+        }
+        return nil
+    }
+
+    func testOneHertzSustainedRiseTriggersAfterTwoMinutes() {
+        var (engine, start, _) = makeEngine()
+        let wake = firstWakeSecond(&engine, start: start, seconds: Array(0...150)) { _ in 70 }
+        XCTAssertEqual(wake, 120)
+    }
+
+    func testOneHertzRiseWithIsolatedDipsStillTriggers() {
+        var (engine, start, _) = makeEngine()
+        // One calm sample every ten seconds: ~10% of the window, under the 20% tolerance.
+        let wake = firstWakeSecond(&engine, start: start, seconds: Array(0...150)) { $0 % 10 == 5 ? 60 : 70 }
+        XCTAssertNotNil(wake)
+        XCTAssertLessThanOrEqual(wake ?? .max, 130)
+    }
+
+    func testOneHertzProlongedDipDoesNotTrigger() {
+        var (engine, start, _) = makeEngine()
+        // Elevated for 60 s, calm for 50 s, elevated again: the window never reaches 80%.
+        let wake = firstWakeSecond(&engine, start: start, seconds: Array(0...170)) {
+            (60..<110).contains($0) ? 60 : 70
+        }
+        XCTAssertNil(wake)
+    }
+
+    func testGapBeyondMaximumSampleGapRestartsTheTwoMinuteClock() {
+        var (engine, start, _) = makeEngine()
+        let first = Array(0...100)
+        let afterGap = Array(300...450)
+        let wake = firstWakeSecond(&engine, start: start, seconds: first + afterGap) { _ in 70 }
+        // The 100 s before the 200 s hole do not count: the new series needs its own 120 s.
+        XCTAssertEqual(wake, 420)
+    }
+
     func testSamplesOutsideWakeWindowCannotTriggerEarlyWake() {
         var (engine, start, _) = makeEngine()
         let beforeWindow = start.addingTimeInterval(-1)

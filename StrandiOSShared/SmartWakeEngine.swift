@@ -3,7 +3,7 @@ import Foundation
 /// Pure, deterministic heart-rate heuristic for the iOS Smart Wake prototype.
 ///
 /// This is deliberately not a sleep-stage classifier. It looks for a sustained rise
-/// above a robust pre-window baseline and never treats missing/poor data as a reason
+/// (a rolling 120 s window that is mostly above a robust pre-window baseline) and never treats missing/poor data as a reason
 /// to wake early. The separately scheduled maximum-time alarm remains the fallback.
 struct SmartWakeHeartRateSample: Equatable, Codable {
     let bpm: Int
@@ -15,8 +15,12 @@ struct SmartWakeConfiguration {
     let windowDuration: TimeInterval
     let riseThresholdBPM: Double
     let minimumBaselineSamples: Int
+    /// Minimum samples inside the rolling rise window before a decision can be made.
     let requiredElevatedSamples: Int
     let minimumRiseDuration: TimeInterval
+    /// Share of the rolling window's samples that must be elevated. Tolerates isolated noisy
+    /// samples at ~1 Hz while still rejecting a prolonged dip.
+    let minimumElevatedFraction: Double
     let maximumSampleGap: TimeInterval
     let maximumSampleAge: TimeInterval
 
@@ -35,6 +39,7 @@ struct SmartWakeConfiguration {
             minimumBaselineSamples: 20,
             requiredElevatedSamples: 3,
             minimumRiseDuration: 120,
+            minimumElevatedFraction: 0.8,
             maximumSampleGap: 180,
             maximumSampleAge: 300
         )
@@ -55,7 +60,8 @@ enum SmartWakeDecision: Equatable {
 struct SmartWakeEngine {
     private let configuration: SmartWakeConfiguration
     private let baselineMedianBPM: Double?
-    private var elevatedSamples: [SmartWakeHeartRateSample] = []
+    private var recentSamples: [(timestamp: Date, isElevated: Bool)] = []
+    private var seriesStart: Date?
     private var lastSampleTimestamp: Date?
     private var trigger: SmartWakeTrigger?
 
@@ -107,29 +113,30 @@ struct SmartWakeEngine {
         }
         lastSampleTimestamp = sample.timestamp
 
-        if let previous = elevatedSamples.last {
-            guard sample.timestamp > previous.timestamp else { return .waiting }
-            if sample.timestamp.timeIntervalSince(previous.timestamp) > configuration.maximumSampleGap {
-                elevatedSamples.removeAll(keepingCapacity: true)
-            }
+        // A hole in the data restarts the series: missing samples are never evidence of a rise.
+        if let previous = recentSamples.last,
+           sample.timestamp.timeIntervalSince(previous.timestamp) > configuration.maximumSampleGap {
+            recentSamples.removeAll(keepingCapacity: true)
+            seriesStart = nil
         }
+        if seriesStart == nil { seriesStart = sample.timestamp }
 
         let isElevated = Double(sample.bpm) >= baselineMedianBPM + configuration.riseThresholdBPM
-        guard isElevated else {
-            elevatedSamples.removeAll(keepingCapacity: true)
+        recentSamples.append((timestamp: sample.timestamp, isElevated: isElevated))
+        let cutoff = sample.timestamp.addingTimeInterval(-configuration.minimumRiseDuration)
+        recentSamples.removeAll { $0.timestamp < cutoff }
+
+        // Rolling window of the last `minimumRiseDuration` seconds: the series must have been
+        // observed continuously for that long, and most of the window must be elevated. A short
+        // dip is tolerated; a sustained one pulls the share under the threshold.
+        guard let seriesStart,
+              sample.timestamp.timeIntervalSince(seriesStart) >= configuration.minimumRiseDuration,
+              recentSamples.count >= configuration.requiredElevatedSamples
+        else {
             return .waiting
         }
-
-        elevatedSamples.append(sample)
-        if elevatedSamples.count > configuration.requiredElevatedSamples {
-            elevatedSamples.removeFirst(elevatedSamples.count - configuration.requiredElevatedSamples)
-        }
-
-        guard elevatedSamples.count == configuration.requiredElevatedSamples,
-              let first = elevatedSamples.first,
-              let last = elevatedSamples.last,
-              last.timestamp.timeIntervalSince(first.timestamp) >= configuration.minimumRiseDuration
-        else {
+        let elevatedCount = recentSamples.filter(\.isElevated).count
+        guard Double(elevatedCount) / Double(recentSamples.count) >= configuration.minimumElevatedFraction else {
             return .waiting
         }
 
