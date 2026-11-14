@@ -237,21 +237,12 @@ struct SmartAlarmView: View {
                 if #available(iOS 26.0, *) {
                     Task {
                         let outcome = await SmartWakeAlarmScheduler.shared.enable(schedule: smartWakeSchedule)
-                        switch outcome {
-                        case .notAuthorized:
-                            smartWakeErrorMessage = SmartWakeAlarmScheduler.shared.lastErrorDescription
-                            behavior.smartWakeEnabled = false
-                            smartWakeAuthorizationFailed = true
-                        case .enabledWithError:
-                            // Authorized, but AlarmKit refused part of the schedule: stay on, show why,
-                            // and let the next foreground sync retry. Nothing already armed is removed.
-                            smartWakeErrorMessage = SmartWakeAlarmScheduler.shared.lastErrorDescription
-                            smartWakeAuthorizationFailed = true
-                        case .enabled:
-                            smartWakeErrorMessage = nil
-                            smartWakeAuthorizationFailed = false
-                            model.applySmartWakeSchedule()
-                        }
+                        // Not authorized: toggle off. Authorized but AlarmKit refused part of it: stay on, show
+                        // why, and let the next foreground sync retry (nothing already armed is removed).
+                        smartWakeErrorMessage = outcome == .enabled ? nil : SmartWakeAlarmScheduler.shared.lastErrorDescription
+                        smartWakeAuthorizationFailed = outcome != .enabled
+                        if outcome == .notAuthorized { behavior.smartWakeEnabled = false }
+                        if outcome == .enabled { model.applySmartWakeSchedule() }
                     }
                 } else {
                     behavior.smartWakeEnabled = false
