@@ -416,11 +416,10 @@ struct WorkoutDetailView: View {
                     trailing: row.avgHr.map { String(localized: "avg \($0)") },
                     tint: StrandPalette.effortColor
                 ) {
-                    TrendChart(
+                    ZoneColoredHRChart(
                         points: hrPoints,
-                        gradient: StrandPalette.effortGradient,
+                        zoneSet: profile.hrZoneSet,
                         valueRange: lo...hi,
-                        showsArea: true,
                         valueFormat: { String(localized: "\(Int($0.rounded())) bpm") },
                         dateFormat: { Self.tooltipTime.string(from: $0) },
                         accessibilityLabel: String(localized: "Heart rate during \(WorkoutSource.displaySport(row.sport))"),
