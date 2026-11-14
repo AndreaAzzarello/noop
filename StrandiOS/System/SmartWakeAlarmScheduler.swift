@@ -27,6 +27,8 @@ final class SmartWakeAlarmScheduler {
     private let earlyAlarmScheduledKey = "smartWake.alarmKit.earlyAlarmScheduled"
     private let lastErrorKey = "smartWake.alarmKit.lastError"
     private let fallbackSlotsKey = "smartWake.alarmKit.fallbackSlots"
+    private let lastOSVersionKey = "smartWake.alarmKit.lastOSVersion"
+    private static var currentOSVersion: String { ProcessInfo.processInfo.operatingSystemVersionString }
     private var updatesTask: Task<Void, Never>?
     private var authorizationTask: Task<Void, Never>?
     private var handoffInProgress = false
@@ -344,7 +346,18 @@ final class SmartWakeAlarmScheduler {
             // Not decided yet: leave the toggle and any existing alarms alone.
             return .unchanged
         }
-        if defaults.bool(forKey: enabledKey), loadSchedule() == schedule { return .unchanged }
+        // Every foreground (and launch) reconciles against the system's actual alarm list. This is
+        // deliberately independent of `alarmUpdates`: on recent iOS versions that stream may only be
+        // delivered once the app runs again, so a dismissed early alarm whose stop intent did not run
+        // overnight is repaired here, at the first foreground, and never depends on a live observer.
+        if defaults.bool(forKey: enabledKey), let current = try? manager.alarms {
+            await reconcileEarlyAlarm(with: current)
+        }
+
+        // An iOS update can silently drop or silence AlarmKit alarms, so a changed OS build forces
+        // one reinstall of the fallbacks. It goes through the idle-slot swap, never through zero.
+        let osChanged = defaults.string(forKey: lastOSVersionKey) != Self.currentOSVersion
+        if defaults.bool(forKey: enabledKey), loadSchedule() == schedule, !osChanged { return .unchanged }
 
         defaults.set(true, forKey: enabledKey)
         do {
@@ -542,6 +555,8 @@ final class SmartWakeAlarmScheduler {
         if let data = try? JSONEncoder().encode(schedule) {
             defaults.set(data, forKey: scheduleKey)
         }
+        // Recorded only after a fully successful pass, so a failed one is retried at the next foreground.
+        defaults.set(Self.currentOSVersion, forKey: lastOSVersionKey)
     }
 
     /// Removes every alarm this component owns. Only for an explicit disable or a revoked permission.
