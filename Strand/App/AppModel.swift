@@ -1736,12 +1736,16 @@ final class AppModel: ObservableObject {
         )
         if #available(iOS 26.0, *) {
             Task {
-                let wasEnabled = behavior.smartWakeEnabled
-                await SmartWakeAlarmScheduler.shared.sync(
-                    enabled: wasEnabled,
+                // The scheduler serializes this behind any in-flight enable (the AlarmKit permission
+                // prompt re-activates the scene while enable is still waiting), and reads the toggle
+                // only once it runs.
+                let outcome = await SmartWakeAlarmScheduler.shared.sync(
+                    isEnabled: { [weak self] in self?.behavior.smartWakeEnabled ?? false },
                     schedule: schedule
                 )
-                if wasEnabled && !SmartWakeAlarmScheduler.shared.isConfigured {
+                // Only an explicit refusal (or a failed update, until it is made non-destructive)
+                // switches the toggle off; an undecided or transient authorization never does.
+                if outcome == .denied || outcome == .failed {
                     behavior.smartWakeEnabled = false
                 }
             }

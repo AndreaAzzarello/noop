@@ -263,7 +263,7 @@ struct SmartAlarmView: View {
         .onAppear {
             guard behavior.smartWakeEnabled else { return }
             if #available(iOS 26.0, *) {
-                if !SmartWakeAlarmScheduler.shared.isConfigured {
+                if SmartWakeAlarmScheduler.shared.isDenied {
                     smartWakeErrorMessage = SmartWakeAlarmScheduler.shared.lastErrorDescription
                     behavior.smartWakeEnabled = false
                     smartWakeAuthorizationFailed = true

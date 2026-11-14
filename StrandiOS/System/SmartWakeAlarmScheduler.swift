@@ -29,6 +29,23 @@ final class SmartWakeAlarmScheduler {
     private var updatesTask: Task<Void, Never>?
     private var authorizationTask: Task<Void, Never>?
     private var handoffInProgress = false
+    /// Tail of the serial operation queue. enable / sync / disable / early-wake / reconcile all run
+    /// one after another, so the foreground re-sync triggered by the AlarmKit permission prompt can
+    /// never interleave with the `enable` that is still waiting on that prompt.
+    private var queueTail: Task<Void, Never>?
+
+    static let revokedAuthorizationMessage = "Alarm permission was revoked in Settings."
+
+    enum SyncOutcome: Equatable {
+        /// Nothing needed doing (disabled, already in sync, or authorization not yet decided).
+        case unchanged
+        /// The schedule was applied.
+        case synced
+        /// The user revoked the Alarms permission; Smart Wake has been switched off.
+        case denied
+        /// AlarmKit refused the schedule update.
+        case failed
+    }
 
     private static let fallbackIDs: [Int: UUID] = [
         1: UUID(uuidString: "A1000000-0000-4000-8000-000000000001")!,
@@ -42,8 +59,23 @@ final class SmartWakeAlarmScheduler {
 
     private init() {}
 
+    fileprivate func serialized<T>(_ operation: @escaping () async -> T) async -> T {
+        let previous = queueTail
+        let task = Task { () -> T in
+            await previous?.value
+            return await operation()
+        }
+        queueTail = Task { _ = await task.value }
+        return await task.value
+    }
+
     var isAuthorized: Bool {
         manager.authorizationState == .authorized
+    }
+
+    /// True only when the user has explicitly refused (or later revoked) the Alarms permission.
+    var isDenied: Bool {
+        manager.authorizationState == .denied
     }
 
     var isConfigured: Bool {
@@ -60,14 +92,14 @@ final class SmartWakeAlarmScheduler {
     func startObserving() {
         if let currentAlarms = try? manager.alarms {
             Task { [weak self] in
-                await self?.reconcileEarlyAlarm(with: currentAlarms)
+                await self?.reconcile(with: currentAlarms)
             }
         }
 
         if updatesTask == nil {
             updatesTask = Task { [weak self] in
                 for await alarms in AlarmManager.shared.alarmUpdates {
-                    await self?.reconcileEarlyAlarm(with: alarms)
+                    await self?.reconcile(with: alarms)
                 }
             }
         }
@@ -76,11 +108,25 @@ final class SmartWakeAlarmScheduler {
             authorizationTask = Task { [weak self] in
                 for await state in AlarmManager.shared.authorizationUpdates {
                     if state == .denied {
-                        await self?.disable()
+                        await self?.handleRevokedAuthorization()
                     }
                 }
             }
         }
+    }
+
+    private func reconcile(with alarms: [Alarm]) async {
+        await serialized { await self.reconcileEarlyAlarm(with: alarms) }
+    }
+
+    private func handleRevokedAuthorization() async {
+        await serialized { await self.disableForRevokedAuthorization() }
+    }
+
+    private func disableForRevokedAuthorization() async {
+        defaults.set(Self.revokedAuthorizationMessage, forKey: lastErrorKey)
+        defaults.set(false, forKey: enabledKey)
+        await cancelAllManagedAlarms()
     }
 
     private func reconcileEarlyAlarm(with alarms: [Alarm]) async {
@@ -99,14 +145,14 @@ final class SmartWakeAlarmScheduler {
             } else if defaults.bool(forKey: earlyAlarmScheduledKey) {
                 // The early alert was scheduled and has now been dismissed. Skip today's maximum
                 // time, then resume the normal weekly recurrence from the following week.
-                await Self.rearmFallback(for: weekday, skipCurrentOccurrence: true)
+                await Self.performRearmFallback(for: weekday, skipCurrentOccurrence: true)
             } else if fallbackIsPresent {
                 // The process died before the early alert was actually scheduled; preserve today's fallback.
                 defaults.removeObject(forKey: earlyAlarmIDKey)
                 defaults.removeObject(forKey: earlyAlarmWeekdayKey)
                 defaults.removeObject(forKey: earlyAlarmScheduledKey)
             } else {
-                await Self.rearmFallback(for: weekday, skipCurrentOccurrence: false)
+                await Self.performRearmFallback(for: weekday, skipCurrentOccurrence: false)
             }
             return
         }
@@ -117,7 +163,7 @@ final class SmartWakeAlarmScheduler {
         for weekday in selectedDays {
             guard let fallbackID = Self.fallbackIDs[weekday] else { continue }
             if !alarms.contains(where: { $0.id == fallbackID }) {
-                await Self.rearmFallback(for: weekday, skipCurrentOccurrence: false)
+                await Self.performRearmFallback(for: weekday, skipCurrentOccurrence: false)
             }
         }
     }
@@ -125,6 +171,10 @@ final class SmartWakeAlarmScheduler {
     /// Called only after the user explicitly enables Smart Wake.
     func enable(schedule: SmartWakeSchedule) async -> Bool {
         guard #available(iOS 26.0, *) else { return false }
+        return await serialized { await self.performEnable(schedule: schedule) }
+    }
+
+    private func performEnable(schedule: SmartWakeSchedule) async -> Bool {
         do {
             let authorization: AlarmManager.AuthorizationState
             if manager.authorizationState == .notDetermined {
@@ -152,39 +202,62 @@ final class SmartWakeAlarmScheduler {
     }
 
     func disable() async {
+        await serialized { await self.performDisable() }
+    }
+
+    private func performDisable() async {
         defaults.set(false, forKey: enabledKey)
         await cancelAllManagedAlarms()
     }
 
     /// Reconcile an already-authorized schedule after a settings change or foreground launch.
-    /// This method never opens the system authorization prompt.
-    func sync(enabled: Bool, schedule: SmartWakeSchedule) async {
-        guard #available(iOS 26.0, *) else { return }
+    /// This method never opens the system authorization prompt. `isEnabled` is read when the
+    /// operation actually runs (after any in-flight `enable`), not when it was requested.
+    @discardableResult
+    func sync(isEnabled: @escaping () -> Bool, schedule: SmartWakeSchedule) async -> SyncOutcome {
+        guard #available(iOS 26.0, *) else { return .unchanged }
+        return await serialized { await self.performSync(enabled: isEnabled(), schedule: schedule) }
+    }
+
+    private func performSync(enabled: Bool, schedule: SmartWakeSchedule) async -> SyncOutcome {
         guard enabled else {
-            await disable()
-            return
+            await performDisable()
+            return .unchanged
         }
-        guard manager.authorizationState == .authorized else {
-            await disable()
-            return
+        switch manager.authorizationState {
+        case .authorized:
+            break
+        case .denied:
+            // Only an explicit refusal switches Smart Wake off.
+            await disableForRevokedAuthorization()
+            return .denied
+        default:
+            // Not decided yet: leave the toggle and any existing alarms alone.
+            return .unchanged
         }
-        if defaults.bool(forKey: enabledKey), loadSchedule() == schedule { return }
+        if defaults.bool(forKey: enabledKey), loadSchedule() == schedule { return .unchanged }
 
         defaults.set(true, forKey: enabledKey)
         do {
             try await replaceFallbacks(with: schedule)
+            return .synced
         } catch {
             defaults.set("AlarmKit schedule update failed: \(error.localizedDescription)", forKey: lastErrorKey)
             await cancelAllManagedAlarms()
             defaults.set(false, forKey: enabledKey)
             // The existing WHOOP firmware alarm remains untouched.
+            return .failed
         }
     }
 
     /// Called only for a sustained-HR decision, never for the maximum-time detector result.
     func triggerEarlyWake(at receivedAt: Date, schedule: SmartWakeSchedule) async {
-        guard #available(iOS 26.0, *),
-              defaults.bool(forKey: enabledKey),
+        guard #available(iOS 26.0, *) else { return }
+        await serialized { await self.performEarlyWake(at: receivedAt, schedule: schedule) }
+    }
+
+    private func performEarlyWake(at receivedAt: Date, schedule: SmartWakeSchedule) async {
+        guard defaults.bool(forKey: enabledKey),
               manager.authorizationState == .authorized,
               loadSchedule() == schedule
         else { return }
@@ -233,7 +306,20 @@ final class SmartWakeAlarmScheduler {
         }
     }
 
+    /// Entry point for the stop intent. Runs on the same serial queue as enable / sync / reconcile
+    /// so a dismissal can never overlap one of them.
     fileprivate static func rearmFallback(for weekday: Int, skipCurrentOccurrence: Bool) async {
+        guard #available(iOS 26.0, *) else { return }
+        await shared.serialized {
+            await SmartWakeAlarmScheduler.performRearmFallback(
+                for: weekday,
+                skipCurrentOccurrence: skipCurrentOccurrence
+            )
+        }
+    }
+
+    /// The unserialized body, for callers that already run inside the queue (reconcile).
+    fileprivate static func performRearmFallback(for weekday: Int, skipCurrentOccurrence: Bool) async {
         guard #available(iOS 26.0, *),
               (1...7).contains(weekday)
         else { return }
