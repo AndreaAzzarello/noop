@@ -307,3 +307,69 @@ final class SmartWakeLiveController {
             .suffix(4_000))
     }
 }
+
+/// Decides what to do with each weekday's two fallback slots, given which of them the system alarm
+/// list currently holds. Pure, so the "never zero, never a loop" rules are testable without AlarmKit.
+///
+/// `occupied[weekday]` is the set of slots (0 = A, 1 = B) found in the alarm list; `activeSlots` is the
+/// slot the scheduler recorded as live (a missing entry means slot 0).
+struct SmartWakeFallbackReconciler {
+    enum Action: Equatable {
+        /// One slot is armed and it is not the recorded one: record it.
+        case adoptSlot(weekday: Int, slot: Int)
+        /// Both slots are armed: remove the one that is not recorded as live.
+        case cancelIdle(weekday: Int, slot: Int)
+        /// The day is no longer selected: remove whatever is armed for it.
+        case cancelDeselected(weekday: Int, slots: [Int])
+        /// Nothing is armed for a selected day.
+        case rearm(weekday: Int)
+    }
+
+    /// Minimum time between two re-arms of the same weekday. A re-arm itself changes the alarm list
+    /// and so wakes the alarm observer; without this a list that never shows the new alarm would loop.
+    static let rearmDebounce: TimeInterval = 60
+
+    private var lastRearm: [Int: Date] = [:]
+
+    mutating func decide(
+        occupied: [Int: Set<Int>],
+        selectedDays: Set<Int>,
+        activeSlots: [Int: Int],
+        now: Date
+    ) -> [Action] {
+        var actions: [Action] = []
+        for weekday in 1...7 {
+            let slots = occupied[weekday] ?? []
+            guard selectedDays.contains(weekday) else {
+                if !slots.isEmpty { actions.append(.cancelDeselected(weekday: weekday, slots: slots.sorted())) }
+                continue
+            }
+            let live = activeSlots[weekday] ?? 0
+            switch slots.count {
+            case 0:
+                if let last = lastRearm[weekday], now.timeIntervalSince(last) < Self.rearmDebounce { continue }
+                lastRearm[weekday] = now
+                actions.append(.rearm(weekday: weekday))
+            case 1:
+                if let slot = slots.first, slot != live { actions.append(.adoptSlot(weekday: weekday, slot: slot)) }
+            default:
+                actions.append(.cancelIdle(weekday: weekday, slot: 1 - live))
+            }
+        }
+        return actions
+    }
+}
+
+/// Lets a given diagnostic event through once per weekday per calendar day, so a repeating condition
+/// cannot flood the log or the UserDefaults ring buffer behind it.
+struct SmartWakeLogThrottle {
+    private var lastDay: [String: Date] = [:]
+
+    mutating func shouldLog(_ event: String, weekday: Int, now: Date, calendar: Calendar = .current) -> Bool {
+        let key = "\(event)#\(weekday)"
+        let day = calendar.startOfDay(for: now)
+        if lastDay[key] == day { return false }
+        lastDay[key] = day
+        return true
+    }
+}

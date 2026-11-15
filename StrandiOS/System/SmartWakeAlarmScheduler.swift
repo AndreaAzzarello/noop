@@ -36,6 +36,9 @@ final class SmartWakeAlarmScheduler {
     /// one after another, so the foreground re-sync triggered by the AlarmKit permission prompt can
     /// never interleave with the `enable` that is still waiting on that prompt.
     private var queueTail: Task<Void, Never>?
+    /// Debounce for re-arms and once-a-day gate for reconcile log lines; both in memory only.
+    private var fallbackReconciler = SmartWakeFallbackReconciler()
+    private var reconcileLogThrottle = SmartWakeLogThrottle()
 
     static let revokedAuthorizationMessage = "Alarm permission was revoked in Settings."
 
@@ -113,6 +116,8 @@ final class SmartWakeAlarmScheduler {
 
     private func setActiveSlot(_ slot: Int, for weekday: Int) {
         var slots = loadSlots()
+        // Idempotent: an unchanged value must not write (every write notifies UserDefaults observers).
+        if slots[weekday] == slot { return }
         slots[weekday] = slot
         let raw = Dictionary(uniqueKeysWithValues: slots.map { (String($0.key), $0.value) })
         if let data = try? JSONEncoder().encode(raw) {
@@ -241,8 +246,40 @@ final class SmartWakeAlarmScheduler {
         await cancelAllManagedAlarms()
     }
 
-    private func reconcileEarlyAlarm(with alarms: [Alarm]) async {
+    /// One reconcile log line per weekday per event per day. A repeating condition must not flood the log.
+    private func logReconcile(_ event: String, weekday: Int, _ message: @autoclosure () -> String) {
+        guard reconcileLogThrottle.shouldLog(event, weekday: weekday, now: Date()) else { return }
+        log(message())
+    }
+
+    /// Why the list looked the way it did when a re-arm was decided: counts, which slots were seen, their
+    /// states, the recorded live slot and whether reading the list failed. Slot labels only, no identifiers.
+    private func rearmEvidence(weekday: Int, fresh: [Alarm]?, stream: [Alarm]) -> String {
+        func label(_ id: UUID) -> String {
+            for day in 1...7 {
+                if id == Self.fallbackID(weekday: day, slot: 0) { return "A\(day)" }
+                if id == Self.fallbackID(weekday: day, slot: 1) { return "B\(day)" }
+            }
+            return "other"
+        }
+        func describe(_ alarms: [Alarm]) -> String {
+            let managed = alarms.filter { label($0.id) != "other" }
+            let others = alarms.count - managed.count
+            let rows = managed.map { "\(label($0.id))=\(String(describing: $0.state))" }.joined(separator: ",")
+            return "\(alarms.count) alarms [\(rows)\(others > 0 ? ",other×\(others)" : "")]"
+        }
+        let live = loadSlots()[weekday].map { $0 == 0 ? "A" : "B" } ?? "unset"
+        let freshText = fresh.map(describe) ?? "read failed"
+        return "fresh \(freshText); stream \(describe(stream)); recorded live slot \(live)"
+    }
+
+    private func reconcileEarlyAlarm(with streamAlarms: [Alarm]) async {
         guard !handoffInProgress, defaults.bool(forKey: enabledKey) else { return }
+        // The stream element is only a signal: by the time this serialized step runs it can predate an
+        // alarm swap that finished meanwhile, and acting on it cancels or re-arms the wrong alarm.
+        // Read the list as it is now; fall back to the stream's copy only if the read fails.
+        let fresh = try? manager.alarms
+        let alarms = fresh ?? streamAlarms
 
         if let raw = defaults.string(forKey: earlyAlarmIDKey),
            let earlyID = UUID(uuidString: raw),
@@ -253,14 +290,14 @@ final class SmartWakeAlarmScheduler {
             let fallbackIsPresent = alarms.contains(where: { weekdayFallbackIDs.contains($0.id) })
             if earlyIsPresent {
                 // Recover a crash between scheduling the early alert and cancelling its fallback.
-                defaults.set(true, forKey: earlyAlarmScheduledKey)
+                if !defaults.bool(forKey: earlyAlarmScheduledKey) { defaults.set(true, forKey: earlyAlarmScheduledKey) }
                 for id in weekdayFallbackIDs where alarms.contains(where: { $0.id == id }) {
                     try? manager.cancel(id: id)
                 }
             } else if defaults.bool(forKey: earlyAlarmScheduledKey) {
                 // The early alert was scheduled and has now been dismissed. Skip today's maximum
                 // time, then resume the normal weekly recurrence from the following week.
-                log("reconcile: early alarm for weekday \(weekday) was dismissed; restoring its fallback")
+                logReconcile("early-dismissed", weekday: weekday, "reconcile: early alarm for weekday \(weekday) was dismissed; restoring its fallback")
                 await Self.performRearmFallback(for: weekday, skipCurrentOccurrence: true)
             } else if fallbackIsPresent {
                 // The process died before the early alert was actually scheduled; preserve today's fallback.
@@ -277,36 +314,43 @@ final class SmartWakeAlarmScheduler {
         guard let schedule = loadSchedule() else { return }
         let selectedDays = schedule.weekdays.isEmpty ? Set(1...7) : schedule.weekdays
         let present = Set(alarms.map(\.id))
+        var occupied: [Int: Set<Int>] = [:]
         for weekday in 1...7 {
-            let slotIDs = fallbackIDs(for: weekday)
-            let presentSlots = (0...1).filter { slot in
+            occupied[weekday] = Set((0...1).filter { slot in
                 Self.fallbackID(weekday: weekday, slot: slot).map(present.contains) ?? false
-            }
-            guard selectedDays.contains(weekday) else {
+            })
+        }
+        let actions = fallbackReconciler.decide(
+            occupied: occupied,
+            selectedDays: selectedDays,
+            activeSlots: loadSlots(),
+            now: Date()
+        )
+        for action in actions {
+            switch action {
+            case let .cancelDeselected(weekday, slots):
                 // A day that is no longer selected must not keep ringing; this retries a removal that failed.
-                for id in slotIDs where present.contains(id) { try? manager.cancel(id: id) }
-                continue
-            }
-            switch presentSlots.count {
-            case 0:
-                log("reconcile: weekday \(weekday) has no fallback; re-arming")
+                for slot in slots {
+                    if let id = Self.fallbackID(weekday: weekday, slot: slot) { try? manager.cancel(id: id) }
+                }
+            case let .rearm(weekday):
+                logReconcile("rearm", weekday: weekday, "reconcile: weekday \(weekday) has no fallback; re-arming ("
+                    + rearmEvidence(weekday: weekday, fresh: fresh, stream: streamAlarms) + ")")
                 await rearm(weekday: weekday, skipCurrentOccurrence: false)
-            case 1:
+            case let .adoptSlot(weekday, slot):
                 // Adopt whichever slot is live, e.g. after a pass that died between scheduling the
                 // new alarm and recording it.
-                setActiveSlot(presentSlots[0], for: weekday)
-            default:
+                setActiveSlot(slot, for: weekday)
+            case let .cancelIdle(weekday, slot):
                 // Both slots hold an alarm: a previous swap could not remove the old one. The live
                 // slot is the one recorded last; remove the other (a double alarm is better than none,
                 // but it must not last).
-                let live = activeSlot(for: weekday)
-                if let idleID = Self.fallbackID(weekday: weekday, slot: 1 - live) {
-                    log("reconcile: weekday \(weekday) has both slots armed; removing the superseded one")
-                    do {
-                        try manager.cancel(id: idleID)
-                    } catch {
-                        defaults.set("Could not remove a superseded Smart Wake alarm (will retry): \(error.localizedDescription)", forKey: lastErrorKey)
-                    }
+                guard let idleID = Self.fallbackID(weekday: weekday, slot: slot) else { continue }
+                logReconcile("both-slots", weekday: weekday, "reconcile: weekday \(weekday) has both slots armed; removing the superseded one")
+                do {
+                    try manager.cancel(id: idleID)
+                } catch {
+                    defaults.set("Could not remove a superseded Smart Wake alarm (will retry): \(error.localizedDescription)", forKey: lastErrorKey)
                 }
             }
         }
@@ -563,10 +607,13 @@ final class SmartWakeAlarmScheduler {
         setActiveSlot(1 - live, for: weekday)
         log("weekday \(weekday): slot \(1 - live == 0 ? "A" : "B") is now live")
 
-        guard presentAlarmIDs().contains(oldID) else { return }
+        // Always try, even when the list does not show the old alarm: a list that omits a live alarm
+        // would otherwise leave both slots ringing. The new alarm is already armed and recorded, so
+        // this can never take the day to zero. A failure for an alarm that really is absent is expected.
         do {
             try manager.cancel(id: oldID)
         } catch {
+            guard presentAlarmIDs().contains(oldID) else { return }
             log("weekday \(weekday): superseded alarm could not be removed, both kept: \(error.localizedDescription)")
             defaults.set("Could not remove a superseded Smart Wake alarm (will retry): \(error.localizedDescription)", forKey: lastErrorKey)
         }
