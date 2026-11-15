@@ -3232,11 +3232,16 @@ final class Repository: ObservableObject {
     /// Returns nil when the toggle is off, there's nothing to suggest, or detection finds nothing.
     /// PURE READ: never writes a workout. The window scans from `daysBack` days ago to now.
     func autoDetectCandidate(daysBack: Int = 2) async -> DetectedWorkout? {
-        guard PuffinExperiment.autoDetectWorkoutsEnabled else { return nil }
+        let enabled = PuffinExperiment.autoDetectWorkoutsEnabled
+        emitWorkouts(AutoDetectRunTrace.entry(daysBack: daysBack, enabled: enabled))
+        guard enabled else { emitWorkouts(AutoDetectRunTrace.skipToggleOff()); return nil }
         let now = Int(Date().timeIntervalSince1970)
         let from = now - daysBack * 86_400
         let samples = await hrSamples(from: from, to: now, limit: 200_000)
-        guard samples.count >= 2 else { return nil }
+        guard samples.count >= AutoDetectRunTrace.minSamples else {
+            emitWorkouts(AutoDetectRunTrace.skipTooFewSamples(count: samples.count))
+            return nil
+        }
         let hr = samples.map { (ts: $0.ts, bpm: $0.bpm) }
 
         // Resting HR: most recent nightly RHR in range, else the detector's own default (60).
@@ -3276,10 +3281,12 @@ final class Repository: ObservableObject {
                                                     motion: nil, savedSpans: savedSpans,
                                                     minimumSustainedMinutes: AutoWorkoutDetector.minSustainedMin)
         }
-        return Self.selectAutoDetectCandidate(
+        let picked = Self.selectAutoDetectCandidate(
             candidates,
             autoDismissedTokens: autoDetectDismissedSpans,
             detectedDismissedTokens: dismissedDetectedSpans)
+        emitWorkouts(AutoDetectRunTrace.selection(offered: candidates.count, picked: picked != nil))
+        return picked
     }
 
     /// SAVE a suggested window as a manual-style "Workout" (generic sport , we don't claim a sport we
