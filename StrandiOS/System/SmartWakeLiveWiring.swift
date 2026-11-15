@@ -9,6 +9,7 @@ import UIKit
 /// weekdays, per-day overrides or the early window, and every foreground), so the ~1 Hz sample callback
 /// no longer decodes the per-day overrides from UserDefaults on every sample. It is the same value the
 /// AlarmKit fallbacks are armed from, so the detector and the alarms cannot disagree about the schedule.
+@MainActor
 enum SmartWakeLiveWiring {
     private static var cachedSchedule: SmartWakeSchedule?
 
