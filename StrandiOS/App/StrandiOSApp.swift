@@ -24,10 +24,10 @@ struct StrandiOSApp: App {
     /// Shared cross-screen navigation hook (e.g. Live → Devices). The iOS shell (`RootTabView`)
     /// observes it and presents the Devices manager.
     @StateObject private var router: NavRouter
+    /// Live HR detector (see `SmartWakeLiveWiring`).
+    @State private var smartWakeController: SmartWakeLiveController
     /// NOOP's live heart rate banner. Built in `init` and fed from there (`LiveActivityController.follow`), not from
     /// a view: a process iOS starts in the background need not build one.
-    /// Live HR detector. Valid early decisions hand off to AlarmKit; its system scheduler owns the independent maximum-time fallback.
-    @State private var smartWakeController: SmartWakeLiveController
     @State private var liveActivity: LiveActivityController
     /// The Lift Log session's own Live Activity. Separate from the live-HR one above: while a gym
     /// session is open this is the banner that matters (it carries the heart rate too), so the HR
@@ -88,39 +88,7 @@ struct StrandiOSApp: App {
         NotificationPresenter.shared.onCoachBriefTapped = { [weak router] in router?.openCoach() }
         let model = AppModel()
         _model = StateObject(wrappedValue: model)
-        #if canImport(AlarmKit)
-        if #available(iOS 26.0, *) {
-            Task { @MainActor in SmartWakeAlarmScheduler.shared.startObserving() }
-        }
-        #endif
-        let initialSmartWakeSchedule = SmartWakeSchedule(
-            wakeMinutes: model.behavior.smartAlarmMinutes,
-            weekdays: model.behavior.smartAlarmWeekdays,
-            overrides: WindDownNudge.perDayWakeOverrides,
-            windowDuration: TimeInterval(model.behavior.smartWakeWindowMinutes * 60)
-        )
-        let smartWakeController = SmartWakeLiveController(schedule: initialSmartWakeSchedule)
-        smartWakeController.onWindowSummary = { SmartWakeDiagnostics.record($0) }
-        SmartWakeDiagnostics.onRecord = { [weak model] line in model?.live.append(log: AppModel.stamped(line)) }
-        model.live.onSmartWakeHeartRateSample = { [weak smartWakeController, weak model] bpm, timestamp in
-            guard let model, model.behavior.smartWakeEnabled else { return }
-            let schedule = SmartWakeSchedule(
-                wakeMinutes: model.behavior.smartAlarmMinutes,
-                weekdays: model.behavior.smartAlarmWeekdays,
-                overrides: WindDownNudge.perDayWakeOverrides,
-                windowDuration: TimeInterval(model.behavior.smartWakeWindowMinutes * 60)
-            )
-            smartWakeController?.updateSchedule(schedule)
-            let decision = smartWakeController?.ingest(bpm: bpm, at: timestamp, isForeground: UIApplication.shared.applicationState == .active) ?? .waiting
-            #if canImport(AlarmKit)
-            if case .wake(.sustainedHeartRateRise) = decision, #available(iOS 26.0, *) {
-                Task {
-                    await SmartWakeAlarmScheduler.shared.triggerEarlyWake(at: timestamp, schedule: schedule)
-                }
-            }
-            #endif
-        }
-        _smartWakeController = State(initialValue: smartWakeController)
+        _smartWakeController = State(initialValue: SmartWakeLiveWiring.install(model: model))
         CoachBriefScheduler.register(generateBrief: { [weak coach = model.coach] in
             await coach?.generateBrief()
         }, log: { [weak model] line in

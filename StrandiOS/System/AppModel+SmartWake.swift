@@ -5,12 +5,8 @@ extension AppModel {
     /// Reconcile the independent phone Smart Wake alarm without touching the WHOOP firmware alarm.
     /// The maximum time, weekdays and per-day overrides are read from the existing alarm settings.
     func applySmartWakeSchedule() {
-        let schedule = SmartWakeSchedule(
-            wakeMinutes: behavior.smartAlarmMinutes,
-            weekdays: behavior.smartAlarmWeekdays,
-            overrides: WindDownNudge.perDayWakeOverrides,
-            windowDuration: TimeInterval(behavior.smartWakeWindowMinutes * 60)
-        )
+        // Also refreshes the schedule the live HR detector reads, so it and the alarms share one value.
+        let schedule = SmartWakeLiveWiring.refreshSchedule(from: behavior)
         if #available(iOS 26.0, *) {
             Task {
                 // The scheduler serializes this behind any in-flight enable (the AlarmKit permission
