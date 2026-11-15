@@ -30,15 +30,20 @@ struct JournalReminderCard: View {
     private static let stripDays = 7
 
     var body: some View {
-        Group {
-            if reminderEnabled, let logged = loggedDays {
-                card(logged)
+        // A real container, not a Group: a Group hands modifiers to its children, and while `loggedDays`
+        // is nil it has none, so the `.task` below never started and the card never loaded. With the
+        // toggle off nothing is rendered at all, as before.
+        if reminderEnabled {
+            VStack(spacing: 0) {
+                if let logged = loggedDays {
+                    card(logged)
+                }
             }
-        }
-        // Re-read whenever a sync bumps refreshSeq or the toggle flips (mirrors AutoWorkoutCard's task id),
-        // so the strip and the "logged today" state stay current after the user logs and comes back.
-        .task(id: JournalReminderLoadKey(seq: repo.refreshSeq, enabled: reminderEnabled)) {
-            await reload()
+            // Re-read whenever a sync bumps refreshSeq or the toggle flips, so the strip and the
+            // "logged today" state stay current after the user logs and comes back.
+            .task(id: JournalReminderLoadKey(seq: repo.refreshSeq, enabled: reminderEnabled)) {
+                await reload()
+            }
         }
     }
 
