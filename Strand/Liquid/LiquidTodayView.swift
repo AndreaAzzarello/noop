@@ -402,6 +402,7 @@ struct LiquidTodayView: View {
                 }
                 .padding(.horizontal, NoopMetrics.screenHPadding)
                 .padding(.top, 30) // sit the title lower into the sky, not jammed under the status bar
+                .autoWorkoutSuggestionHost()   // scan anchored here: AutoWorkoutCard renders nothing without a candidate
             }
             #if os(macOS)
             // Keep the phone-shaped column readable + centred on the wide mac detail pane. The sky is a

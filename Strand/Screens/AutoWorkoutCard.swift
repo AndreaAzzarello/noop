@@ -20,22 +20,17 @@ struct AutoWorkoutCard: View {
     /// Whether the toggle is on. Read here too so the card disappears the instant it's switched off.
     @AppStorage(PuffinExperiment.autoDetectWorkoutsKey) private var autoDetectEnabled = false
 
-    /// The current suggestion, loaded in `.task`. nil → nothing to show.
-    @State private var candidate: DetectedWorkout?
-    /// Hide immediately on Save/X without waiting for the next reload (avoids a flash of the old card).
-    @State private var handledThisSession = false
+    /// The suggestion, loaded by `autoWorkoutSuggestionHost()` on the Today container (the scan must not
+    /// hang off this view: with no candidate it renders nothing, so a task here would never start).
+    @EnvironmentObject private var suggestion: AutoWorkoutSuggestionModel
     /// Guards the Save button while the write is in flight.
     @State private var saving = false
 
     var body: some View {
         Group {
-            if autoDetectEnabled, !handledThisSession, let w = candidate {
+            if autoDetectEnabled, !suggestion.handledThisSession, let w = suggestion.candidate {
                 card(for: w)
             }
-        }
-        // Re-scan whenever the data refreshes (a sync bumps refreshSeq) or the toggle flips on.
-        .task(id: AutoWorkoutLoadKey(seq: repo.refreshSeq, enabled: autoDetectEnabled)) {
-            await reload()
         }
     }
 
@@ -106,17 +101,9 @@ struct AutoWorkoutCard: View {
         return String(localized: "Looks like a workout on \(Self.dateFmt.string(from: startDate)) around \(start)-\(end) (avg HR \(w.avgBpm), \(w.durationMin) min). Save it?")
     }
 
-    private func reload() async {
-        guard autoDetectEnabled else { candidate = nil; return }
-        let next = await repo.autoDetectCandidate()
-        // A fresh scan resets the session guard so a NEW window can surface after one is handled.
-        if next != candidate { handledThisSession = false }
-        candidate = next
-    }
-
     private func save(_ w: DetectedWorkout) {
         saving = true
-        handledThisSession = true
+        suggestion.handledThisSession = true
         Task {
             _ = await repo.saveDetectedWorkout(w)
             await repo.refresh()   // surfaces the new workout + drops it from re-suggestion
@@ -126,8 +113,8 @@ struct AutoWorkoutCard: View {
 
     private func dismiss(_ w: DetectedWorkout) {
         repo.dismissDetectedSuggestion(w)
-        handledThisSession = true
-        candidate = nil
+        suggestion.handledThisSession = true
+        suggestion.candidate = nil
     }
 
     /// HH:mm in the user's locale/timezone.
@@ -143,10 +130,4 @@ struct AutoWorkoutCard: View {
         f.timeStyle = .none
         return f
     }()
-}
-
-/// Reload key: a new sync (seq) or a toggle flip re-runs detection.
-private struct AutoWorkoutLoadKey: Equatable {
-    let seq: Int
-    let enabled: Bool
 }

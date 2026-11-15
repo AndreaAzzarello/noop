@@ -1550,6 +1550,7 @@ struct TodayView: View {
             // always defined; only iOS reads it (the swipe is iOS-only, macOS never consults the mask).
             .coordinateSpace(name: Self.daySwipeSpace)
             .onPreferenceChange(HRChartFrameKey.self) { hrChartFrame = $0 }
+            .autoWorkoutSuggestionHost()   // scan anchored here: AutoWorkoutCard renders nothing without a candidate
             // #755: mirror `LiveState.backfilling` into `liveBackfillingFlag` WITHOUT TodayView observing
             // LiveState (which would re-flood `body` ~1 Hz, see the top-of-type note). The bridge is a
             // zero-size leaf in `.background` (no layout impact) that owns the observation and pushes only
