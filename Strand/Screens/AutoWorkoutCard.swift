@@ -25,11 +25,33 @@ struct AutoWorkoutCard: View {
     @EnvironmentObject private var suggestion: AutoWorkoutSuggestionModel
     /// Guards the Save button while the write is in flight.
     @State private var saving = false
+    /// The window being reviewed in `DetectedWorkoutReviewSheet`, nil when the sheet is closed.
+    @State private var reviewing: DetectedWorkout?
+    /// Set by the sheet when it saved or discarded; the card hides only once the sheet is gone, so it is
+    /// never removed from under its own presentation.
+    /// nil = sheet closed without a decision, true = saved, false = discarded.
+    @State private var reviewOutcome: Bool?
 
     var body: some View {
         Group {
             if autoDetectEnabled, !suggestion.handledThisSession, let w = suggestion.candidate {
                 card(for: w)
+            }
+        }
+        .sheet(isPresented: Binding(get: { reviewing != nil },
+                                    set: { if !$0 { reviewing = nil } }),
+               onDismiss: {
+            if let saved = reviewOutcome {
+                reviewOutcome = nil
+                suggestion.handledThisSession = true
+                suggestion.candidate = nil
+                // Refresh only after the sheet is gone: a sync bump re-scans and would empty this card
+                // (and the sheet attached to it) while the sheet was still on screen.
+                if saved { Task { await repo.refresh() } }
+            }
+        }) {
+            if let w = reviewing {
+                DetectedWorkoutReviewSheet(workout: w) { saved in reviewOutcome = saved }
             }
         }
     }
@@ -73,6 +95,10 @@ struct AutoWorkoutCard: View {
                     .buttonStyle(.borderedProminent)
                     .tint(StrandPalette.accent)
                     .disabled(saving)
+
+                    Button("Edit") { reviewing = w }
+                        .buttonStyle(.bordered)
+                        .disabled(saving)
 
                     Button("Not a workout") { dismiss(w) }
                         .buttonStyle(.bordered)

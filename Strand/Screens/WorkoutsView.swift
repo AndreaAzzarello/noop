@@ -471,7 +471,7 @@ struct WorkoutsView: View {
 
     /// Common sports offered when re-labelling a detected bout (keeps the menu short and honest —
     /// the user can fine-tune via Edit afterwards).
-    private static let relabelSports = ["Running", "Walking", "Cycling", "Strength Training",
+    static let relabelSports = ["Running", "Walking", "Cycling", "Strength Training",
                                         "Swimming", "Rowing", "Yoga", "HIIT",
                                         "CrossFit", "Hiking", "Tennis"]
 
