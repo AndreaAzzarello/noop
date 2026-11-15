@@ -1492,6 +1492,10 @@ struct TodayView: View {
                 // #2467 wanted Today's Start to arrive WITH the recording-plus-coaching merge, and only the
                 // button was built, so Today held both of the entry points the report was about.
                 ActiveWorkoutIndicatorSection()
+                // Opt-in "looks like a workout?" suggestion (default OFF), pinned at the top so a fresh
+                // candidate is seen without scrolling. Renders only when the Settings toggle is on AND the
+                // detector finds a recent unsaved, un-dismissed window.
+                AutoWorkoutCard()
                 // The "still building" and "new here?" prompts are about getting today's scores going,
                 // so they stay anchored to today rather than reappearing on every navigated past day.
                 if selectedDayOffset == 0 && repo.today?.recovery == nil {
@@ -1530,9 +1534,6 @@ struct TodayView: View {
                 ForEach(sectionOrder) { section in
                     todaySection(section)
                 }
-                // Opt-in "looks like a workout?" suggestion (default OFF). Renders only when the
-                // Settings toggle is on AND the detector finds a recent unsaved, un-dismissed window.
-                AutoWorkoutCard()
                 sourcesSection
             }
             #if os(iOS)

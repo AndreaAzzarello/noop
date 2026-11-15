@@ -359,6 +359,12 @@ struct LiquidTodayView: View {
                     // pinned above the reorderable block so an active manual workout is immediately visible
                     // and taps straight through to Live. Renders nothing when no workout is active.
                     ActiveWorkoutIndicatorSection()
+                    // Opt-in "looks like a workout?" suggestion. Its Settings toggle
+                    // (PuffinExperiment.autoDetectWorkoutsKey) must show something on this DEFAULT screen, and
+                    // a fresh candidate belongs above the fold, same position as classic TodayView. Self-gates
+                    // on the toggle AND on the detector finding an unsaved, un-dismissed window, so it
+                    // renders nothing by default.
+                    AutoWorkoutCard()
                     // #today-layout (parity with Android): every Today section — the Charge/Effort/Rest hero
                     // and Start-session included — renders in the user's saved order. Reorder via the Arrange
                     // sheet (the header's up/down button; native drag rows); the order persists under the
@@ -389,14 +395,6 @@ struct LiquidTodayView: View {
                         case .addedCards: if selectedDayOffset == 0 { hostedCardsSection }
                         }
                     }
-                    // Opt-in "looks like a workout?" suggestion, dropped in the liquid Home rewrite. Its
-                    // Settings toggle (PuffinExperiment.autoDetectWorkoutsKey) had no visible effect on the
-                    // DEFAULT screen: the card's only mount was classic TodayView, so a user could switch
-                    // auto-detect on and never be shown a single suggestion. Same position classic uses
-                    // (after the cards block, before Data Sources) and the same leaf Android renders.
-                    // Self-gates on the toggle AND on the detector finding an unsaved, un-dismissed window,
-                    // so it renders nothing by default.
-                    AutoWorkoutCard()
                     dataSourcesSection
                     Color.clear.frame(height: 90) // floating tab-bar clearance
                 }
