@@ -25,8 +25,6 @@ struct SmartAlarmView: View {
     @State private var showNotifDeniedAlert = false
     /// Earliest wake time the nudge is derived from (minutes since midnight). Seeded from the store.
     @State private var wakeMinutes = WindDownNudge.wakeMinutes
-    @State private var smartWakeAuthorizationFailed = false
-    @State private var smartWakeErrorMessage: String?
 
     // PR#554 (MumiZed) — per-day wake overrides. `perDayOn` reflects whether ANY override is set; the
     // `overrides` map mirrors the store so the pickers stay in sync. Additive: with none set, the nudge
@@ -50,7 +48,7 @@ struct SmartAlarmView: View {
                 windowHero
                 strapAlarmCard
                 #if os(iOS) && canImport(AlarmKit)
-                smartWakeCard
+                SmartWakeCardView(model: model, overrides: overrides).equatable()
                 #endif
                 strapRejectedCard   // #34: only shows when the strap keeps refusing the alarm
                 honestyCard
@@ -160,140 +158,6 @@ struct SmartAlarmView: View {
                 .foregroundStyle(tint)
         }
     }
-
-    #if os(iOS) && canImport(AlarmKit)
-    /// Phone-based Smart Wake. Its maximum time and weekday rules are shared with the WHOOP alarm;
-    /// only the early-detection window is configured separately.
-    private var smartWakeCard: some View {
-        StrandCard(padding: 20, tint: behavior.smartWakeEnabled ? StrandPalette.accent : nil) {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("SMART WAKE").strandOverline()
-                    Text("Earlier wake from heart-rate trends")
-                        .font(StrandFont.title2)
-                        .foregroundStyle(StrandPalette.textPrimary)
-                    Text("NOOP uses a sustained rise in WHOOP heart rate as a rough wake-readiness signal; it does not identify sleep stages. If samples are missing or insufficient, the maximum-time AlarmKit alarm remains scheduled.")
-                        .font(StrandFont.footnote)
-                        .foregroundStyle(StrandPalette.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Toggle("Enable Smart Wake", isOn: $behavior.smartWakeEnabled)
-                    .toggleStyle(.switch)
-                    .tint(StrandPalette.accent)
-
-                if behavior.smartWakeEnabled {
-                    Divider().overlay(StrandPalette.hairline)
-                    HStack {
-                        Text("Maximum wake")
-                            .font(StrandFont.body)
-                            .foregroundStyle(StrandPalette.textPrimary)
-                        Spacer()
-                        Text(smartWakeMaximumLabel)
-                            .font(StrandFont.number(18))
-                            .foregroundStyle(StrandPalette.accent)
-                    }
-                    HStack {
-                        Text("Early window")
-                            .font(StrandFont.body)
-                            .foregroundStyle(StrandPalette.textPrimary)
-                        Spacer()
-                        Picker("Early window", selection: $behavior.smartWakeWindowMinutes) {
-                            ForEach([15, 20, 30, 45, 60], id: \.self) { minutes in
-                                Text("\(minutes) min").tag(minutes)
-                            }
-                        }
-                        .labelsHidden()
-                        .accessibilityLabel("Smart Wake early window")
-                    }
-                    Text("Uses the same active weekdays and per-day wake times as the WHOOP alarm: \(Self.alarmWeekdaySummary(behavior.smartAlarmWeekdays)).")
-                        .font(StrandFont.footnote)
-                        .foregroundStyle(StrandPalette.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if !WindDownNudge.perDayWakeOverrides.isEmpty {
-                        Text("Custom times for individual days are included automatically.")
-                            .font(StrandFont.footnote)
-                            .foregroundStyle(StrandPalette.textTertiary)
-                    }
-                }
-                if smartWakeAuthorizationFailed {
-                    if #available(iOS 26.0, *) {
-                        Text(smartWakeErrorMessage ?? "NOOP could not schedule the system alarm. Check the Alarms permission and try again.")
-                            .font(StrandFont.footnote)
-                            .foregroundStyle(StrandPalette.statusWarning)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        Text("System Smart Wake alarms require iOS 26 or later.")
-                            .font(StrandFont.footnote)
-                            .foregroundStyle(StrandPalette.statusWarning)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                if #available(iOS 26.0, *) { SmartWakeDiagnosticsView() }
-            }
-        }
-        .onChangeCompat(of: behavior.smartWakeEnabled) { enabled in
-            if enabled {
-                if #available(iOS 26.0, *) {
-                    Task {
-                        let outcome = await SmartWakeAlarmScheduler.shared.enable(schedule: smartWakeSchedule)
-                        // Not authorized: toggle off. Authorized but AlarmKit refused part of it: stay on, show
-                        // why, and let the next foreground sync retry (nothing already armed is removed).
-                        smartWakeErrorMessage = outcome == .enabled ? nil : SmartWakeAlarmScheduler.shared.lastErrorDescription
-                        smartWakeAuthorizationFailed = outcome != .enabled
-                        if outcome == .notAuthorized { behavior.smartWakeEnabled = false }
-                        if outcome == .enabled { model.applySmartWakeSchedule() }
-                    }
-                } else {
-                    behavior.smartWakeEnabled = false
-                    smartWakeAuthorizationFailed = true
-                }
-            } else if #available(iOS 26.0, *) {
-                smartWakeAuthorizationFailed = !SmartWakeAlarmScheduler.shared.isConfigured
-                Task { await SmartWakeAlarmScheduler.shared.disable() }
-            } else {
-                smartWakeAuthorizationFailed = false
-            }
-        }
-        .onChangeCompat(of: behavior.smartWakeWindowMinutes) { _ in
-            model.applySmartWakeSchedule()
-        }
-        .onAppear {
-            guard behavior.smartWakeEnabled else { return }
-            if #available(iOS 26.0, *) {
-                if SmartWakeAlarmScheduler.shared.isDenied {
-                    smartWakeErrorMessage = SmartWakeAlarmScheduler.shared.lastErrorDescription
-                    behavior.smartWakeEnabled = false
-                    smartWakeAuthorizationFailed = true
-                }
-            } else {
-                behavior.smartWakeEnabled = false
-                smartWakeAuthorizationFailed = true
-            }
-        }
-    }
-
-    private var smartWakeMaximumLabel: String {
-        guard let next = AppModel.nextSmartAlarmDate(
-            minutes: behavior.smartAlarmMinutes,
-            weekdays: behavior.smartAlarmWeekdays,
-            overrides: WindDownNudge.perDayWakeOverrides
-        ) else { return String(localized: "No active wake days") }
-        let formatter = DateFormatter()
-        formatter.locale = AppLanguage.activeLocale
-        formatter.setLocalizedDateFormatFromTemplate("EEE jj:mm")
-        return formatter.string(from: next)
-    }
-
-    private var smartWakeSchedule: SmartWakeSchedule {
-        SmartWakeSchedule(
-            wakeMinutes: behavior.smartAlarmMinutes,
-            weekdays: behavior.smartAlarmWeekdays,
-            overrides: WindDownNudge.perDayWakeOverrides,
-            windowDuration: TimeInterval(behavior.smartWakeWindowMinutes * 60)
-        )
-    }
-    #endif
 
     // #34: shown ONLY when the strap has repeatedly reported back a different alarm time than we sent —
     // i.e. its firmware is refusing the write (a reset/corrupted clock/alarm register). Gated on the alarm
