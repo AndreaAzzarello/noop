@@ -118,7 +118,10 @@ final class SmartWakeLiveController {
     private let defaults: UserDefaults
     private static let baselineStorageKey = "smartWake.localBaseline.v1"
     private let maximumBufferedSamples = 4_000
-    private let persistenceInterval: TimeInterval = 30
+    /// Every write to UserDefaults notifies each `didChangeNotification` observer in the app, and the
+    /// baseline can reach 4,000 samples of JSON, so it is written rarely. `flushPersistence()` covers
+    /// the app going to the background, which is when an unsaved tail could otherwise be lost.
+    private let persistenceInterval: TimeInterval = 300
 
     private(set) var schedule: SmartWakeSchedule
     private var activeDay: Date?
@@ -206,6 +209,16 @@ final class SmartWakeLiveController {
 
         latestDecision = engine.ingest(sample, at: timestamp)
         return latestDecision
+    }
+
+    /// Writes the baseline and, while a window is open, its running statistics right now.
+    /// Called when the app moves to the background; same keys and format as the periodic writes.
+    func flushPersistence() {
+        persistBaselineIfNeeded(at: lastReceivedTimestamp ?? Date(), force: true)
+        if windowStats.sampleCount > 0 {
+            defaults.set("in progress: \(windowStats.summary)", forKey: Self.windowSummaryStorageKey)
+            lastWindowStatsPersistedAt = windowStats.lastSampleAt
+        }
     }
 
     /// Ends the current window's statistics: reports the summary once and keeps it for the diagnostics section.

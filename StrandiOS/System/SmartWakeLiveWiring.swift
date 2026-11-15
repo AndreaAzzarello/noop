@@ -53,6 +53,10 @@ enum SmartWakeLiveWiring {
             }
             #endif
         }
+        // The controller writes its baseline rarely; save the tail when the app is suspended.
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+        ) { [weak controller] _ in controller?.flushPersistence() }
         return controller
     }
 }

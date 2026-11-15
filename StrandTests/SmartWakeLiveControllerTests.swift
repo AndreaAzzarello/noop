@@ -64,6 +64,56 @@ final class SmartWakeLiveControllerTests: XCTestCase {
         XCTAssertEqual(controller.evaluate(at: date(7, 20)), .wake(.maximumWakeTime))
     }
 
+    // The keys and the JSON layout are part of what an installed build already has on disk.
+    private let baselineKey = "smartWake.localBaseline.v1"
+
+    private func storedBaselineCount(_ defaults: UserDefaults) throws -> Int {
+        let data = try XCTUnwrap(defaults.data(forKey: baselineKey))
+        return try JSONDecoder().decode([SmartWakeHeartRateSample].self, from: data).count
+    }
+
+    func testBaselineIsNotWrittenInsideTheIntervalAndFlushWritesIt() throws {
+        let defaults = UserDefaults(suiteName: "SmartWakeFlushTests.\(UUID().uuidString)")!
+        let controller = SmartWakeLiveController(
+            schedule: SmartWakeSchedule(wakeHour: 7, wakeMinute: 20), calendar: calendar, defaults: defaults
+        )
+        for minute in 0..<4 { _ = controller.ingest(bpm: 60, at: date(6, minute)) }
+        XCTAssertEqual(try storedBaselineCount(defaults), 0, "no write inside the persistence interval")
+
+        controller.flushPersistence()
+        XCTAssertEqual(try storedBaselineCount(defaults), 4)
+    }
+
+    func testBaselineSavedByAnEarlierBuildIsRestored() throws {
+        let defaults = UserDefaults(suiteName: "SmartWakeLegacyTests.\(UUID().uuidString)")!
+        let samples = (0..<20).map {
+            SmartWakeHeartRateSample(bpm: 60, timestamp: date(6, 0).addingTimeInterval(Double($0) * 120))
+        }
+        defaults.set(try JSONEncoder().encode(samples), forKey: baselineKey)
+
+        let controller = SmartWakeLiveController(
+            schedule: SmartWakeSchedule(wakeHour: 7, wakeMinute: 20), calendar: calendar, defaults: defaults
+        )
+        XCTAssertEqual(controller.ingest(bpm: 66, at: date(6, 50)), .waiting)
+        XCTAssertEqual(controller.ingest(bpm: 67, at: date(6, 51)), .waiting)
+        XCTAssertEqual(controller.ingest(bpm: 67, at: date(6, 52)), .wake(.sustainedHeartRateRise))
+    }
+
+    func testFlushSavesTheRunningWindowStatistics() {
+        let defaults = UserDefaults(suiteName: "SmartWakeStatsFlushTests.\(UUID().uuidString)")!
+        let controller = SmartWakeLiveController(
+            schedule: SmartWakeSchedule(wakeHour: 7, wakeMinute: 20), calendar: calendar, defaults: defaults
+        )
+        for minute in 30..<50 { _ = controller.ingest(bpm: 60, at: date(6, minute)) }
+        _ = controller.ingest(bpm: 60, at: date(6, 50))
+        _ = controller.ingest(bpm: 60, at: date(6, 51))
+        let key = SmartWakeLiveController.windowSummaryStorageKey
+        XCTAssertTrue(defaults.string(forKey: key)?.contains("samples=1") == true)
+
+        controller.flushPersistence()
+        XCTAssertTrue(defaults.string(forKey: key)?.hasPrefix("in progress: samples=2") == true)
+    }
+
     func testOutOfOrderSamplesAreIgnored() {
         let controller = makeController(schedule: SmartWakeSchedule(wakeHour: 7, wakeMinute: 20))
         _ = controller.ingest(bpm: 60, at: date(6, 30))
@@ -125,6 +175,7 @@ final class SmartWakeLiveControllerTests: XCTestCase {
         for minute in stride(from: 0, to: 40, by: 2) {
             XCTAssertEqual(first.ingest(bpm: 60, at: date(6, minute)), .waiting)
         }
+        first.flushPersistence() // what the app does when it moves to the background
 
         let relaunched = SmartWakeLiveController(schedule: schedule, calendar: calendar, defaults: defaults)
         XCTAssertEqual(relaunched.ingest(bpm: 66, at: date(6, 50)), .waiting)
