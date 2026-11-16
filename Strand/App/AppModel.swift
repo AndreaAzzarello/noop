@@ -1705,7 +1705,8 @@ final class AppModel: ObservableObject {
         }
         guard let next = Self.nextSmartAlarmDate(minutes: behavior.smartAlarmMinutes,
                                                  weekdays: behavior.smartAlarmWeekdays,
-                                                 overrides: overrides) else {
+                                                 overrides: overrides,
+                                                 from: SmartWakeFirmwareSkip.armFrom(smartWakeEnabled: behavior.smartWakeEnabled)) else {
             // No enabled weekday in the next week (only possible from a corrupted set) , disarm rather
             // than arm a misleading time the user never asked for.
             ble.disableStrapAlarm()

@@ -53,6 +53,15 @@ enum SmartWakeLiveWiring {
         controller.onWindowSummary = { SmartWakeDiagnostics.record($0) }
         SmartWakeDiagnostics.onRecord = { [weak model] line in model?.live.append(log: AppModel.stamped(line)) }
 
+        // After a confirmed early wake the WHOOP firmware alarm must not vibrate again at the maximum time. Record
+        // the skip, then re-arm through the existing path, which now searches for the next occurrence after it.
+        strapAlarm.onEarlyWakeConfirmed = { [weak model] maximumWakeTime in
+            guard let model, model.behavior.smartWakeEnabled, model.behavior.smartAlarmEnabled else { return }
+            SmartWakeFirmwareSkip.record(skipUntil: maximumWakeTime)
+            SmartWakeDiagnostics.record("firmware alarm: this morning's occurrence skipped, next one armed")
+            model.applySmartAlarm()
+        }
+
         // A strap double tap that ends a wake-up vibration is consumed here; any other tap goes on to the handler
         // AppModel installed (the user's double-tap action, or a Lift Log session's claim).
         let existingDoubleTap = model.live.onDoubleTap

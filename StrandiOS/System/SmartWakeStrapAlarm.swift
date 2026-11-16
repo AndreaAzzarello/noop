@@ -24,6 +24,11 @@ final class SmartWakeStrapAlarm {
     private var runForMaximumWakeTime: Date?
     /// Set once a single burst is done: a double tap before this time still confirms the wake-up.
     private var awaitingTapUntil: Date?
+    /// True while the current run belongs to an early wake (not to the maximum time).
+    private var runIsEarly = false
+    /// Called once when an early wake-up is confirmed by a double tap, or its repeating vibration runs out.
+    /// The argument is the maximum wake time that the early wake replaced.
+    var onEarlyWakeConfirmed: ((Date) -> Void)?
 
     init(model: AppModel, defaults: UserDefaults = .standard) {
         self.model = model
@@ -35,13 +40,13 @@ final class SmartWakeStrapAlarm {
     /// An early wake (light sleep or a sustained rise): always vibrates the strap, once or repeatedly.
     func beginEarly(reason: String, maximumWakeTime: Date, at now: Date) {
         start(reason: reason, maximumWakeTime: maximumWakeTime, at: now,
-              configuration: isInsistentEnabled ? .insistent : .single)
+              configuration: isInsistentEnabled ? .insistent : .single, isEarly: true)
     }
 
     /// The maximum time was reached with no early wake: only the insistent option vibrates the strap here.
     func beginAtMaximumTime(maximumWakeTime: Date, at now: Date) {
         guard isInsistentEnabled else { return }
-        start(reason: "maximum time", maximumWakeTime: maximumWakeTime, at: now, configuration: .insistent)
+        start(reason: "maximum time", maximumWakeTime: maximumWakeTime, at: now, configuration: .insistent, isEarly: false)
     }
 
     /// Call on every heart-rate sample; sends the command that is due, if any.
@@ -58,12 +63,14 @@ final class SmartWakeStrapAlarm {
         if result.consumed {
             handle(result.actions)
             stopPhoneAlarm()
+            confirmEarlyWake()
             return true
         }
         if let deadline = awaitingTapUntil, now < deadline {
             awaitingTapUntil = nil
             SmartWakeDiagnostics.record("strap double tap confirmed the wake-up")
             stopPhoneAlarm()
+            confirmEarlyWake()
             return true
         }
         return false
@@ -71,9 +78,23 @@ final class SmartWakeStrapAlarm {
 
     // MARK: Private
 
-    private func start(reason: String, maximumWakeTime: Date, at now: Date, configuration: InsistentWakeAlarm.Configuration) {
+    /// Reports the confirmation of an early wake once, so the firmware alarm can skip this morning's occurrence.
+    private func confirmEarlyWake() {
+        guard runIsEarly, let maximumWakeTime = runForMaximumWakeTime else { return }
+        runIsEarly = false
+        onEarlyWakeConfirmed?(maximumWakeTime)
+    }
+
+    private func start(
+        reason: String,
+        maximumWakeTime: Date,
+        at now: Date,
+        configuration: InsistentWakeAlarm.Configuration,
+        isEarly: Bool
+    ) {
         guard runForMaximumWakeTime != maximumWakeTime else { return }
         runForMaximumWakeTime = maximumWakeTime
+        runIsEarly = isEarly
         awaitingTapUntil = nil
         alarm = InsistentWakeAlarm(configuration: configuration)
         SmartWakeDiagnostics.record("strap wake-up started (\(reason), \(configuration.repeats ? "repeating" : "single burst"))")
@@ -93,6 +114,7 @@ final class SmartWakeStrapAlarm {
                     awaitingTapUntil = runForMaximumWakeTime
                 case .repeatLimit:
                     SmartWakeDiagnostics.record("strap wake-up ended: repeat limit reached without a double tap")
+                    confirmEarlyWake()
                 case .doubleTap:
                     SmartWakeDiagnostics.record("strap wake-up ended: double tap")
                 }
