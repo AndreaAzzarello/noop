@@ -18,6 +18,9 @@ struct SmartWakeCardView: View, Equatable {
     @EnvironmentObject private var behavior: BehaviorStore
     @State private var smartWakeAuthorizationFailed = false
     @State private var smartWakeErrorMessage: String?
+    /// Off by default. Read by `SmartWakeStrapAlarm` when a wake-up starts; it changes nothing about the
+    /// WHOOP firmware alarm.
+    @AppStorage(SmartWakeStrapAlarm.insistentKey) private var insistentStrapAlarm = false
 
     static func == (lhs: SmartWakeCardView, rhs: SmartWakeCardView) -> Bool {
         lhs.model === rhs.model && lhs.overrides == rhs.overrides
@@ -28,10 +31,10 @@ struct SmartWakeCardView: View, Equatable {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("SMART WAKE").strandOverline()
-                    Text("Earlier wake from heart-rate trends")
+                    Text("Earlier wake in light sleep")
                         .font(StrandFont.title2)
                         .foregroundStyle(StrandPalette.textPrimary)
-                    Text("NOOP uses a sustained rise in WHOOP heart rate as a rough wake-readiness signal; it does not identify sleep stages. If samples are missing or insufficient, the maximum-time AlarmKit alarm remains scheduled.")
+                    Text("NOOP estimates light sleep from WHOOP heart rate and beat intervals and wakes you earlier inside the window, with the strap and the iPhone. It is an estimate, not a measured sleep stage. If samples are missing or insufficient, the maximum-time AlarmKit alarm remains scheduled.")
                         .font(StrandFont.footnote)
                         .foregroundStyle(StrandPalette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -74,6 +77,14 @@ struct SmartWakeCardView: View, Equatable {
                             .font(StrandFont.footnote)
                             .foregroundStyle(StrandPalette.textTertiary)
                     }
+                    Divider().overlay(StrandPalette.hairline)
+                    Toggle("Insistent strap alarm", isOn: $insistentStrapAlarm)
+                        .toggleStyle(.switch)
+                        .tint(StrandPalette.accent)
+                    Text("If you don't double-tap the strap, it vibrates again every 5 minutes, up to 6 times. A double tap stops it and the iPhone alarm.")
+                        .font(StrandFont.footnote)
+                        .foregroundStyle(StrandPalette.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if smartWakeAuthorizationFailed {
                     if #available(iOS 26.0, *) {
