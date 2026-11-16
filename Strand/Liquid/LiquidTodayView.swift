@@ -365,6 +365,7 @@ struct LiquidTodayView: View {
                     // on the toggle AND on the detector finding an unsaved, un-dismissed window, so it
                     // renders nothing by default.
                     AutoWorkoutCard()
+                    TodayWorkoutSummaryCard(workouts: workouts, isViewingToday: selectedDayOffset == 0)
                     // #today-layout (parity with Android): every Today section — the Charge/Effort/Rest hero
                     // and Start-session included — renders in the user's saved order. Reorder via the Arrange
                     // sheet (the header's up/down button; native drag rows); the order persists under the

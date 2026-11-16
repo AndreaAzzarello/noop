@@ -1496,6 +1496,7 @@ struct TodayView: View {
                 // candidate is seen without scrolling. Renders only when the Settings toggle is on AND the
                 // detector finds a recent unsaved, un-dismissed window.
                 AutoWorkoutCard()
+                TodayWorkoutSummaryCard(workouts: workouts, isViewingToday: selectedDayOffset == 0)
                 // The "still building" and "new here?" prompts are about getting today's scores going,
                 // so they stay anchored to today rather than reappearing on every navigated past day.
                 if selectedDayOffset == 0 && repo.today?.recovery == nil {
