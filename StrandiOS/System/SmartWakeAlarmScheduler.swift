@@ -464,25 +464,27 @@ final class SmartWakeAlarmScheduler {
     }
 
     /// Called only for a sustained-HR decision, never for the maximum-time detector result.
-    func triggerEarlyWake(at receivedAt: Date, schedule: SmartWakeSchedule) async {
-        guard #available(iOS 26.0, *) else { return }
-        await serialized { await self.performEarlyWake(at: receivedAt, schedule: schedule) }
+    /// Returns true when the early alarm is armed and the weekday's fallback has been replaced.
+    @discardableResult
+    func triggerEarlyWake(at receivedAt: Date, schedule: SmartWakeSchedule) async -> Bool {
+        guard #available(iOS 26.0, *) else { return false }
+        return await serialized { await self.performEarlyWake(at: receivedAt, schedule: schedule) }
     }
 
-    private func performEarlyWake(at receivedAt: Date, schedule: SmartWakeSchedule) async {
+    private func performEarlyWake(at receivedAt: Date, schedule: SmartWakeSchedule) async -> Bool {
         guard defaults.bool(forKey: enabledKey),
               manager.authorizationState == .authorized,
               loadSchedule() == schedule
-        else { return }
+        else { return false }
 
         let calendar = Calendar.current
-        guard let maximumWakeTime = schedule.nextMaximumWakeTime(after: receivedAt, calendar: calendar) else { return }
+        guard let maximumWakeTime = schedule.nextMaximumWakeTime(after: receivedAt, calendar: calendar) else { return false }
         let weekday = calendar.component(.weekday, from: maximumWakeTime)
         guard schedule.isEnabled(onWeekday: weekday),
               receivedAt < maximumWakeTime,
               receivedAt >= maximumWakeTime.addingTimeInterval(-schedule.windowDuration),
               let fallbackID = activeFallbackID(for: weekday)
-        else { return }
+        else { return false }
 
         handoffInProgress = true
         defer { handoffInProgress = false }
@@ -515,14 +517,50 @@ final class SmartWakeAlarmScheduler {
                 defaults.removeObject(forKey: earlyAlarmIDKey)
                 defaults.removeObject(forKey: earlyAlarmWeekdayKey)
                 defaults.removeObject(forKey: earlyAlarmScheduledKey)
+                return false
             }
+            return true
         } catch {
             log("early alarm could not be scheduled (\(error.localizedDescription)); fallback kept")
             defaults.removeObject(forKey: earlyAlarmIDKey)
             defaults.removeObject(forKey: earlyAlarmWeekdayKey)
             defaults.removeObject(forKey: earlyAlarmScheduledKey)
             // Keep the maximum-time fallback; early wake is best-effort.
+            return false
         }
+    }
+
+    /// Stops NOOP's own alarms that are ringing right now (the user double-tapped the strap). A one-shot early
+    /// alarm is deleted, which the alarm observer treats as a dismissal and restores the weekday's fallback;
+    /// a repeating fallback is rescheduled by the system for its next occurrence. Returns how many were stopped.
+    @discardableResult
+    func stopAlertingAlarms() async -> Int {
+        await serialized { await self.performStopAlerting() }
+    }
+
+    private func performStopAlerting() async -> Int {
+        guard defaults.bool(forKey: enabledKey) else { return 0 }
+        guard let alarms = try? manager.alarms else {
+            log("stop from strap: the alarm list could not be read")
+            return 0
+        }
+        var managed = Set(allFallbackIDs)
+        if let raw = defaults.string(forKey: earlyAlarmIDKey), let earlyID = UUID(uuidString: raw) {
+            managed.insert(earlyID)
+        }
+        var stopped = 0
+        for alarm in alarms where managed.contains(alarm.id) {
+            guard case .alerting = alarm.state else { continue }
+            do {
+                try manager.stop(id: alarm.id)
+                stopped += 1
+                log("alarm \(alarm.id.uuidString.prefix(8)) stopped from the strap")
+            } catch {
+                log("stopping alarm \(alarm.id.uuidString.prefix(8)) from the strap failed: \(error.localizedDescription)")
+            }
+        }
+        if stopped == 0 { log("stop from strap: no NOOP alarm was ringing") }
+        return stopped
     }
 
     /// Entry point for the stop intent. Runs on the same serial queue as enable / sync / reconcile

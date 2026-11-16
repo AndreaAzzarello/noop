@@ -125,7 +125,8 @@ final class SmartWakeLiveController {
 
     private(set) var schedule: SmartWakeSchedule
     private var activeDay: Date?
-    private var maximumWakeTime: Date?
+    /// The maximum wake time of the day being watched (nil when no weekday is enabled).
+    private(set) var maximumWakeTime: Date?
     private var baselineSamples: [SmartWakeHeartRateSample] = []
     private var lastReceivedTimestamp: Date?
     private var lastPersistedTimestamp: Date?
