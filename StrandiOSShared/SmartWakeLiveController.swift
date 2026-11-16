@@ -130,6 +130,9 @@ final class SmartWakeLiveController {
     private var lastReceivedTimestamp: Date?
     private var lastPersistedTimestamp: Date?
     private var engine: SmartWakeEngine
+    /// The causal light-sleep rule for the current window; built together with `engine` and dropped when the
+    /// window's statistics are finalised.
+    private var lightSleepDetector: SmartWakeLightSleepDetector?
 
     private(set) var latestDecision: SmartWakeDecision = .waiting
     private var engineNotStarted = true
@@ -169,8 +172,10 @@ final class SmartWakeLiveController {
         latestDecision = .waiting
     }
 
+    /// `rr` is the RR intervals (ms) that arrived with this heart-rate notification, if any; only the light-sleep
+    /// rule uses them.
     @discardableResult
-    func ingest(bpm: Int, at timestamp: Date, isForeground: Bool? = nil) -> SmartWakeDecision {
+    func ingest(bpm: Int, at timestamp: Date, rr: [Int] = [], isForeground: Bool? = nil) -> SmartWakeDecision {
         guard (30...220).contains(bpm) else { return latestDecision }
         prepareDay(containing: timestamp)
 
@@ -203,11 +208,16 @@ final class SmartWakeLiveController {
         }
 
         if engineNotStarted {
-            engine = makeEngine(maximumWakeTime: maximumWakeTime)
-            engineNotStarted = false
+            startEngine(maximumWakeTime: maximumWakeTime)
         }
 
-        latestDecision = engine.ingest(sample, at: timestamp)
+        let engineDecision = engine.ingest(sample, at: timestamp)
+        if engineDecision == .waiting,
+           lightSleepDetector?.ingest(bpm: bpm, at: timestamp, rr: rr) == true {
+            latestDecision = engine.markTriggered(.lightSleep)
+        } else {
+            latestDecision = engineDecision
+        }
         return latestDecision
     }
 
@@ -224,7 +234,10 @@ final class SmartWakeLiveController {
     /// Ends the current window's statistics: reports the summary once and keeps it for the diagnostics section.
     func finalizeWindowStats() {
         guard windowStats.sampleCount > 0 else { return }
-        let summary = windowStats.summary
+        var summary = windowStats.summary
+        // Why the light-sleep rule did or did not wake early, in the same line so the window is reported once.
+        if let lightSleepDetector { summary += " | light-sleep: \(lightSleepDetector.summary)" }
+        lightSleepDetector = nil
         defaults.set("ended: \(summary)", forKey: Self.windowSummaryStorageKey)
         windowStats = SmartWakeWindowStats()
         onWindowSummary?("HR window ended: \(summary)")
@@ -246,11 +259,24 @@ final class SmartWakeLiveController {
         prepareDay(containing: date)
         guard let maximumWakeTime else { return latestDecision }
         if engineNotStarted {
-            engine = makeEngine(maximumWakeTime: maximumWakeTime)
-            engineNotStarted = false
+            startEngine(maximumWakeTime: maximumWakeTime)
         }
         latestDecision = engine.evaluate(at: date)
         return latestDecision
+    }
+
+    /// Builds the engine and the light-sleep rule for this window from the retained baseline.
+    private func startEngine(maximumWakeTime: Date) {
+        engine = makeEngine(maximumWakeTime: maximumWakeTime)
+        let windowStart = maximumWakeTime.addingTimeInterval(-schedule.windowDuration)
+        let baselineStart = windowStart.addingTimeInterval(-schedule.baselineLookback)
+        var detector = SmartWakeLightSleepDetector(
+            maximumWakeTime: maximumWakeTime,
+            windowDuration: schedule.windowDuration
+        )
+        detector.seed(baselineSamples.filter { $0.timestamp >= baselineStart && $0.timestamp < windowStart })
+        lightSleepDetector = detector
+        engineNotStarted = false
     }
 
     private func makeEngine(maximumWakeTime: Date) -> SmartWakeEngine {
