@@ -45,9 +45,25 @@ What it keeps from V2 (same constants): 30 s epochs, heart-rate mean, heart-rate
 
 Without motion, V2's "still wrist" case applies to every epoch, so a raised heart rate alone never votes "awake": the live rule separates deep, REM and light, not wake.
 
-Rule: at least 60 reference epochs before the window, then `P(light) >= 0.60` for 3 consecutive valid epochs (an epoch needs at least 20 samples and no hole above 10 s; a missing or unusable epoch restarts the count).
+Rule: at least 60 reference epochs before the window, then `P(light) >= 0.60` for 4 consecutive valid epochs (2 minutes; an epoch needs at least 20 samples and no hole above 10 s; a missing or unusable epoch restarts the count), **and** the run must be an entry into light sleep: at least one of the 10 window epochs before the run began must have been REM or deep (`transitionLookbackEpochs`). Epochs before the window do not count, so the rule cannot fire until the window itself has shown a non-light epoch.
 
-**These two numbers are provisional.** Without movement the light class is only the prior, and the rule can fire very early in the window. They must be confirmed on recorded nights with `Tools/SmartWakeReplay` (below) before they are relied on.
+**Why the transition condition.** Without movement, light is close to the model's prior and `P(light)` was already at or above 0.60 on the first window epoch in 15 of 27 replayed windows, so the earlier rule (`0.60` for 3 epochs, no transition) woke 58% of the time within 3 minutes of the window opening, whatever the sleep stage. Raising the threshold or the duration alone did not fix that (33-52% of wakes in the first 3 minutes across window lengths, with many windows no longer firing); an observation period at the start of the window moved the wakes to just after it instead of spreading them.
+
+**What the replay shows, and its limits.** Nine recorded nights, 27 windows per configuration (the configurations re-use the same nights, so they are not independent), with the stage computed afterwards by V2 as the reference. It is not polysomnography. The rule was chosen on 30-minute windows ending 0 / 60 / 120 minutes after the session end and checked on other offsets and on 20 and 45 minute windows:
+
+| | 30 min, tuning | 30 min, other offsets | 20 min | 45 min |
+|---|---|---|---|---|
+| Windows that fire early | 19/27 | 18/27 | 16/27 | 22/27 |
+| Wakes in the first 3 min (earlier rule) | 5% (58%) | 0% (41%) | 6% (48%) | 5% (52%) |
+| V2 light at the wake (light share of the window) | 42% (39%) | 72% (46%) | 56% (38%) | 59% (42%) |
+| V2 deep at the wake (earlier rule) | 0% (4%) | 0% (9%) | 0% (9%) | 5% (4%) |
+
+- In the windows where the rule does not fire, the maximum-time alarm is the guarantee, as before.
+- The light share at the wake is above the window's own light share in every configuration but it did not reach the 60% target in the tuning set (42%) nor on 20 and 45 minute windows (56-59%). With only heart rate and RR, `P(light)` separates light from REM (mean 0.52 against 0.30) but **not** light from deep (0.52 against 0.51; AUC 0.70-0.74 for light against REM and deep). A higher light share would need movement, which is not available live on a WHOOP 5.0.
+- "Wake" at the wake in the replay comes mostly from the few windows where the heart-rate-rise rule fired, i.e. the user was already awake.
+- A single wake moves a percentage by 4-7 points. Read the table as a direction, not as a precision.
+
+The rule has **not** been tested on a strap or in a real night.
 
 Diagnostics: at the end of each window the Smart Wake window summary also carries why the rule did or did not wake early (reference epochs, window epochs, unusable epochs, the highest P(light), the stage counts, and the wake time or the reason for none).
 
@@ -103,7 +119,7 @@ The AlarmKit fallback and early-alert lifecycle still require physical-device ve
 
 Unit tests cover the pure engine, the live controller, the light-sleep rule's gating (reference, window, holes, restarted count), its scoring pieces and respiration feature, the vibration schedule (vibrate, wait 5 minutes, vibrate again, double tap, repeat limit, duplicate and late ticks), and the firmware skip.
 
-They do not validate the light-sleep thresholds. `Tools/SmartWakeReplay` does that offline on recorded nights:
+The light-sleep tests use synthetic data: they cover the gating, the 4-epoch requirement, and the transition decision (a pure function, `SmartWakeLightSleepDetector.enteredLight`), not the numeric calibration. A synthetic heart-rate trace cannot be steered into a run that starts after a REM epoch, so the positive case of the transition rule is exercised by the replay, not by a unit test. `Tools/SmartWakeReplay` checks the thresholds offline on recorded nights:
 
 ```bash
 unzip -p ~/Backup.noopbak noop-backup.sqlite > /tmp/noop.sqlite
@@ -115,4 +131,4 @@ swiftc -O StrandiOSShared/SmartWakeEngine.swift StrandiOSShared/SmartWakeLiveCon
 
 It runs each night through the real controller as the app feeds it, with a simulated maximum wake time at the session end plus each offset, and reports how early the rule woke, the distribution of wake times inside the window, and the after-the-night V2 stage and the strap's own `sleep_state` at that moment, next to each stage's share of the window. If most wakes land in the first minutes of the window, or in V2 deep sleep, the rule is not tracking sleep depth. The exported files hold personal health data: write them outside the repository and delete them afterwards.
 
-**Not yet verified:** the tests have been written but not run (no Xcode or iOS SDK where this was written); nothing has been tested on a strap or an iPhone; the replay has not been run on real nights. No GitHub Actions, TestFlight, signing, release, merge, or changes to `main` have been performed.
+**Not yet verified:** nothing has been tested on a strap or an iPhone. The rule was calibrated offline on nine nights (see above). No GitHub Actions, TestFlight, signing, release, merge, or changes to `main` have been performed.
