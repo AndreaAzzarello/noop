@@ -67,6 +67,9 @@ private struct TodayWorkoutSummaryContent: View {
     }
     @State private var samples: Samples?
 
+    /// The Effort scale the user picked; part of `LoadKey` so a change re-formats the Effort figure.
+    @AppStorage(UnitPrefs.effortScaleKey) private var effortScaleRaw = EffortScale.hundred.rawValue
+
     /// Everything the body shows, precomputed by `makeDisplay`.
     private struct Display {
         struct Compact: Identifiable {
@@ -78,6 +81,9 @@ private struct TodayWorkoutSummaryContent: View {
         let name: String
         let header: String
         let avgHr: Int?
+        /// Effort and energy of the featured workout; nil (and not drawn) when the row has none.
+        let effort: WorkoutWindowMetrics.Effort?
+        let kcal: String?
         let sentence: String?
         let points: [TrendPoint]
         let range: ClosedRange<Double>
@@ -92,13 +98,15 @@ private struct TodayWorkoutSummaryContent: View {
         let rows: [WorkoutRow]
         let zoneSet: HRZoneSet
         let retrySeq: Int
+        let effortScaleRaw: String
     }
 
     private var zoneSet: HRZoneSet { profile.hrZoneSet }
 
     private var loadKey: LoadKey {
         let empty = samples.map { $0.points.isEmpty } ?? true
-        return LoadKey(rows: [featured] + others, zoneSet: zoneSet, retrySeq: empty ? repo.refreshSeq : 0)
+        return LoadKey(rows: [featured] + others, zoneSet: zoneSet, retrySeq: empty ? repo.refreshSeq : 0,
+                       effortScaleRaw: effortScaleRaw)
     }
 
     // MARK: Body
@@ -145,7 +153,7 @@ private struct TodayWorkoutSummaryContent: View {
             } label: {
                 VStack(alignment: .leading, spacing: NoopMetrics.space3) {
                     header
-                    if let avg = display?.avgHr { averageBlock(avg) }
+                    statsRow
                     if let sentence = display?.sentence { zoneSummary(sentence) }
                     chart
                 }
@@ -197,6 +205,40 @@ private struct TodayWorkoutSummaryContent: View {
                 Color.clear.frame(width: 36, height: 36)
             }
         }
+    }
+
+    /// Avg HR, then Effort and energy when the row has them. Nothing is drawn for a missing figure.
+    @ViewBuilder private var statsRow: some View {
+        let avg = display?.avgHr, effort = display?.effort, kcal = display?.kcal
+        if avg != nil || effort != nil || kcal != nil {
+            HStack(alignment: .bottom, spacing: NoopMetrics.space4) {
+                if let avg { averageBlock(avg) }
+                if let effort {
+                    secondaryStat("Effort", value: effort.value,
+                                  caption: effort.scale == .whoop ? String(localized: "of 21")
+                                                                  : String(localized: "of 100"))
+                }
+                if let kcal { secondaryStat("Calories", value: kcal, caption: "kcal") }
+            }
+        }
+    }
+
+    private func secondaryStat(_ label: LocalizedStringKey, value: String, caption: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).strandOverline()
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(verbatim: value)
+                    .font(StrandFont.number(22))
+                    .foregroundStyle(StrandPalette.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(verbatim: caption)
+                    .font(StrandFont.footnote)
+                    .foregroundStyle(StrandPalette.textTertiary)
+                    .lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private func averageBlock(_ avg: Int) -> some View {
@@ -281,8 +323,9 @@ private struct TodayWorkoutSummaryContent: View {
         let row = featured
 
         // Sample-independent part first, so the header and compact rows never wait on the database.
+        let scale = UnitPrefs.resolveEffortScale(effortScaleRaw)
         let base = Self.makeDisplay(featured: row, others: others, samples: samples?.row == row ? samples : nil,
-                                    zoneSet: zoneSet)
+                                    zoneSet: zoneSet, effortScale: scale)
         display = base
 
         if let cached = samples, cached.row == row, cached.zoneSet == zoneSet, !cached.points.isEmpty {
@@ -298,11 +341,13 @@ private struct TodayWorkoutSummaryContent: View {
         guard !Task.isCancelled else { return }
         let loaded = Samples(row: row, zoneSet: zoneSet, points: points, derivedMinutes: derived)
         samples = loaded
-        display = Self.makeDisplay(featured: row, others: others, samples: loaded, zoneSet: zoneSet)
+        display = Self.makeDisplay(featured: row, others: others, samples: loaded, zoneSet: zoneSet,
+                                   effortScale: scale)
     }
 
     private static func makeDisplay(featured row: WorkoutRow, others: [WorkoutRow],
-                                    samples: Samples?, zoneSet: HRZoneSet) -> Display {
+                                    samples: Samples?, zoneSet: HRZoneSet,
+                                    effortScale: EffortScale) -> Display {
         let formatter = AppClock.hourMinuteFormatter()
         let system = distanceSystem()
         let points = samples?.points ?? []
@@ -330,6 +375,8 @@ private struct TodayWorkoutSummaryContent: View {
             name: WorkoutSource.displaySport(row.sport),
             header: line(for: row, includeToday: true, includeAvg: false, formatter: formatter, system: system),
             avgHr: avg,
+            effort: WorkoutWindowMetrics.effort(strain: row.strain, scale: effortScale),
+            kcal: row.energyKcal.flatMap { $0.isFinite && $0 > 0 ? Self.kcalFormatter.string(from: NSNumber(value: Int($0.rounded()))) : nil },
             sentence: sentence,
             points: points,
             range: lo...max(hi, lo + 1),
@@ -360,6 +407,13 @@ private struct TodayWorkoutSummaryContent: View {
         if includeAvg, let avg = row.avgHr { parts.append(String(localized: "\(avg) bpm")) }
         return parts.joined(separator: " · ")
     }
+
+    private static let kcalFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 0
+        return f
+    }()
 
     /// The same resolution `WorkoutDetailView` applies to its two `@AppStorage` unit keys.
     private static func distanceSystem() -> UnitSystem {

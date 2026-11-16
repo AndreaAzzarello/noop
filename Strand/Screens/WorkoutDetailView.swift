@@ -69,6 +69,8 @@ struct WorkoutDetailView: View {
     /// import). nil = not an on-foot sport, or no step source had data for the window.
     private struct StepReadout { let count: Int; let fromStrap: Bool }
     @State private var steps: StepReadout?
+    /// Steps for a court/field sport, which the on-foot readout above skips (WorkoutWindowMetrics).
+    @State private var courtSteps: WorkoutWindowMetrics.Steps?
 
     var body: some View {
         ScreenScaffold(title: "\(WorkoutSource.displaySport(row.sport))",
@@ -157,7 +159,11 @@ struct WorkoutDetailView: View {
             }
         }
 
+        let courtStepReadout = await WorkoutWindowMetrics.loadCourtSteps(
+            row: row, repo: repo, ticksPerStep: profile.stepTicksPerStep)
+
         await MainActor.run {
+            self.courtSteps = courtStepReadout
             self.route = routePoints
             self.hrPoints = points
             self.zoneMinutes = minutes
@@ -247,6 +253,7 @@ struct WorkoutDetailView: View {
                      value: durationLabel(row.durationS),
                      caption: String(localized: "active"),
                      accent: StrandPalette.effortColor)
+            WorkoutEffortTile(strain: row.strain, scale: effortScale)
             StatTile(label: "Avg HR",
                      value: row.avgHr.map { "\($0)" } ?? "–",
                      caption: row.avgHr != nil ? "bpm" : nil,
@@ -274,6 +281,7 @@ struct WorkoutDetailView: View {
                                                           : String(localized: "phone") },
                          accent: steps != nil ? StrandPalette.metricCyan : StrandPalette.textTertiary)
             }
+            WorkoutCourtStepsTile(steps: courtSteps)
         }
     }
 
