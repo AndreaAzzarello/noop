@@ -181,8 +181,9 @@ struct SmartWakeEngine {
 ///   - decoding is a forward filter (an HMM with V2's transition matrix) instead of Viterbi.
 ///
 /// The constants are V2's (`SleepStagerV2.swift` `baseLogPrior`, `transition`, the emission scores in `stageEpochs`).
-/// The wake threshold and the number of epochs are NOT validated yet: confirm them with `Tools/SmartWakeReplay`
-/// on recorded nights before relying on them. RR for the reference epochs is not retained across a relaunch (the
+/// The rule (P(light) >= 0.60 for 4 epochs, entered from a REM / deep epoch within the previous 10) was chosen with
+/// `Tools/SmartWakeReplay` on nine recorded nights; see docs/IOS_SMART_WAKE.md for what that does and does not
+/// show. It has not been tested on a strap in use. RR for the reference epochs is not retained across a relaunch (the
 /// persisted baseline holds heart rate only), so the respiration term is used only once enough epochs carry it.
 struct SmartWakeLightSleepDetector {
     /// Order of the entries in every probability / score array below.
@@ -206,9 +207,15 @@ struct SmartWakeLightSleepDetector {
         /// An epoch needs this many samples (of ~30 at 1 Hz) and no hole longer than `maximumGapSeconds`.
         var minimumSamplesPerEpoch = 20
         var maximumGapSeconds: TimeInterval = 10
-        /// Provisional: P(light) required, for `requiredConsecutiveEpochs` epochs in a row.
+        /// P(light) required, for `requiredConsecutiveEpochs` epochs in a row (2 minutes at 30 s epochs).
         var lightProbabilityThreshold = 0.60
-        var requiredConsecutiveEpochs = 3
+        var requiredConsecutiveEpochs = 4
+        /// The run must be an ENTRY into light sleep: at least one of the `transitionLookbackEpochs` window epochs
+        /// before the run began must have been REM or deep. Without motion, light is close to the model's prior and
+        /// P(light) is often already high when the window opens, so staying in light proves nothing (on recorded
+        /// nights 58% of wakes landed in the first 3 minutes without this). 0 disables the condition. Epochs before
+        /// the window do not count, so nothing can fire until the window itself has shown a non-light epoch.
+        var transitionLookbackEpochs = 10
         /// Trailing windows of the two HR spread features (V2: 5 and 11 minutes, centred).
         var variabilityEpochs = 10
         var variabilityMinimumEpochs = 5
@@ -231,6 +238,8 @@ struct SmartWakeLightSleepDetector {
         var stageCounts = [0, 0, 0, 0]
         var firedAt: Date?
         var firedProbability: Double?
+        /// Times the light run was long enough but had no REM / deep epoch before it.
+        var blockedWithoutTransition = 0
     }
 
     let configuration: Configuration
@@ -277,6 +286,8 @@ struct SmartWakeLightSleepDetector {
     private var beats: [Beat] = []
     private var belief: [Double]?
     private var streak = 0
+    /// Most likely stage of every epoch closed inside the window, in order; nil for an unusable epoch.
+    private var windowStages: [Stage?] = []
     private var lastClosedIndex: Int?
     private var lastSampleTime: Double?
     private var hasFired = false
@@ -328,6 +339,8 @@ struct SmartWakeLightSleepDetector {
             text += " fired=none (no valid window epochs)"
         } else if diagnostics.maximumLightProbability < configuration.lightProbabilityThreshold {
             text += " fired=none (never light)"
+        } else if diagnostics.blockedWithoutTransition > 0 {
+            text += " fired=none (no transition into light)"
         } else {
             text += " fired=none (not sustained)"
         }
@@ -350,7 +363,10 @@ struct SmartWakeLightSleepDetector {
             history.append(ClosedEpoch(index: epoch.index))
             trimHistory()
             streak = 0
-            if isInWindow { diagnostics.invalidEpochs += 1 }
+            if isInWindow {
+                diagnostics.invalidEpochs += 1
+                windowStages.append(nil)
+            }
             return false
         }
         if !isContiguous { streak = 0 }
@@ -384,16 +400,35 @@ struct SmartWakeLightSleepDetector {
         let light = probabilities[Stage.light.rawValue]
         diagnostics.windowEpochs += 1
         diagnostics.maximumLightProbability = max(diagnostics.maximumLightProbability, light)
-        if let best = probabilities.indices.max(by: { probabilities[$0] < probabilities[$1] }) {
-            diagnostics.stageCounts[best] += 1
-        }
+        let best = probabilities.indices.max(by: { probabilities[$0] < probabilities[$1] })
+        if let best { diagnostics.stageCounts[best] += 1 }
+        windowStages.append(best.flatMap(Stage.init(rawValue:)))
         if hasFired { return false }
         streak = light >= configuration.lightProbabilityThreshold ? streak + 1 : 0
         guard streak >= configuration.requiredConsecutiveEpochs else { return false }
+        guard enteredLightSleep() else {
+            diagnostics.blockedWithoutTransition += 1
+            return false
+        }
         hasFired = true
         diagnostics.firedAt = now
         diagnostics.firedProbability = light
         return true
+    }
+
+    /// True when a REM or deep epoch precedes the current run of light epochs within `transitionLookbackEpochs`
+    /// window epochs (always true when the condition is disabled).
+    private func enteredLightSleep() -> Bool {
+        Self.enteredLight(stages: windowStages, run: streak, lookback: configuration.transitionLookbackEpochs)
+    }
+
+    /// `stages` is the most likely stage of each window epoch so far (nil: unusable epoch), the last `run` of which
+    /// are the light run being judged. True when a REM or deep epoch sits within `lookback` epochs before that run.
+    static func enteredLight(stages: [Stage?], run: Int, lookback: Int) -> Bool {
+        guard lookback > 0 else { return true }
+        let runStart = stages.count - run
+        guard runStart > 0 else { return false }
+        return stages[max(0, runStart - lookback)..<runStart].contains { $0 == .deep || $0 == .rem }
     }
 
     private mutating func trimHistory() {
