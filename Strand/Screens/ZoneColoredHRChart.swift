@@ -103,6 +103,27 @@ enum HRZoneChartModel {
             .map { Threshold(zone: $0.number, value: $0.lower) }
     }
 
+    /// The plotted Y domain with headroom for the threshold rules. A rule whose bpm sits within the top
+    /// margin of `domain` would run along the plot's upper edge, under the card's subtitle, so the upper
+    /// bound is raised to leave one margin above it. Raising it can bring a higher threshold inside the
+    /// domain, so this repeats until no rule is left in the margin. The lower bound never moves.
+    static func paddedDomain(_ domain: ClosedRange<Double>, zoneSet: HRZoneSet) -> ClosedRange<Double> {
+        let span = domain.upperBound - domain.lowerBound
+        guard span.isFinite, span > 0 else { return domain }
+        let margin = max(4, 0.06 * span)
+        let lowers = zoneSet.zones.map(\.lower).filter { $0.isFinite && $0 > domain.lowerBound }
+        var upper = domain.upperBound
+        var changed = true
+        while changed {
+            changed = false
+            for lower in lowers where lower < upper && lower > upper - margin {
+                upper = lower + margin
+                changed = true
+            }
+        }
+        return domain.lowerBound...upper
+    }
+
     /// Reading nearest to `date` in a date-sorted series (binary search; a tie picks the earlier one).
     /// Same rule as `TrendChart`'s, whose copy is internal to the StrandDesign package.
     static func nearest(to date: Date, in points: [TrendPoint]) -> TrendPoint? {
@@ -125,6 +146,8 @@ struct ZoneColoredHRChart: View {
 
     private let points: [TrendPoint]
     private let valueRange: ClosedRange<Double>
+    /// `valueRange` with headroom above the highest threshold rule (zoned chart only).
+    private let plotRange: ClosedRange<Double>
     private let valueFormat: (Double) -> String
     private let dateFormat: (Date) -> String
     private let accessibilityLabel: String?
@@ -167,9 +190,12 @@ struct ZoneColoredHRChart: View {
                                                        targetCount: ChartDownsample.targetVertices)
             let runs = HRZoneChartModel.runs(drawn, zoneSet: usable)
             self.runs = runs
-            self.thresholds = HRZoneChartModel.thresholds(usable, in: valueRange)
+            let padded = HRZoneChartModel.paddedDomain(valueRange, zoneSet: usable)
+            self.plotRange = padded
+            self.thresholds = HRZoneChartModel.thresholds(usable, in: padded)
             self.legendZones = Array(Set(runs.map(\.zone))).sorted()
         } else {
+            self.plotRange = valueRange
             self.runs = []
             self.thresholds = []
             self.legendZones = []
@@ -239,7 +265,7 @@ struct ZoneColoredHRChart: View {
                     ForEach(run.points.indices, id: \.self) { i in
                         AreaMark(
                             x: .value("Time", run.points[i].date),
-                            yStart: .value("Floor", valueRange.lowerBound),
+                            yStart: .value("Floor", plotRange.lowerBound),
                             yEnd: .value("Heart rate", run.points[i].value),
                             series: .value("Run", "area-\(run.id)")
                         )
@@ -273,7 +299,7 @@ struct ZoneColoredHRChart: View {
                 }
             }
         }
-        .chartYScale(domain: valueRange)
+        .chartYScale(domain: plotRange)
         .chartPlotStyle { $0.clipped() }
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 5)) { value in
@@ -300,7 +326,10 @@ struct ZoneColoredHRChart: View {
         }
         .modifier(WorkoutXDomain(range: workoutTimeAxis))
         .chartOverlay { proxy in hoverOverlay(proxy, zoneSet: zoneSet) }
-        .frame(height: height)
+        // Flexible, not fixed: a host that hands this view a bounded height (ChartCard gives 220) gets the
+        // legend its natural height first and the plot the rest, instead of a plot + legend taller than
+        // the slot that overflows onto the card's subtitle and footer. An unbounded host uses `height`.
+        .frame(minHeight: min(120, height), idealHeight: height, maxHeight: height)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: accessibilityLabel ?? ""))
         .accessibilityValue(Text(verbatim: a11yValue))
@@ -361,6 +390,8 @@ struct ZoneColoredHRChart: View {
                 }
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
+        .layoutPriority(1)
         .accessibilityHidden(true)
     }
 }

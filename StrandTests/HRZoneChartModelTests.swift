@@ -111,4 +111,34 @@ final class HRZoneChartModelTests: XCTestCase {
         XCTAssertEqual(HRZoneChartModel.nearest(to: t0.addingTimeInterval(-500), in: pts)?.value, 100)
         XCTAssertNil(HRZoneChartModel.nearest(to: t0, in: []))
     }
+
+    // MARK: paddedDomain
+
+    func testPaddedDomainLeavesRoomAboveARuleNearTheTop() {
+        // Thresholds 100/120/140/160/180. 160 sits 1 bpm under the top: margin = max(4, 6% of 61) = 4.
+        let padded = HRZoneChartModel.paddedDomain(100.5...161.5, zoneSet: zones)
+        XCTAssertEqual(padded.lowerBound, 100.5)
+        XCTAssertGreaterThanOrEqual(padded.upperBound, 160 + 4)
+        XCTAssertTrue(HRZoneChartModel.thresholds(zones, in: padded).map(\.zone).contains(4))
+    }
+
+    func testPaddedDomainIsUnchangedWhenNoRuleIsNearTheTop() {
+        XCTAssertEqual(HRZoneChartModel.paddedDomain(60...150, zoneSet: zones), 60...150)
+        // A rule exactly one margin below the top is not in the margin.
+        XCTAssertEqual(HRZoneChartModel.paddedDomain(90...144, zoneSet: zones), 90...144)
+    }
+
+    func testPaddedDomainRepeatsWhenTheRaisedTopReachesTheNextRule() {
+        // Custom rules 150 and 153: raising the top over 150 brings 153 into the margin, so it is cleared too.
+        let close = HRZones.zones(maxHR: 200, customLowerBounds: [90, 110, 130, 150, 153])
+        let padded = HRZoneChartModel.paddedDomain(100...151, zoneSet: close)
+        XCTAssertGreaterThanOrEqual(padded.upperBound, 153 + 4)
+    }
+
+    func testPaddedDomainIgnoresRulesOutsideTheDomainAndDegenerateRanges() {
+        XCTAssertEqual(HRZoneChartModel.paddedDomain(60...90, zoneSet: zones), 60...90)
+        XCTAssertEqual(HRZoneChartModel.paddedDomain(120...120, zoneSet: zones), 120...120)
+        // A rule at or below the lower bound never moves the top.
+        XCTAssertEqual(HRZoneChartModel.paddedDomain(120...150, zoneSet: zones).lowerBound, 120)
+    }
 }
