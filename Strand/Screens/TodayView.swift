@@ -1496,7 +1496,10 @@ struct TodayView: View {
                 // candidate is seen without scrolling. Renders only when the Settings toggle is on AND the
                 // detector finds a recent unsaved, un-dismissed window.
                 AutoWorkoutCard()
-                TodayWorkoutSummaryCard(workouts: workouts, isViewingToday: selectedDayOffset == 0)
+                // Fallback only: the summary normally follows the rings (`.hero`), see todaySection.
+                if !sectionOrder.contains(.hero) {
+                    TodayWorkoutSummaryCard(workouts: workouts, isViewingToday: selectedDayOffset == 0)
+                }
                 // The "still building" and "new here?" prompts are about getting today's scores going,
                 // so they stay anchored to today rather than reappearing on every navigated past day.
                 if selectedDayOffset == 0 && repo.today?.recovery == nil {
@@ -1945,6 +1948,7 @@ struct TodayView: View {
         switch section {
         case .hero:
             classicHeroSection
+            TodayWorkoutSummaryCard(workouts: workouts, isViewingToday: selectedDayOffset == 0)
         case .liveSession:
             if liveSessionsBeta { liveSessionStartSection }
         case .synthesis:
