@@ -35,6 +35,63 @@ struct ForkNextWake: Equatable {
     let latest: Date
 }
 
+// MARK: - Extra-large extras
+//
+// Everything below feeds ONLY the extra-large NOOP+ family. Every type carries the local day number it was
+// built for, so a block from yesterday is dropped on read instead of shown under today's date, and every
+// field of `ForkWidgetSnapshot` that holds one is optional, so a snapshot written by an older build still
+// decodes (the generated `Codable` fills a missing optional with nil).
+
+/// Respiratory rate and skin temperature, pre-formatted by the app: the widget extension cannot read the
+/// app's unit preferences (they live outside the App Group), the same reason `effortDisplay` is a string.
+struct ForkVitals: Codable, Equatable, Sendable {
+    let day: Int
+    /// "14.2" (breaths per minute); nil when no night within the staleness bound measured one.
+    var respText: String?
+    /// "34.2 °C" or "+0.1 Δ°C": the number and unit the Today card leads with, so the two never disagree.
+    var skinText: String?
+}
+
+/// Last night's stage minutes. Absent entirely when the night was HR-only or too sparse to stage.
+struct ForkSleepStages: Codable, Equatable, Sendable {
+    let day: Int
+    let deepMin: Int
+    let remMin: Int
+    let lightMin: Int
+    let efficiencyPct: Int?
+}
+
+/// The newest workout that started today.
+struct ForkWorkout: Codable, Equatable, Sendable {
+    let day: Int
+    /// Canonical sport id (drives the SF Symbol through `sportSymbol`).
+    let sport: String
+    /// Display name, already localised in the app's language.
+    let sportName: String
+    let startTs: Int64
+    let durationMin: Int
+    /// Effort on the user's chosen scale, pre-formatted ("11.8" or "62"); nil when the row has none.
+    var effortText: String?
+    /// True when `effortText` is on WHOOP's 0–21 axis (spoken form only).
+    var effortWhoop: Bool?
+    var avgHr: Int?
+    var maxHr: Int?
+    var kcal: Int?
+}
+
+/// One day of the 7-day strip, on the 0–100 axis the rings use. Nil = that score does not exist for the day.
+struct ForkTrendDay: Codable, Equatable, Sendable {
+    var charge: Int?
+    var effort: Int?
+    var rest: Int?
+}
+
+/// The trailing seven calendar days, oldest first, ending on `day` (today).
+struct ForkTrend: Codable, Equatable, Sendable {
+    let day: Int
+    let days: [ForkTrendDay]
+}
+
 struct ForkWidgetSnapshot: Codable, Equatable {
     /// WidgetKit kind of the NOOP+ widget. One constant shared by the widget and the reload call.
     static let kind = "NOOPPlusWidget"
@@ -59,6 +116,14 @@ struct ForkWidgetSnapshot: Codable, Equatable {
     var hrDay: ForkHRDay?
     /// Publisher gate: day + HR fingerprint + zone set the `hrDay` above was built from. Not rendered.
     var hrFingerprint: String?
+
+    // Extra-large only. All optional (see the block above).
+    var vitals: ForkVitals?
+    var sleepStages: ForkSleepStages?
+    var workout: ForkWorkout?
+    var trend: ForkTrend?
+    /// Publisher gate for the two blocks that need a database read (`workout`, `trend`). Not rendered.
+    var extrasKey: String?
 
     static var empty: ForkWidgetSnapshot {
         ForkWidgetSnapshot(publishedAt: .distantPast)
@@ -90,6 +155,10 @@ struct ForkWidgetSnapshot: Codable, Equatable {
             && smartWake == other.smartWake
             && smartWakeSkipUntil == other.smartWakeSkipUntil
             && hrDay == other.hrDay
+            && vitals == other.vitals
+            && sleepStages == other.sleepStages
+            && workout == other.workout
+            && trend == other.trend
     }
 
     // MARK: Resolved on read (nothing runs at midnight to tidy the App Group)
@@ -106,6 +175,32 @@ struct ForkWidgetSnapshot: Codable, Equatable {
         guard let hrDay, hrDay.day == WidgetSnapshot.localDayNumber(now, calendar: calendar),
               hrDay.runs.contains(where: { !$0.points.isEmpty }) else { return nil }
         return hrDay
+    }
+
+    // MARK: Extra-large blocks, each only while it belongs to today
+
+    func vitalsToday(now: Date, calendar: Calendar = .current) -> ForkVitals? {
+        guard let vitals, vitals.day == WidgetSnapshot.localDayNumber(now, calendar: calendar),
+              vitals.respText != nil || vitals.skinText != nil else { return nil }
+        return vitals
+    }
+
+    func sleepStagesToday(now: Date, calendar: Calendar = .current) -> ForkSleepStages? {
+        guard let sleepStages, sleepStages.day == WidgetSnapshot.localDayNumber(now, calendar: calendar),
+              sleepStages.deepMin + sleepStages.remMin + sleepStages.lightMin > 0 else { return nil }
+        return sleepStages
+    }
+
+    func workoutToday(now: Date, calendar: Calendar = .current) -> ForkWorkout? {
+        guard let workout, workout.day == WidgetSnapshot.localDayNumber(now, calendar: calendar) else { return nil }
+        return workout
+    }
+
+    /// The strip, only when today's and when at least one day has any score to draw.
+    func trendToday(now: Date, calendar: Calendar = .current) -> ForkTrend? {
+        guard let trend, trend.day == WidgetSnapshot.localDayNumber(now, calendar: calendar),
+              trend.days.contains(where: { $0.charge != nil || $0.effort != nil || $0.rest != nil }) else { return nil }
+        return trend
     }
 
     /// The next occurrence the widget should announce, or nil when Smart Wake is off.
