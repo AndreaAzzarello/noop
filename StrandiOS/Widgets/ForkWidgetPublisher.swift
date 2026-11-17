@@ -43,7 +43,7 @@ enum ForkWidgetPublisher {
         let from = Int(calendar.startOfDay(for: now).timeIntervalSince1970)
         let to = Int(now.timeIntervalSince1970)
         let zoneSet = model.profile.hrZoneSet
-        let sleepMin = model.repo.today?.totalSleepMin
+        let sleepMin = model.repo.today?.totalSleepMin.map { Int($0.rounded()) }
 
         let previous = ForkWidgetSnapshot.load()
 
