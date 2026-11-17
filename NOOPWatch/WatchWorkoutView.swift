@@ -358,7 +358,45 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
     override init() {
         super.init()
         refreshAvailability()
+        recoverOrphanedSessionOnce()
     }
+
+    #if canImport(HealthKit) && os(watchOS)
+    /// Battery: recovery runs once per app launch, however many times this object is (re)created.
+    private static var didAttemptRecovery = false
+
+    /// Pick up a workout session the system kept alive across a relaunch/crash. Without this an orphaned
+    /// HKWorkoutSession keeps the app (and its sensors) running with no UI attached.
+    /// - `.running` / `.paused`: re-attach and show the recording UI; the user ends it with End as usual.
+    /// - anything else (`.stopped`, `.ended`, …): the old end() already saved the workout, so do NOT call
+    ///   finishWorkout (that would duplicate it or create an empty one). Just release the session.
+    private func recoverOrphanedSessionOnce() {
+        guard !Self.didAttemptRecovery else { return }
+        Self.didAttemptRecovery = true
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        store.recoverActiveWorkoutSession { [weak self] recovered, _ in
+            guard let recovered else { return }
+            DispatchQueue.main.async {
+                guard let self, self.session == nil else { return }
+                let recoveredBuilder = recovered.associatedWorkoutBuilder()
+                switch recovered.state {
+                case .running, .paused:
+                    recovered.delegate = self
+                    recoveredBuilder.delegate = self
+                    self.session = recovered
+                    self.builder = recoveredBuilder
+                    self.elapsed = recoveredBuilder.elapsedTime
+                    self.phase = recovered.state == .paused ? .paused : .active
+                default:
+                    recovered.end()
+                    recoveredBuilder.discardWorkout()
+                }
+            }
+        }
+    }
+    #else
+    private func recoverOrphanedSessionOnce() {}
+    #endif
 
     /// Decide the initial phase from HealthKit availability and the write status we already hold. We do not
     /// ask for permission here, only on Start or the explicit "Allow access" button, so opening the tab is
@@ -424,9 +462,21 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
 
             let begin = Date()
             session.startActivity(with: begin)
-            builder.beginCollection(withStart: begin) { [weak self] _, _ in
-                // Collection started (or failed silently); the delegate callbacks drive the UI from here.
-                DispatchQueue.main.async { self?.phase = .active }
+            builder.beginCollection(withStart: begin) { [weak self] success, _ in
+                DispatchQueue.main.async {
+                    guard success else {
+                        // Battery: a session with no collecting builder would keep running for nothing.
+                        // Release it and let the user retry.
+                        session.end()
+                        builder.discardWorkout()
+                        self?.session = nil
+                        self?.builder = nil
+                        self?.phase = .idle
+                        return
+                    }
+                    // Collection started; the delegate callbacks drive the UI from here.
+                    self?.phase = .active
+                }
             }
             StrandHaptic.commit.play()  // a firm tap confirms the session is live without looking
         } catch {
@@ -479,6 +529,9 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
             builder.finishWorkout { [weak self] hkWorkout, _ in
                 DispatchQueue.main.async {
                     if let duration = hkWorkout?.duration { self?.elapsed = duration }
+                    // Battery: stopActivity only moves the session to .stopped; without end() it stays
+                    // alive and keeps the app running in the background. Always end it, saved or not.
+                    session.end()
                     StrandHaptic.success.play()  // milestone: the workout is banked to HealthKit
                     self?.phase = .saved
                     self?.session = nil
@@ -526,7 +579,10 @@ extension WatchWorkoutSession: HKWorkoutSessionDelegate {
 
     func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
         // The session died on us. Surface idle so the user can retry rather than sitting on a frozen screen.
+        // Battery: release the dead session so nothing stays active behind an idle screen.
         DispatchQueue.main.async { [weak self] in
+            workoutSession.end()
+            self?.builder?.discardWorkout()
             self?.phase = .idle
             self?.session = nil
             self?.builder = nil
