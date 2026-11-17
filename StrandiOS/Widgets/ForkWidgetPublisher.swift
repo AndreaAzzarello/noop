@@ -65,6 +65,10 @@ enum ForkWidgetPublisher {
             hrDay = previous?.hrDay?.day == day ? previous?.hrDay : nil
         }
 
+        // Extra-large blocks. Vitals and stages come from rows already in memory; the workout and the
+        // 7-day strip need a database read, which only runs when `extrasKey` moved.
+        let extras = await buildExtras(from: model, now: now, day: day, hrGate: gate, previous: previous)
+
         // Re-read after the awaits so a Smart Wake publish that landed meanwhile is not overwritten.
         var next = ForkWidgetSnapshot.load() ?? .empty
         let before = next
@@ -72,7 +76,102 @@ enum ForkWidgetPublisher {
         next.sleepDay = sleepMin == nil ? nil : day
         next.hrDay = hrDay
         next.hrFingerprint = hrGate
+        next.vitals = extras.vitals
+        next.sleepStages = extras.sleepStages
+        next.workout = extras.workout
+        next.trend = extras.trend
+        next.extrasKey = extras.key
         commit(next, previous: before, now: now)
+    }
+
+    // MARK: Extra-large extras
+
+    private struct Extras {
+        var vitals: ForkVitals?
+        var sleepStages: ForkSleepStages?
+        var workout: ForkWorkout?
+        var trend: ForkTrend?
+        var key: String?
+    }
+
+    /// The same resolvers the Today screen uses for each figure, so a widget block and the app card cannot
+    /// disagree: `Repository.lastRespDay` (bounded carry), `SkinTempDisplay.leadReading` (absolute first,
+    /// the user's Settings choice), `TodayWorkoutSummary.todaysWorkouts`, `WorkoutWindowMetrics.effort`.
+    private static func buildExtras(from model: AppModel, now: Date, day: Int, hrGate: String?,
+                                    previous: ForkWidgetSnapshot?) async -> Extras {
+        let repo = model.repo
+        var out = Extras()
+        let defaults = UserDefaults.standard
+
+        // Vitals (in memory).
+        let row = repo.today
+        let todayKey = row?.day ?? max(Repository.logicalDayKey(now), Repository.localDayKey(now))
+        let resp = row?.respRateBpm ?? Repository.lastRespDay(days: repo.days, todayKey: todayKey)?.respRateBpm
+        let skinRow = [row, Repository.lastVitalsDay(days: repo.days, todayKey: todayKey),
+                       Repository.lastSkinTempReadingDay(days: repo.days, todayKey: todayKey)]
+            .compactMap { $0 }
+            .first { $0.skinTempC != nil || $0.skinTempDevC != nil }
+        let preferred = SkinTempDisplay.Kind(rawValue: defaults.string(forKey: UnitPrefs.skinTempDisplayKey) ?? "") ?? .absolute
+        let system = UnitSystem(rawValue: defaults.string(forKey: UnitPrefs.systemKey) ?? "") ?? .metric
+        let fahrenheit = UnitPrefs.resolveTemperature(
+            system: system, override: defaults.string(forKey: UnitPrefs.temperatureKey) ?? "") == .fahrenheit
+        let skinText = SkinTempDisplay.leadReading(absC: skinRow?.skinTempC, devC: skinRow?.skinTempDevC, prefer: preferred)
+            .map { SkinTempDisplay.formatReading($0, fahrenheit: fahrenheit) }
+        let respText = resp.map { String(format: "%.1f", locale: AppLanguage.activeLocale, $0) }
+        if respText != nil || skinText != nil {
+            out.vitals = ForkVitals(day: day, respText: respText, skinText: skinText)
+        }
+
+        // Sleep stages (in memory). Hidden when the night has no stage minutes at all.
+        if let r = row, let deep = r.deepMin, let rem = r.remMin, let light = r.lightMin, deep + rem + light > 0 {
+            let eff = r.efficiency.map { $0 <= 1.0 ? $0 * 100 : $0 }
+            out.sleepStages = ForkSleepStages(day: day, deepMin: Int(deep.rounded()), remMin: Int(rem.rounded()),
+                                              lightMin: Int(light.rounded()), efficiencyPct: eff.map { Int($0.rounded()) })
+        }
+
+        // Workout and 7-day strip: database reads, gated.
+        let scaleRaw = defaults.string(forKey: UnitPrefs.effortScaleKey) ?? ""
+        let key = "\(day)|\(hrGate ?? "")|\(repo.refreshSeq)|\(scaleRaw)"
+        out.key = key
+        if key == previous?.extrasKey {
+            out.workout = previous?.workout
+            out.trend = previous?.trend
+            return out
+        }
+
+        let scale = UnitPrefs.resolveEffortScale(scaleRaw)
+        let rows = await repo.workoutRows(days: 2)
+        if let w = TodayWorkoutSummary.todaysWorkouts(rows, now: now).first {
+            let effortText: String? = w.strain.flatMap { strain in
+                guard strain.isFinite else { return nil }
+                return scale == .whoop ? UnitFormatter.effortDisplay(strain, scale: scale) : String(Int(strain.rounded()))
+            }
+            let seconds = w.durationS ?? Double(w.endTs - w.startTs)
+            out.workout = ForkWorkout(
+                day: day, sport: w.sport,
+                sportName: Bundle.main.localizedString(forKey: WorkoutSource.displaySport(w.sport),
+                                                       value: WorkoutSource.displaySport(w.sport), table: nil),
+                startTs: Int64(w.startTs), durationMin: max(1, Int((seconds / 60).rounded())),
+                effortText: effortText,
+                effortWhoop: scale == .whoop,
+                avgHr: w.avgHr, maxHr: w.maxHr,
+                kcal: w.energyKcal.flatMap { $0.isFinite && $0 > 0 ? Int($0.rounded()) : nil })
+        }
+
+        let restSeries = await repo.exploreSeries(key: "sleep_performance", source: "my-whoop")
+        let restByDay = Dictionary(restSeries.map { ($0.day, $0.value) }, uniquingKeysWith: { _, last in last })
+        let byDay = Dictionary(repo.days.map { ($0.day, $0) }, uniquingKeysWith: { _, last in last })
+        let calendar = Calendar.current
+        let strip: [ForkTrendDay] = (0..<7).reversed().map { back in
+            let date = calendar.date(byAdding: .day, value: -back, to: now) ?? now
+            let k = Repository.localDayKey(date)
+            let m = byDay[k]
+            return ForkTrendDay(charge: m?.recovery.map { Int($0.rounded()) },
+                                effort: m?.strain.map { Int($0.rounded()) },
+                                rest: restByDay[k].map { Int($0.rounded()) })
+        }
+        out.trend = ForkTrend(day: day, days: strip)
+        return out
     }
 
     // MARK: Smart Wake
