@@ -1697,6 +1697,7 @@ final class AppModel: ObservableObject {
         #if os(iOS) && canImport(AlarmKit)
         applySmartWakeSchedule()
         #endif
+        if SmartWakeFirmwareWake.holdsAlarm(arm: { ble.armStrapAlarm(at: $0) }) { return }   // a Smart Wake run owns the strap alarm
         let overrides = WindDownNudge.perDayWakeOverrides
         guard behavior.smartAlarmEnabled else {
             ble.disableStrapAlarm()

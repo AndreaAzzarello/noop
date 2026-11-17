@@ -53,13 +53,24 @@ enum SmartWakeLiveWiring {
         controller.onWindowSummary = { SmartWakeDiagnostics.record($0) }
         SmartWakeDiagnostics.onRecord = { [weak model] line in model?.live.append(log: AppModel.stamped(line)) }
 
-        // After a confirmed early wake the WHOOP firmware alarm must not vibrate again at the maximum time. Record
-        // the skip, then re-arm through the existing path, which now searches for the next occurrence after it.
+        // When an early wake-up ends (double tap, or its vibration ran out) the WHOOP firmware alarm must not vibrate
+        // again at the maximum time. Record the skip, then re-arm through the existing path, which searches for the
+        // next occurrence after it. The re-arm also runs with the firmware alarm off, so nothing stays armed.
         strapAlarm.onEarlyWakeConfirmed = { [weak model] maximumWakeTime in
-            guard let model, model.behavior.smartWakeEnabled, model.behavior.smartAlarmEnabled else { return }
-            SmartWakeFirmwareSkip.record(skipUntil: maximumWakeTime)
-            SmartWakeDiagnostics.record("firmware alarm: this morning's occurrence skipped, next one armed")
+            guard let model else { return }
+            if model.behavior.smartWakeEnabled, model.behavior.smartAlarmEnabled {
+                SmartWakeFirmwareSkip.record(skipUntil: maximumWakeTime)
+                SmartWakeDiagnostics.record("firmware alarm: this morning's occurrence skipped, next one armed")
+            }
             model.applySmartAlarm()
+        }
+
+        // Event 57 during a wake-up run belongs to the run: no "smart alarm" notification sound and no re-arm of
+        // tomorrow's alarm until the run ends. Outside a run the handler AppModel installed runs as before.
+        let existingFirmwareFired = model.live.onSmartAlarmFired
+        model.live.onSmartAlarmFired = { [weak strapAlarm] in
+            if strapAlarm?.handleFirmwareFired() == true { return }
+            existingFirmwareFired?()
         }
 
         // A strap double tap that ends a wake-up vibration is consumed here; any other tap goes on to the handler
@@ -87,13 +98,18 @@ enum SmartWakeLiveWiring {
             case .lightSleep, .sustainedHeartRateRise:
                 let label = reason == .lightSleep ? "light sleep" : "heart-rate rise"
                 SmartWakeDiagnostics.record("early wake: \(label)")
-                // The strap is already connected, so it vibrates straight away; the one-shot AlarmKit alarm that
-                // replaces the weekday's fallback follows a few seconds later.
-                strapAlarm.beginEarly(reason: label, maximumWakeTime: maximumWakeTime, at: timestamp)
+                // The strap vibrates through its FIRMWARE alarm (armed a moment ahead, silent); the iPhone alarm is only
+                // a backup that rings a few minutes later and is cancelled by a double tap. With no usable strap link
+                // the iPhone alarm rings straight away, and the weekday's maximum-time alarm stays until a stop.
+                let start = strapAlarm.beginEarly(reason: label, maximumWakeTime: maximumWakeTime, at: timestamp)
                 #if canImport(AlarmKit)
-                if #available(iOS 26.0, *) {
+                if #available(iOS 26.0, *), start != .alreadyRan {
+                    let viaStrap = start == .started
                     Task {
-                        await SmartWakeAlarmScheduler.shared.triggerEarlyWake(at: timestamp, schedule: schedule)
+                        await SmartWakeAlarmScheduler.shared.triggerEarlyWake(
+                            at: timestamp, schedule: schedule,
+                            alertDelay: viaStrap ? SmartWakeBackupPlan.defaultDelay : 8,
+                            keepFallback: viaStrap)
                     }
                 }
                 #endif

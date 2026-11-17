@@ -1,101 +1,127 @@
 import Foundation
 
-/// Pure schedule of the strap vibration for a Smart Wake wake-up.
+/// Pure schedule of the strap vibration for a Smart Wake wake-up, driven through the WHOOP FIRMWARE alarm.
 ///
-/// The WHOOP 5/MG vibration has no intensity control in the mapped protocol and a started pattern cannot be
-/// stopped (`STOP_HAPTICS` is not on the 5/MG allowlist), so the strongest effect available is a longer, denser
-/// train: a burst is `commandsPerBurst` haptic commands `commandSpacing` apart. With `repeats` on, a new burst
-/// starts `repeatInterval` after the previous one ended, until the user double-taps the strap or
-/// `maximumRepeats` repeats have run.
+/// Why not app-commanded haptics: stacking `runHapticsPattern` commands left a WHOOP 5.0 vibrating
+/// continuously for over 15 minutes (2026-11-17). On the 5/MG `STOP_HAPTICS` is not allowed and a pattern the
+/// app started is not stopped by a double tap. The firmware alarm is the one vibration whose chain is
+/// documented end to end (`STRAP_DRIVEN_ALARM_EXECUTED` 57, `HAPTICS_FIRED` 60, dismissed by `DOUBLE_TAP`), so
+/// this type only ever asks the caller to ARM that alarm for "a moment from now". It never asks for a haptic.
 ///
-/// The type only decides WHEN a command is due; the caller sends it. It is driven entirely by the `now` it is
-/// handed, so duplicate or late ticks never produce duplicate commands, and after a suspension it sends one
-/// command and carries on (missed bursts are dropped, never replayed).
+/// States: idle, armed (waiting for event 57), fired (vibrating, waiting for a double tap), stopped.
+/// With `maximumRepeats > 0` a fired alarm that gets no double tap within `repeatInterval` is armed again, up
+/// to `maximumRepeats` times, then the run ends. A double tap ends the run at once.
+///
+/// Driven entirely by the `now` it is handed: duplicate or late ticks never produce duplicate actions, and
+/// after a suspension it returns one action per call and carries on (missed repeats are dropped, never replayed).
 struct InsistentWakeAlarm {
     struct Configuration: Equatable {
-        var commandsPerBurst = 3
-        var commandSpacing: TimeInterval = 5
-        /// Wait between the last command of a burst and the first of the next.
+        /// How far ahead of "now" the firmware alarm is armed. Covers the write, the strap clock skew and a late tick.
+        var firmwareMargin: TimeInterval = 30
+        /// After the armed instant, how long to wait for event 57 before treating the alarm as fired anyway.
+        var notObservedGrace: TimeInterval = 90
+        /// Wait between a fired alarm and the next arm (or the end of the run when there are no repeats).
         var repeatInterval: TimeInterval = 5 * 60
-        /// Bursts that follow the first one; 6 repeats keep the strap going for about half an hour.
+        /// Arms that follow the first one; 0 = the plain Smart Wake wake-up (one vibration).
         var maximumRepeats = 6
-        /// False: one burst only (the plain Smart Wake wake-up).
-        var repeats: Bool
 
-        static let insistent = Configuration(repeats: true)
-        static let single = Configuration(repeats: false)
+        static let insistent = Configuration(maximumRepeats: 6)
+        static let single = Configuration(maximumRepeats: 0)
+        /// The "test the strap alarm" button: armed a minute ahead, one vibration, no repeats.
+        static let test = Configuration(firmwareMargin: 60, maximumRepeats: 0)
     }
 
     enum StopReason: Equatable {
         case doubleTap
         case repeatLimit
-        case singleBurstDone
+        /// A single vibration that nobody confirmed within `repeatInterval`.
+        case expired
     }
 
     enum Phase: Equatable {
         case idle
-        case active
+        case armed(fireAt: Date, attempt: Int)
+        case fired(at: Date, attempt: Int)
         case stopped(StopReason)
     }
 
     enum Action: Equatable {
-        /// Send one haptic command. `burst` counts from 0, `index` is the command inside the burst.
-        case sendBuzz(burst: Int, index: Int)
+        /// Arm the firmware alarm for this instant. `attempt` counts from 0.
+        case armFirmware(at: Date, attempt: Int)
+        /// The armed instant passed with no event 57; the run goes on as if it had fired.
+        case firedNotObserved(attempt: Int)
         case stopped(StopReason)
     }
 
     let configuration: Configuration
     private(set) var phase = Phase.idle
-    private var burst = 0
-    private var commandsSent = 0
-    private var nextCommandAt: Date?
 
     init(configuration: Configuration = .insistent) {
         self.configuration = configuration
     }
 
-    var isActive: Bool { phase == .active }
-
-    /// Begins the first burst. Ignored unless idle, so a repeated trigger cannot restart a morning that ran.
-    mutating func start(at now: Date) -> [Action] {
-        guard phase == .idle else { return [] }
-        phase = .active
-        burst = 0
-        commandsSent = 0
-        nextCommandAt = now
-        return tick(now: now)
-    }
-
-    /// Returns the command due at `now`, if any: at most one per call.
-    mutating func tick(now: Date) -> [Action] {
-        guard phase == .active, let due = nextCommandAt, now >= due else { return [] }
-        let send = Action.sendBuzz(burst: burst, index: commandsSent)
-        commandsSent += 1
-
-        if commandsSent < configuration.commandsPerBurst {
-            nextCommandAt = now.addingTimeInterval(configuration.commandSpacing)
-            return [send]
+    /// True while a run is in progress (armed or fired).
+    var isActive: Bool {
+        switch phase {
+        case .armed, .fired: return true
+        case .idle, .stopped: return false
         }
-
-        // The burst is complete.
-        guard configuration.repeats else { return [send, finish(.singleBurstDone)] }
-        guard burst < configuration.maximumRepeats else { return [send, finish(.repeatLimit)] }
-        burst += 1
-        commandsSent = 0
-        nextCommandAt = now.addingTimeInterval(configuration.repeatInterval)
-        return [send]
     }
 
-    /// A double tap on the strap. `consumed` is true only while a vibration run is in progress; otherwise the tap
-    /// belongs to whoever else handles it.
+    /// Begins the run. Ignored unless idle, so a repeated trigger cannot restart a morning that ran.
+    /// `firstFireAt`: an instant the firmware alarm is ALREADY armed for (the maximum time), so nothing is sent.
+    mutating func start(at now: Date, firstFireAt: Date? = nil) -> [Action] {
+        guard phase == .idle else { return [] }
+        if let firstFireAt {
+            phase = .armed(fireAt: firstFireAt, attempt: 0)
+            return []
+        }
+        let fireAt = now.addingTimeInterval(configuration.firmwareMargin)
+        phase = .armed(fireAt: fireAt, attempt: 0)
+        return [.armFirmware(at: fireAt, attempt: 0)]
+    }
+
+    /// Event 57 arrived. Returns true while a run is active, so the caller keeps the event to itself.
+    mutating func firmwareFired(now: Date) -> Bool {
+        switch phase {
+        case let .armed(_, attempt):
+            phase = .fired(at: now, attempt: attempt)
+            return true
+        case .fired:
+            return true
+        case .idle, .stopped:
+            return false
+        }
+    }
+
+    /// Returns the action due at `now`, if any: at most one per call.
+    mutating func tick(now: Date) -> [Action] {
+        switch phase {
+        case let .armed(fireAt, attempt):
+            guard now >= fireAt.addingTimeInterval(configuration.notObservedGrace) else { return [] }
+            phase = .fired(at: now, attempt: attempt)
+            return [.firedNotObserved(attempt: attempt)]
+        case let .fired(at, attempt):
+            guard now >= at.addingTimeInterval(configuration.repeatInterval) else { return [] }
+            if configuration.maximumRepeats == 0 { return [finish(.expired)] }
+            if attempt >= configuration.maximumRepeats { return [finish(.repeatLimit)] }
+            let fireAt = now.addingTimeInterval(configuration.firmwareMargin)
+            phase = .armed(fireAt: fireAt, attempt: attempt + 1)
+            return [.armFirmware(at: fireAt, attempt: attempt + 1)]
+        case .idle, .stopped:
+            return []
+        }
+    }
+
+    /// A double tap on the strap. `consumed` is true only while a run is in progress; otherwise the tap belongs
+    /// to whoever else handles it.
     mutating func doubleTap() -> (consumed: Bool, actions: [Action]) {
-        guard phase == .active else { return (false, []) }
+        guard isActive else { return (false, []) }
         return (true, [finish(.doubleTap)])
     }
 
     private mutating func finish(_ reason: StopReason) -> Action {
         phase = .stopped(reason)
-        nextCommandAt = nil
         return .stopped(reason)
     }
 }
