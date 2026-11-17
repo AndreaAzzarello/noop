@@ -24,12 +24,17 @@ final class WatchLiveHR: ObservableObject {
     private let store = HKHealthStore()
     private let hrType = HKQuantityType.quantityType(forIdentifier: .heartRate)
     private var query: HKAnchoredObjectQuery?
+    // Battery: tracks whether the glance currently wants HR, so a late authorization callback cannot
+    // start streaming after stop() and repeated start() calls stay idempotent.
+    private var wantsStreaming = false
     private let bpmUnit = HKUnit.count().unitDivided(by: .minute())
     #endif
 
     /// Ask for permission (idempotent) and start streaming. Call when the glance appears.
     func start() {
         #if canImport(HealthKit)
+        wantsStreaming = true
+        guard query == nil else { return }
         guard HKHealthStore.isHealthDataAvailable(), let hrType else {
             denied = true
             return
@@ -54,6 +59,7 @@ final class WatchLiveHR: ObservableObject {
     /// Tear the query down when the glance disappears so we are not streaming HR in the background.
     func stop() {
         #if canImport(HealthKit)
+        wantsStreaming = false
         if let query { store.stop(query) }
         query = nil
         #endif
@@ -61,11 +67,22 @@ final class WatchLiveHR: ObservableObject {
 
     #if canImport(HealthKit)
     private func beginStreaming() {
-        guard let hrType, query == nil else { return }
-        // Anchored query: an initial results handler plus an updateHandler that fires as new samples land,
-        // so the readout tracks the wrist live while the screen is on.
+        guard let hrType, query == nil, wantsStreaming else { return }
+        // Battery: the old anchored query (no predicate, no limit) delivered the ENTIRE heart-rate history
+        // on every start just to display the newest value. Seed the readout with a single newest-sample
+        // read instead, then stream only samples from the last few minutes onwards.
+        let latest = HKSampleQuery(sampleType: hrType, predicate: nil, limit: 1,
+                                   sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate,
+                                                                      ascending: false)]) { [weak self] _, samples, _ in
+            self?.handle(samples)
+        }
+        store.execute(latest)
+
+        // Small look-back window (not "now") so a sample the watch writes slightly late is still delivered.
+        let since = Date().addingTimeInterval(-5 * 60)
+        let predicate = HKQuery.predicateForSamples(withStart: since, end: nil, options: [])
         let q = HKAnchoredObjectQuery(type: hrType,
-                                      predicate: nil,
+                                      predicate: predicate,
                                       anchor: nil,
                                       limit: HKObjectQueryNoLimit) { [weak self] _, samples, _, _, _ in
             self?.handle(samples)
