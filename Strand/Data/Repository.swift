@@ -3255,7 +3255,7 @@ final class Repository: ObservableObject {
         // local-only comparisons include that 12-minute baseline plus the 10- and 15-minute alternatives.
         // Shadow candidates are compared only with manual/imported labels; legacy detector rows are not
         // ground truth. No shadow output can mutate the DB, visible card, daily scores or anything off-device.
-        let candidates: [DetectedWorkout]
+        var candidates: [DetectedWorkout]
         if TestCentre.active(.workouts), workoutsLog != nil {
             let (results, trace) = AutoWorkoutDetector.detectTrace(
                 hr: hr, restingBpm: restingBpm, motion: nil, savedSpans: savedSpans,
@@ -3281,6 +3281,7 @@ final class Repository: ObservableObject {
                                                     motion: nil, savedSpans: savedSpans,
                                                     minimumSustainedMinutes: AutoWorkoutDetector.minSustainedMin)
         }
+        candidates = await gateAutoDetectCandidates(candidates, restingBpm: restingBpm)
         let picked = Self.selectAutoDetectCandidate(
             candidates,
             autoDismissedTokens: autoDetectDismissedSpans,
