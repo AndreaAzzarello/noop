@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import Combine
 import StrandDesign
 import StrandAnalytics
 
@@ -60,8 +61,11 @@ struct WatchBreatheView: View {
     @State private var breathCount = 0
     @State private var sessionSeconds = 0
 
-    private let phaseTimer = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
-    private let secondTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
+    // Battery: these used to be `.autoconnect()` publishers owned by the view, so a 20 Hz and a 1 Hz timer
+    // ran from launch (the page deck instantiates every page) even when no session was running. They are
+    // now created in start() and cancelled in stop(). Phase cadence is 10 Hz (was 20 Hz): the ring is
+    // animated by withAnimation, not by this tick, so it only drives phase changes and the countdown.
+    @State private var tickers: [AnyCancellable] = []
 
     private let reducedSteadyRing: CGFloat = 0.5
 
@@ -109,18 +113,6 @@ struct WatchBreatheView: View {
             .padding(.horizontal, 4)
         }
         .background(StrandPalette.surfaceBase.ignoresSafeArea())
-        .onReceive(phaseTimer) { now in
-            guard running else { return }
-            advance(now: now)
-            updateCountdown(now: now)
-        }
-        .onReceive(secondTimer) { _ in
-            guard running else { return }
-            sessionSeconds += 1
-            if let target = sessionLength.targetSeconds, sessionSeconds >= target {
-                stop()
-            }
-        }
         .onChange(of: protocolId) { newId in
             if running { stop() }
             if let proto = BreathProtocolCatalog.protocolById(newId) {
@@ -350,8 +342,27 @@ struct WatchBreatheView: View {
         selectedProtocol?.stages.filter { $0.durationMs > 0 } ?? []
     }
 
+    private func startTickers() {
+        tickers.forEach { $0.cancel() }
+        tickers = [
+            Timer.publish(every: 0.1, on: .main, in: .common).autoconnect().sink { now in
+                guard running else { return }
+                advance(now: now)
+                updateCountdown(now: now)
+            },
+            Timer.publish(every: 1.0, on: .main, in: .common).autoconnect().sink { _ in
+                guard running else { return }
+                sessionSeconds += 1
+                if let target = sessionLength.targetSeconds, sessionSeconds >= target {
+                    stop()
+                }
+            }
+        ]
+    }
+
     private func start() {
         running = true
+        startTickers()
         sessionSeconds = 0
         breathCount = 0
         stageIndex = 0
@@ -368,6 +379,9 @@ struct WatchBreatheView: View {
     }
 
     private func stop() {
+        // Battery: always drop the tickers, even if `running` was already cleared.
+        tickers.forEach { $0.cancel() }
+        tickers = []
         guard running else { return }
         running = false
         phaseDeadline = .distantFuture
@@ -429,12 +443,17 @@ struct WatchBreatheView: View {
         let completed = stages[stageIndex % stages.count]
         stageIndex += 1
         if completed.type == .exhale { breathCount += 1 }
-        armCurrentStage(from: now, buzz: true)
+        // With the slower tick, chain the next stage from the previous deadline (when we are only slightly
+        // late) so the rhythm does not accumulate up to 0.1 s of drift per stage.
+        let base = now.timeIntervalSince(phaseDeadline) < 0.5 ? phaseDeadline : now
+        armCurrentStage(from: base, buzz: true)
     }
 
     private func updateCountdown(now: Date) {
         let left = phaseDeadline.timeIntervalSince(now)
-        phaseRemaining = max(0, Int(left.rounded(.up)))
+        let value = max(0, Int(left.rounded(.up)))
+        // Battery: only write @State when it changes (once per second), avoiding a view update every tick.
+        if value != phaseRemaining { phaseRemaining = value }
     }
 
     private func timeString(_ total: Int) -> String {

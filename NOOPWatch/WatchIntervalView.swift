@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import StrandDesign
 
 // MARK: - WatchIntervalView — silent haptic HIIT, on the wrist
@@ -44,8 +45,9 @@ struct WatchIntervalView: View {
     @State private var running = false
     @State private var elapsed = 0         // total elapsed seconds across the session
 
-    // 1Hz tick, same cadence as the phone.
-    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    // 1Hz tick, same cadence as the phone. Battery: connected only while `running` (see onChange below);
+    // it used to be an `.autoconnect()` publisher ticking from launch even when idle.
+    @State private var ticker: AnyCancellable?
 
     // MARK: Derived
 
@@ -108,7 +110,12 @@ struct WatchIntervalView: View {
         }
         .padding(.horizontal, 4)
         .background(StrandPalette.surfaceBase.ignoresSafeArea())
-        .onReceive(ticker) { _ in tick() }
+        .onChange(of: running) { isRunning in
+            ticker?.cancel()
+            ticker = isRunning
+                ? Timer.publish(every: 1, on: .main, in: .common).autoconnect().sink { _ in tick() }
+                : nil
+        }
         .onAppear { if remaining == 0 { resetToStart() } }
     }
 
