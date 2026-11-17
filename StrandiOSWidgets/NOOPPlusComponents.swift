@@ -129,9 +129,12 @@ struct ForkScoreRing: View {
     var body: some View {
         VStack(spacing: 3) {
             ZStack {
-                Circle().stroke(style.track, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                // Inset by half the stroke so the ring's OUTER edge is the frame: a centred stroke bleeds
+                // lineWidth/2 past it and neighbouring rings touch on narrow families.
+                Circle().inset(by: lineWidth / 2)
+                    .stroke(style.track, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 if fraction != nil {
-                    Circle()
+                    Circle().inset(by: lineWidth / 2)
                         .trim(from: 0, to: max(0.0001, clamped))
                         .stroke(style.domain(color), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                         .rotationEffect(.degrees(-90))
@@ -301,7 +304,7 @@ extension ForkWidgetSnapshot {
         var ts = start
         while ts <= nowTs {
             let h = Double(ts - start) / 3600
-            let bpm = Int(58 + 16 * sin(h * 0.9) + (h > 7 && h < 8 ? 55 * sin((h - 7) * .pi) : 0) + 6 * sin(h * 7))
+            let bpm = Int(64 + 16 * sin(h * 0.9) + (h > 7 && h < 8 ? 95 * sin((h - 7) * .pi) : 0) + 6 * sin(h * 7))
             let z = zone(bpm)
             let p = HrPoint(ts: ts, bpm: bpm)
             if z != currentZone {

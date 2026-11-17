@@ -162,10 +162,10 @@ struct NOOPPlusView: View {
             VStack(alignment: .leading, spacing: 4) {
                 hrCaption(withRange: true)
                 if let day = hrToday {
-                    ForkZoneHRChart(day: day, height: 62, axes: false, style: style)
+                    ForkZoneHRChart(day: day, height: 78, axes: false, style: style)
                     Spacer(minLength: 0)
                 } else {
-                    ForkEmptyChart(height: 62, style: style)
+                    ForkEmptyChart(height: 78, style: style)
                     Spacer(minLength: 0)
                 }
             }
@@ -220,9 +220,9 @@ struct NOOPPlusView: View {
     /// overlapped: a variant either fits whole or is skipped.
     private var large: some View {
         ViewThatFits(in: .vertical) {
-            largeBody(axes: true, shortUpdated: false, chartHeight: 104)
-            largeBody(axes: false, shortUpdated: false, chartHeight: 104)
-            largeBody(axes: false, shortUpdated: true, chartHeight: 104)
+            largeBody(axes: true, shortUpdated: false, chartHeight: 96)
+            largeBody(axes: false, shortUpdated: false, chartHeight: 96)
+            largeBody(axes: false, shortUpdated: true, chartHeight: 96)
             largeBody(axes: false, shortUpdated: true, chartHeight: 84)
             largeBody(axes: false, shortUpdated: true, chartHeight: 64)
             largeBody(axes: false, shortUpdated: true, chartHeight: 44)
@@ -231,9 +231,9 @@ struct NOOPPlusView: View {
     }
 
     private func largeBody(axes: Bool, shortUpdated: Bool, chartHeight: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             header
-            rings(diameter: 60, lineWidth: 6, labelFont: .caption)
+            rings(diameter: 56, lineWidth: 6, labelFont: .caption2)
             Divider()
             statsRow
             VStack(alignment: .leading, spacing: 3) {
