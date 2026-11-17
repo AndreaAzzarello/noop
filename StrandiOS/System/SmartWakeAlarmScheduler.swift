@@ -793,7 +793,7 @@ final class SmartWakeAlarmScheduler {
             textColor: .white,
             systemImageName: "stop.circle.fill"
         )
-        let alert = AlarmPresentation.Alert(title: "Smart Wake", stopButton: stopButton)
+        let alert = AlarmPresentation.Alert(title: LocalizedStringResource("Smart Wake", table: "Fork"), stopButton: stopButton)
         let attributes = AlarmAttributes<SmartWakeAlarmMetadata>(
             presentation: AlarmPresentation(alert: alert),
             metadata: SmartWakeAlarmMetadata(),
@@ -837,13 +837,13 @@ private enum SmartWakeSchedulingError: LocalizedError {
 /// maximum-time fallback for that weekday.
 @available(iOS 26.0, *)
 public struct SmartWakeRearmIntent: LiveActivityIntent {
-    public static var title: LocalizedStringResource = "Restore Smart Wake fallback"
+    public static var title: LocalizedStringResource = LocalizedStringResource("Restore Smart Wake fallback", table: "Fork")
     public static var isDiscoverable: Bool = false
 
-    @Parameter(title: "Weekday")
+    @Parameter(title: LocalizedStringResource("Weekday", table: "Fork"))
     public var weekday: Int
 
-    @Parameter(title: "Skip current occurrence")
+    @Parameter(title: LocalizedStringResource("Skip current occurrence", table: "Fork"))
     public var skipCurrentOccurrence: Bool
 
     public init(weekday: Int, skipCurrentOccurrence: Bool = true) {
