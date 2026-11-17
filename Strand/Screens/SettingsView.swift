@@ -1716,6 +1716,7 @@ struct SettingsView: View {
                     .font(StrandFont.caption)
                     .foregroundStyle(StrandPalette.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
+                AutoWorkoutGateSettingsRows(enabled: autoDetectWorkoutsEnabled)
 
                 rowDivider
 
