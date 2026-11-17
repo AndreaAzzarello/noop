@@ -1,0 +1,414 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Alarm permission was revoked in Settings." : {
+      "comment" : "Display text for SmartWakeAlarmScheduler.revokedAuthorizationMessage (the stored value stays English).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il permesso per le sveglie è stato revocato in Impostazioni."
+          }
+        }
+      }
+    },
+    "Copied" : {
+      "comment" : "Button label after copying the diagnostics report ('Copy' is an upstream key).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiato"
+          }
+        }
+      }
+    },
+    "Custom times for individual days are included automatically." : {
+      "comment" : "Footnote shown when per-day overrides exist.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gli orari personalizzati dei singoli giorni sono inclusi automaticamente."
+          }
+        }
+      }
+    },
+    "Earlier wake in light sleep" : {
+      "comment" : "Smart Wake card title.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sveglia anticipata nel sonno leggero"
+          }
+        }
+      }
+    },
+    "Early window" : {
+      "comment" : "Smart Wake card row label and hidden picker title: how long before the maximum time an early wake may fire.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finestra di anticipo"
+          }
+        }
+      }
+    },
+    "Enable Smart Wake" : {
+      "comment" : "Smart Wake card toggle.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attiva Smart Wake"
+          }
+        }
+      }
+    },
+    "If you don't double-tap the strap, it vibrates again every %lld minutes, up to %lld times. A double tap stops it and the iPhone alarm." : {
+      "comment" : "Footnote under the insistent toggle. First number: minutes between vibrations. Second: maximum number of repeats. Both come from InsistentWakeAlarm.Configuration.insistent.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se non tocchi due volte la fascia, vibra di nuovo ogni %1$lld minuti, fino a %2$lld volte. Un doppio tocco la ferma insieme alla sveglia dell'iPhone."
+          }
+        }
+      }
+    },
+    "Insistent strap alarm" : {
+      "comment" : "Smart Wake card toggle.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sveglia insistente sulla fascia"
+          }
+        }
+      }
+    },
+    "Maximum wake" : {
+      "comment" : "Smart Wake card row label; the value is the next maximum wake time, e.g. 'Tue 7:00'. Keep short.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sveglia al più tardi"
+          }
+        }
+      }
+    },
+    "NOOP could not schedule the system alarm. Check the Alarms permission and try again." : {
+      "comment" : "Generic error under the Smart Wake card when AlarmKit scheduling fails. A technical detail line may follow it (English).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "NOOP non è riuscito a programmare la sveglia di sistema. Controlla il permesso per le sveglie e riprova."
+          }
+        }
+      }
+    },
+    "NOOP estimates light sleep from WHOOP heart rate and beat intervals and wakes you earlier inside the window, with the strap and the iPhone. It is an estimate, not a measured sleep stage. If samples are missing or insufficient, the maximum-time AlarmKit alarm remains scheduled." : {
+      "comment" : "Smart Wake card explanation footnote.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "NOOP stima il sonno leggero dalla frequenza cardiaca e dagli intervalli tra i battiti del WHOOP e ti sveglia prima, dentro la finestra, con la fascia e l'iPhone. È una stima, non una fase del sonno misurata. Se i campioni mancano o non bastano, resta programmata la sveglia AlarmKit all'orario massimo."
+          }
+        }
+      }
+    },
+    "No active wake days" : {
+      "comment" : "Value of the 'Maximum wake' row when every weekday is off.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessun giorno di sveglia attivo"
+          }
+        }
+      }
+    },
+    "Not started: %@" : {
+      "comment" : "Fallback result line of the strap alarm test; %@ is an English technical reason.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non avviato: %@"
+          }
+        }
+      }
+    },
+    "Not started: Smart Wake is not running" : {
+      "comment" : "Result line of the strap alarm test.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non avviato: Smart Wake non è attivo"
+          }
+        }
+      }
+    },
+    "Not started: a wake-up run is in progress" : {
+      "comment" : "Result line of the strap alarm test.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non avviato: è in corso una sveglia"
+          }
+        }
+      }
+    },
+    "Not started: the 5/MG firmware alarm needs Protocol probes" : {
+      "comment" : "Result line of the strap alarm test. 'Protocol probes' is a Test Centre setting.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non avviato: la sveglia firmware 5/MG richiede le sonde di protocollo"
+          }
+        }
+      }
+    },
+    "Not started: the app is not ready" : {
+      "comment" : "Result line of the strap alarm test.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non avviato: l'app non è pronta"
+          }
+        }
+      }
+    },
+    "Not started: the strap is not connected" : {
+      "comment" : "Result line of the strap alarm test.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non avviato: la fascia non è connessa"
+          }
+        }
+      }
+    },
+    "Restore Smart Wake fallback" : {
+      "comment" : "AppIntent title (not discoverable).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ripristina la sveglia di riserva Smart Wake"
+          }
+        }
+      }
+    },
+    "SMART WAKE" : {
+      "comment" : "Smart Wake card overline (Alarms screen). Feature name kept as is.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SMART WAKE"
+          }
+        }
+      }
+    },
+    "Skip current occurrence" : {
+      "comment" : "AppIntent parameter title (not discoverable).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salta l'occorrenza corrente"
+          }
+        }
+      }
+    },
+    "Smart Wake" : {
+      "comment" : "Title of the system alarm alert shown by AlarmKit. Alarms are matched by UUID, never by this text.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smart Wake"
+          }
+        }
+      }
+    },
+    "Smart Wake early window" : {
+      "comment" : "VoiceOver label of the early-window picker.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finestra di anticipo di Smart Wake"
+          }
+        }
+      }
+    },
+    "Start" : {
+      "comment" : "Workout review sheet: label of the start-time picker (a noun; upstream 'Start' means the verb).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inizio"
+          }
+        }
+      }
+    },
+    "System Smart Wake alarms require iOS 26 or later." : {
+      "comment" : "Shown on iOS versions older than 26.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le sveglie di sistema Smart Wake richiedono iOS 26 o successivo."
+          }
+        }
+      }
+    },
+    "Technical detail" : {
+      "comment" : "Label before the English AlarmKit error text under the Smart Wake card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dettaglio tecnico"
+          }
+        }
+      }
+    },
+    "Test started: the strap should vibrate in about a minute. Double-tap it to stop." : {
+      "comment" : "Result line of the strap alarm test.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Test avviato: la fascia dovrebbe vibrare tra circa un minuto. Toccala due volte per fermarla."
+          }
+        }
+      }
+    },
+    "Test strap alarm in 1 minute" : {
+      "comment" : "Button in the Smart Wake diagnostics.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prova la sveglia della fascia tra 1 minuto"
+          }
+        }
+      }
+    },
+    "The wake-alarm above buzzes your wrist from the strap's own firmware. For a phone alarm, enable Smart Wake below and allow NOOP to schedule system alarms (iOS 26 or later). AlarmKit can alert through Silent mode and Focus, and its maximum-time alarm stays scheduled even when WHOOP heart-rate data is unavailable. Keep your built-in Clock alarm as a backup until you have tested Smart Wake on this iPhone." : {
+      "comment" : "Footnote under 'The strap alarm is a silent buzz' on the Alarms screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sveglia qui sopra fa vibrare il polso dal firmware della fascia. Per una sveglia sul telefono, attiva Smart Wake qui sotto e consenti a NOOP di programmare sveglie di sistema (iOS 26 o successivo). AlarmKit può suonare anche con il silenzioso e la modalità Focus, e la sveglia all'orario massimo resta programmata anche senza dati di frequenza cardiaca del WHOOP. Tieni la sveglia dell'app Orologio come riserva finché non hai provato Smart Wake su questo iPhone."
+          }
+        }
+      }
+    },
+    "Uses the same active weekdays and per-day wake times as the WHOOP alarm: %@." : {
+      "comment" : "Footnote under the early window. %@ is a weekday summary such as 'Every day' or 'Mon, Tue'.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa gli stessi giorni attivi e gli stessi orari per giorno della sveglia WHOOP: %@."
+          }
+        }
+      }
+    },
+    "Weekday" : {
+      "comment" : "AppIntent parameter title (not discoverable).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giorno della settimana"
+          }
+        }
+      }
+    },
+    "of 21" : {
+      "comment" : "Caption under an Effort value on the WHOOP 0-21 scale.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "su 21"
+          }
+        }
+      }
+    },
+    "phone" : {
+      "comment" : "Source caption under a step count (measured by the phone).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "telefono"
+          }
+        }
+      }
+    },
+    "strap" : {
+      "comment" : "Source caption under a step count (measured by the strap).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "fascia"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

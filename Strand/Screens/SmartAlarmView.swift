@@ -195,7 +195,7 @@ struct SmartAlarmView: View {
                     Text("The strap alarm is a silent buzz, not a sound")
                         .font(StrandFont.headline)
                         .foregroundStyle(StrandPalette.textPrimary)
-                    Text("The wake-alarm above buzzes your wrist from the strap's own firmware. For a phone alarm, enable Smart Wake below and allow NOOP to schedule system alarms (iOS 26 or later). AlarmKit can alert through Silent mode and Focus, and its maximum-time alarm stays scheduled even when WHOOP heart-rate data is unavailable. Keep your built-in Clock alarm as a backup until you have tested Smart Wake on this iPhone.")
+                    Text("The wake-alarm above buzzes your wrist from the strap's own firmware. For a phone alarm, enable Smart Wake below and allow NOOP to schedule system alarms (iOS 26 or later). AlarmKit can alert through Silent mode and Focus, and its maximum-time alarm stays scheduled even when WHOOP heart-rate data is unavailable. Keep your built-in Clock alarm as a backup until you have tested Smart Wake on this iPhone.", tableName: "Fork")
                         .font(StrandFont.footnote)
                         .foregroundStyle(StrandPalette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
