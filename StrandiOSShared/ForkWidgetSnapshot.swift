@@ -20,6 +20,10 @@ struct ForkHRDay: Codable, Equatable, Sendable {
     let day: Int
     /// Timestamp of the newest bucket, for the "up to HH:mm" caption.
     let throughTs: Int64
+    /// True extremes of the day (lowest / highest sample, not the 5-minute means the curve is drawn from),
+    /// so the min/max readout describes the day rather than the calmest and busiest five minutes (#2032).
+    let minBpm: Int
+    let maxBpm: Int
     let runs: [ForkZoneRun]
 }
 

@@ -7,6 +7,8 @@ extension AppModel {
     func applySmartWakeSchedule() {
         // Also refreshes the schedule the live HR detector reads, so it and the alarms share one value.
         let schedule = SmartWakeLiveWiring.refreshSchedule(from: behavior)
+        // Fork NOOP+ widget: mirror toggle, schedule and any recorded skip (no-op when nothing changed).
+        ForkWidgetPublisher.publishSmartWake(from: self, schedule: schedule)
         if #available(iOS 26.0, *) {
             Task {
                 // The scheduler serializes this behind any in-flight enable (the AlarmKit permission
@@ -20,6 +22,7 @@ extension AppModel {
                 // that are already armed and is retried on the next foreground.
                 if outcome == .denied {
                     behavior.smartWakeEnabled = false
+                    ForkWidgetPublisher.publishSmartWake(from: self, schedule: schedule)
                 }
             }
         }

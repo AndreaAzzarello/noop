@@ -117,6 +117,7 @@ extension WidgetSnapshot {
             stressDay: stress?.day ?? storedStress?.stressDay
         )
         saveAndReloadIfChanged(snap)
+        ForkWidgetPublisher.requestPublish(from: model)   // fork NOOP+ widget; fire-and-forget
     }
 
     /// Publish fields that come directly from the live BLE state without re-reading the Rest metric
