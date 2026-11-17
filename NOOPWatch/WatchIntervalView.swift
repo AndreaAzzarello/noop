@@ -110,7 +110,7 @@ struct WatchIntervalView: View {
         }
         .padding(.horizontal, 4)
         .background(StrandPalette.surfaceBase.ignoresSafeArea())
-        .onChange(of: running) { isRunning in
+        .onChange(of: running) { _, isRunning in
             ticker?.cancel()
             ticker = isRunning
                 ? Timer.publish(every: 1, on: .main, in: .common).autoconnect().sink { _ in tick() }

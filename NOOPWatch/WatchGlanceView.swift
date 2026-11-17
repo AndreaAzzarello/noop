@@ -33,8 +33,8 @@ struct WatchGlanceView: View {
         .background(StrandPalette.surfaceBase.ignoresSafeArea())
         .onAppear { isVisible = true; syncHR() }
         .onDisappear { isVisible = false; syncHR() }
-        .onChange(of: scenePhase) { _ in syncHR() }
-        .onChange(of: isLuminanceReduced) { _ in syncHR() }
+        .onChange(of: scenePhase) { _, _ in syncHR() }
+        .onChange(of: isLuminanceReduced) { _, _ in syncHR() }
     }
 
     private func syncHR() {
