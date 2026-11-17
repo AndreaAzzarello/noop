@@ -187,7 +187,7 @@ private struct TodayWorkoutSummaryContent: View {
                             in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(display?.name ?? WorkoutSource.displaySport(featured.sport))
+                Text(LocalizedStringKey(display?.name ?? WorkoutSource.displaySport(featured.sport)))
                     .font(StrandFont.headline)
                     .foregroundStyle(StrandPalette.textPrimary)
                     .lineLimit(1)
@@ -215,7 +215,7 @@ private struct TodayWorkoutSummaryContent: View {
                 if let avg { averageBlock(avg) }
                 if let effort {
                     secondaryStat("Effort", value: effort.value,
-                                  caption: effort.scale == .whoop ? String(localized: "of 21")
+                                  caption: effort.scale == .whoop ? String(localized: "of 21", table: "Fork")
                                                                   : String(localized: "of 100"))
                 }
                 if let kcal { secondaryStat("Calories", value: kcal, caption: "kcal") }
@@ -296,7 +296,7 @@ private struct TodayWorkoutSummaryContent: View {
                                 in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(item.name)
+                    Text(LocalizedStringKey(item.name))
                         .font(StrandFont.subhead)
                         .foregroundStyle(StrandPalette.textPrimary)
                         .lineLimit(1)
@@ -412,6 +412,7 @@ private struct TodayWorkoutSummaryContent: View {
         let f = NumberFormatter()
         f.numberStyle = .decimal
         f.maximumFractionDigits = 0
+        f.locale = AppLanguage.activeLocale
         return f
     }()
 

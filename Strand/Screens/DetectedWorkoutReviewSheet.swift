@@ -108,7 +108,7 @@ struct DetectedWorkoutReviewSheet: View {
             chartCard
             VStack(alignment: .leading, spacing: NoopMetrics.space4) {
                 field(String(localized: "Sport")) { sportPicker }
-                field(String(localized: "Start")) {
+                field(String(localized: "Start", table: "Fork")) {
                     DatePicker("", selection: startBinding, in: pickerRange, displayedComponents: [.hourAndMinute])
                         .labelsHidden()
                 }
@@ -181,7 +181,8 @@ struct DetectedWorkoutReviewSheet: View {
     private var sportPicker: some View {
         Picker("Sport", selection: $sport) {
             ForEach(Self.sports, id: \.self) { s in
-                Text(s == "Activity" ? String(localized: "Activity") : s).tag(s)
+                // The stored value stays the English token/sport name; only the label follows the app language.
+                Text(s == "Activity" ? String(localized: "Activity") : String(localized: String.LocalizationValue(s))).tag(s)
             }
         }
         .labelsHidden()

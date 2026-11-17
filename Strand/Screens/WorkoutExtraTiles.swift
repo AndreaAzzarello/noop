@@ -16,7 +16,7 @@ struct WorkoutEffortTile: View {
         if let effort = WorkoutWindowMetrics.effort(strain: strain, scale: scale) {
             StatTile(label: "Effort",
                      value: effort.value,
-                     caption: effort.scale == .whoop ? String(localized: "of 21") : String(localized: "of 100"),
+                     caption: effort.scale == .whoop ? String(localized: "of 21", table: "Fork") : String(localized: "of 100"),
                      accent: StrandPalette.effortColor)
         }
     }
@@ -30,6 +30,7 @@ struct WorkoutCourtStepsTile: View {
         let f = NumberFormatter()
         f.numberStyle = .decimal
         f.maximumFractionDigits = 0
+        f.locale = AppLanguage.activeLocale
         return f
     }()
 
@@ -45,8 +46,8 @@ struct WorkoutCourtStepsTile: View {
     private static func caption(_ source: WorkoutWindowMetrics.StepSource) -> String {
         switch source {
         case .imported: return String(localized: "Imported")
-        case .strap: return String(localized: "strap")
-        case .phone: return String(localized: "phone")
+        case .strap: return String(localized: "strap", table: "Fork")
+        case .phone: return String(localized: "phone", table: "Fork")
         }
     }
 }
