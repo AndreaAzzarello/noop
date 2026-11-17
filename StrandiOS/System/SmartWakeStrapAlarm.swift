@@ -73,10 +73,10 @@ final class SmartWakeStrapAlarm {
     /// The Diagnostics button: arms the firmware alarm a minute ahead so the vibration and the double tap can be
     /// checked in daylight. The normal alarm is restored when the test ends. Returns a line for the screen.
     func startTest(at now: Date = Date()) -> String {
-        guard !alarm.isActive || runIsTest else { return "Not started: a wake-up run is in progress" }
+        guard !alarm.isActive || runIsTest else { return String(localized: "Not started: a wake-up run is in progress", table: "Fork") }
         if let reason = unusableReason() {
             SmartWakeDiagnostics.record("strap alarm test not started: \(reason)")
-            return "Not started: \(reason)"
+            return Self.localizedNotStarted(reason)
         }
         stopTimer()
         alarm = InsistentWakeAlarm(configuration: .test)
@@ -85,7 +85,18 @@ final class SmartWakeStrapAlarm {
         SmartWakeDiagnostics.record("strap alarm test started")
         handle(alarm.start(at: now))
         ensureTimer()
-        return "Test started: the strap should vibrate in about a minute. Double-tap it to stop."
+        return String(localized: "Test started: the strap should vibrate in about a minute. Double-tap it to stop.", table: "Fork")
+    }
+
+    /// The on-screen form of an `unusableReason()`. The reason itself stays English: it is also the log line.
+    private static func localizedNotStarted(_ reason: String) -> String {
+        switch reason {
+        case "app model unavailable": return String(localized: "Not started: the app is not ready", table: "Fork")
+        case "strap not connected": return String(localized: "Not started: the strap is not connected", table: "Fork")
+        case "5/MG firmware alarm needs Protocol probes":
+            return String(localized: "Not started: the 5/MG firmware alarm needs Protocol probes", table: "Fork")
+        default: return String(localized: "Not started: \(reason)", table: "Fork")
+        }
     }
 
     /// Call on every heart-rate sample; advances the run, if any.

@@ -21,10 +21,10 @@ struct SmartWakeDiagnosticsView: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                 Button {
-                    testResult = SmartWakeStrapAlarm.current?.startTest() ?? "Not started: Smart Wake is not running"
+                    testResult = SmartWakeStrapAlarm.current?.startTest() ?? String(localized: "Not started: Smart Wake is not running", table: "Fork")
                     reload()
                 } label: {
-                    Text(verbatim: "Test strap alarm in 1 minute")
+                    Text("Test strap alarm in 1 minute", tableName: "Fork")
                 }
                 .font(StrandFont.footnote)
                 .foregroundStyle(StrandPalette.accent)
@@ -35,7 +35,7 @@ struct SmartWakeDiagnosticsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(spacing: 16) {
-                    Button(copied ? "Copied" : "Copy") {
+                    Button(copied ? String(localized: "Copied", table: "Fork") : String(localized: "Copy")) {
                         UIPasteboard.general.string = report
                         copied = true
                     }
