@@ -11,6 +11,11 @@ import StrandDesign
 struct WatchGlanceView: View {
     @EnvironmentObject private var store: WatchScoreStore
     @EnvironmentObject private var liveHR: WatchLiveHR
+    // Battery: onAppear/onDisappear alone never fire for wrist-down / Always On / background, so the HR
+    // query kept running. Stream only while the page is visible AND the scene is active and not dimmed.
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+    @State private var isVisible = false
 
     var body: some View {
         // The glance is page 1 of the watch app's swipeable page deck (WatchRootView): just the synced
@@ -26,8 +31,18 @@ struct WatchGlanceView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(StrandPalette.surfaceBase.ignoresSafeArea())
-        .onAppear { liveHR.start() }
-        .onDisappear { liveHR.stop() }
+        .onAppear { isVisible = true; syncHR() }
+        .onDisappear { isVisible = false; syncHR() }
+        .onChange(of: scenePhase) { _ in syncHR() }
+        .onChange(of: isLuminanceReduced) { _ in syncHR() }
+    }
+
+    private func syncHR() {
+        if isVisible && scenePhase == .active && !isLuminanceReduced {
+            liveHR.start()
+        } else {
+            liveHR.stop()
+        }
     }
 
     // MARK: Synced state
