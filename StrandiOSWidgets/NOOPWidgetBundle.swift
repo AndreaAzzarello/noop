@@ -16,5 +16,6 @@ struct NOOPWidgetBundle: WidgetBundle {
         StressWidget()
         LiftLiveActivity()
         SyncLiveActivity()
+        if #available(iOS 26.0, *) { SmartWakeAlarmLiveActivity() }   // fork: Smart Wake alarm
     }
 }

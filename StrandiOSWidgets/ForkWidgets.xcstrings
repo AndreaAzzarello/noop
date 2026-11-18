@@ -848,6 +848,22 @@
           }
         }
       }
+    },
+    "Smart Wake": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Smart Wake"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Smart Wake"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
