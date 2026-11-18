@@ -201,6 +201,10 @@ struct ForkZoneHRChart: View {
     let height: CGFloat
     let axes: Bool
     let style: ForkStyle
+    /// Extra-large only: `height` becomes the minimum and the plot takes whatever room is left (up to
+    /// `maxFlexibleHeight`). Off by default, so the other families keep their fixed height.
+    var flexible = false
+    private let maxFlexibleHeight: CGFloat = 240
 
     private var all: [HrPoint] {
         var seen = Set<Int64>()
@@ -213,18 +217,22 @@ struct ForkZoneHRChart: View {
         let t1 = pts.last?.ts ?? 1
         let lo = pts.map(\.bpm).min() ?? 0
         let hi = pts.map(\.bpm).max() ?? 0
-        VStack(spacing: 2) {
-            ZStack {
-                ForEach(Array(day.runs.enumerated()), id: \.offset) { _, run in
-                    ForkRunPath(points: run.points, t0: t0, t1: t1, lo: lo, hi: hi)
-                        .stroke(style.zone(run.zone),
-                                style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                }
+        let plot = ZStack {
+            ForEach(Array(day.runs.enumerated()), id: \.offset) { _, run in
+                ForkRunPath(points: run.points, t0: t0, t1: t1, lo: lo, hi: hi)
+                    .stroke(style.zone(run.zone),
+                            style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
             }
-            .widgetAccentable()
-            .padding(.vertical, 2)
-            .frame(maxWidth: .infinity)
-            .frame(height: height)
+        }
+        .widgetAccentable()
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity)
+        VStack(spacing: 2) {
+            if flexible {
+                plot.frame(minHeight: height, maxHeight: maxFlexibleHeight)
+            } else {
+                plot.frame(height: height)
+            }
             if axes {
                 let ticks = HrTrace.timeTicks(pts)
                 if ticks.count >= 2 {
@@ -289,6 +297,259 @@ struct ForkFreshness: View {
     }
 }
 
+// MARK: - Extra-large blocks
+
+/// The stress curve of today, one subpath per contiguous run of scored hours. The geometry comes from the
+/// same `StressTrace.segments` the upstream stress widget uses, so the two curves cannot differ.
+private struct ForkStressShape: Shape {
+    let series: [StressPoint]
+    let filled: Bool
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        for run in StressTrace.segments(series, width: rect.width, height: rect.height) {
+            guard let first = run.first else { continue }
+            if run.count == 1 {
+                guard !filled else { continue }
+                let r: CGFloat = 2.5
+                path.addEllipse(in: CGRect(x: max(first.x, r) - r, y: first.y - r, width: r * 2, height: r * 2))
+                continue
+            }
+            path.move(to: CGPoint(x: first.x, y: first.y))
+            for p in run.dropFirst() { path.addLine(to: CGPoint(x: p.x, y: p.y)) }
+            if filled {
+                path.addLine(to: CGPoint(x: run[run.count - 1].x, y: rect.maxY))
+                path.addLine(to: CGPoint(x: first.x, y: rect.maxY))
+                path.closeSubpath()
+            }
+        }
+        return path
+    }
+}
+
+/// Today's stress, with the readout of the latest and the highest scored hour. Drawn only when there is
+/// at least one scored hour; the caller hides the whole block otherwise.
+struct ForkStressBlock: View {
+    let series: [StressPoint]
+    /// Minimum height of the plot; it grows into spare room up to `maxHeight`.
+    let height: CGFloat
+    let style: ForkStyle
+    private let maxHeight: CGFloat = 130
+
+    private var latest: Double? { series.last(where: { $0.level != nil })?.level }
+    private var peak: Double? { StressTrace.stats(series)?.peak.level }
+
+    private var ramp: LinearGradient {
+        LinearGradient(colors: [StrandPalette.statusWarning, StrandPalette.statusPositive, StrandPalette.accent],
+                       startPoint: .top, endPoint: .bottom)
+    }
+
+    private var spoken: String {
+        guard let latest, let peak else { return FL.s("Stress today") }
+        return FL.s("Stress today, now \(StressTrace.formatLevel(latest)), peak \(StressTrace.formatLevel(peak))")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 4) {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 10))
+                    .foregroundStyle(style.full ? AnyShapeStyle(StrandPalette.stressColor) : style.secondary)
+                Text(FL.s("Stress today"))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(style.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if let latest, let peak {
+                    Text(FL.s("now \(StressTrace.formatLevel(latest)) · peak \(StressTrace.formatLevel(peak))"))
+                        .font(.system(size: 10))
+                        .foregroundStyle(style.tertiary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+            }
+            ZStack {
+                ForkStressShape(series: series, filled: true)
+                    .fill(style.full
+                          ? AnyShapeStyle(LinearGradient(colors: [StrandPalette.stressColor.opacity(0.28), .clear],
+                                                         startPoint: .top, endPoint: .bottom))
+                          : AnyShapeStyle(LinearGradient(colors: [Color.primary.opacity(0.22), .clear],
+                                                         startPoint: .top, endPoint: .bottom)))
+                ForkStressShape(series: series, filled: false)
+                    .stroke(style.full ? AnyShapeStyle(ramp) : style.primary,
+                            style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+            }
+            .widgetAccentable()
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: height, maxHeight: maxHeight)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(spoken))
+    }
+}
+
+/// Last night's stages as one proportional bar with a legend. In tinted/clear modes the stages become
+/// opacity steps, like the HR zones.
+struct ForkSleepStagesBar: View {
+    let stages: ForkSleepStages
+    let style: ForkStyle
+
+    private var total: Double { Double(max(stages.deepMin + stages.remMin + stages.lightMin, 1)) }
+
+    private func ink(_ stage: SleepStage, step: Double) -> AnyShapeStyle {
+        style.full ? AnyShapeStyle(StrandPalette.sleepStageColor(stage)) : AnyShapeStyle(Color.primary.opacity(step))
+    }
+
+    private var parts: [(label: String, minutes: Int, ink: AnyShapeStyle)] {
+        [(FL.s("Deep"), stages.deepMin, ink(.deep, step: 0.9)),
+         (FL.s("REM"), stages.remMin, ink(.rem, step: 0.65)),
+         (FL.s("Light"), stages.lightMin, ink(.light, step: 0.4))]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            GeometryReader { geo in
+                let gap: CGFloat = 2
+                let usable = geo.size.width - gap * 2
+                HStack(spacing: gap) {
+                    ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(part.ink)
+                            .frame(width: max(usable * Double(part.minutes) / total, 0))
+                    }
+                }
+            }
+            .widgetAccentable()
+            .frame(height: 10)
+            ViewThatFits(in: .horizontal) {
+                legend(withNames: true)
+                legend(withNames: false)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(FL.s("Sleep stages, deep \(ForkFormat.duration(minutes: stages.deepMin)), REM \(ForkFormat.duration(minutes: stages.remMin)), light \(ForkFormat.duration(minutes: stages.lightMin))")))
+    }
+
+    private func legend(withNames: Bool) -> some View {
+        HStack(spacing: 10) {
+            ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                HStack(spacing: 3) {
+                    Circle().fill(part.ink).frame(width: 6, height: 6)
+                    Text(withNames ? "\(part.label) \(ForkFormat.duration(minutes: part.minutes))"
+                                   : ForkFormat.duration(minutes: part.minutes))
+                        .font(.system(size: 10))
+                        .foregroundStyle(style.secondary)
+                        .lineLimit(1)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+/// The newest workout of today: glyph, name, start and duration, then the figures the row actually has.
+/// Wider lines are tried first and the figures are dropped from the end, so nothing is ever truncated.
+struct ForkWorkoutBlock: View {
+    let workout: ForkWorkout
+    let style: ForkStyle
+
+    private var start: String { ForkFormat.clock(Date(timeIntervalSince1970: TimeInterval(workout.startTs))) }
+
+    private func figures(_ level: Int) -> String {
+        var parts: [String] = []
+        if let e = workout.effortText { parts.append(FL.s("Effort \(e)")) }
+        if let avg = workout.avgHr {
+            switch (level, workout.maxHr) {
+            case (0, let max?): parts.append(FL.s("HR avg \(avg) · max \(max)"))
+            case (1, let max?): parts.append(FL.s("HR \(avg)/\(max)"))
+            default: parts.append(FL.s("\(avg) bpm"))
+            }
+        }
+        if level <= 1, let k = workout.kcal { parts.append(FL.s("\(k) kcal")) }
+        return parts.joined(separator: " · ")
+    }
+
+    private func figureLine(_ level: Int) -> some View {
+        Text(figures(level))
+            .font(.system(size: 10))
+            .foregroundStyle(style.secondary)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: sportSymbol(workout.sport))
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(style.full ? AnyShapeStyle(StrandPalette.effortColor) : style.primary)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(workout.sportName) · \(start) · \(FL.s("\(workout.durationMin) min"))")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(style.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                ViewThatFits(in: .horizontal) {
+                    figureLine(0)
+                    figureLine(1)
+                    figureLine(2)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("\(workout.sportName), \(start), \(FL.s("\(workout.durationMin) min")), \(figures(0))"))
+    }
+}
+
+/// Seven days of Charge, Effort and Rest as three small bar groups. A day without a score is a short
+/// faint stub, never a bar at zero.
+struct ForkTrendBars: View {
+    let trend: ForkTrend
+    let style: ForkStyle
+    let height: CGFloat
+
+    private func column(_ label: String, color: Color, values: [Int?]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .bottom, spacing: 3) {
+                ForEach(Array(values.enumerated()), id: \.offset) { _, v in
+                    ZStack(alignment: .bottom) {
+                        Color.clear
+                        if let v {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(style.domain(color))
+                                .frame(height: max(height * Double(min(max(v, 0), 100)) / 100, 3))
+                        } else {
+                            RoundedRectangle(cornerRadius: 2).fill(style.track).frame(height: 3)
+                        }
+                    }
+                }
+            }
+            .widgetAccentable()
+            .frame(height: height)
+            Text(label).font(.system(size: 10)).foregroundStyle(style.tertiary).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(FL.s("7 days"))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(style.secondary)
+                .lineLimit(1)
+            HStack(alignment: .top, spacing: 14) {
+                column(FL.s("Charge"), color: StrandPalette.chargeColor, values: trend.days.map(\.charge))
+                column(FL.s("Effort"), color: StrandPalette.effortColor, values: trend.days.map(\.effort))
+                column(FL.s("Rest"), color: StrandPalette.restColor, values: trend.days.map(\.rest))
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(FL.s("Last 7 days of Charge, Effort and Rest")))
+    }
+}
+
 // MARK: - Sample data (previews and gallery only; fictional)
 
 extension ForkWidgetSnapshot {
@@ -324,6 +585,16 @@ extension ForkWidgetSnapshot {
         snap.smartWake = SmartWakeSchedule(wakeMinutes: 6 * 60 + 50, windowDuration: 30 * 60)
         snap.hrDay = ForkHRDay(day: WidgetSnapshot.localDayNumber(now, calendar: calendar), throughTs: nowTs,
                                minBpm: all.min() ?? 0, maxBpm: all.max() ?? 0, runs: runs)
+        let today = WidgetSnapshot.localDayNumber(now, calendar: calendar)
+        snap.vitals = ForkVitals(day: today, respText: "14.2", skinText: "34.2 °C")
+        snap.sleepStages = ForkSleepStages(day: today, deepMin: 80, remMin: 105, lightMin: 247, efficiencyPct: 91)
+        snap.workout = ForkWorkout(day: today, sport: "running", sportName: "Running", startTs: start + 7 * 3600 + 600,
+                                   durationMin: 42, effortText: "11.8", effortWhoop: true, avgHr: 148, maxHr: 176, kcal: 520)
+        snap.trend = ForkTrend(day: today, days: [
+            ForkTrendDay(charge: 62, effort: 48, rest: 71), ForkTrendDay(charge: 74, effort: 63, rest: 80),
+            ForkTrendDay(charge: 55, effort: 82, rest: 66), ForkTrendDay(charge: nil, effort: nil, rest: nil),
+            ForkTrendDay(charge: 81, effort: 40, rest: 88), ForkTrendDay(charge: 68, effort: 57, rest: 74),
+            ForkTrendDay(charge: 77, effort: 59, rest: 85)])
         return snap
     }
 }
