@@ -123,6 +123,21 @@ jobs:
             exit 1
           fi
 
+      - name: Select Xcode 27 (iOS 27 SDK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          want="${XCODE_VERSION:-27.2}"
+          xcode="$(ls -d /Applications/Xcode_${want}*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [ -z "$xcode" ]; then
+            echo "::error::Xcode ${want} is not installed on this runner image. Installed:"
+            ls -d /Applications/Xcode*.app || true
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=${xcode}/Contents/Developer" >> "$GITHUB_ENV"
+          DEVELOPER_DIR="${xcode}/Contents/Developer" xcodebuild -version
+          DEVELOPER_DIR="${xcode}/Contents/Developer" xcrun --sdk iphoneos --show-sdk-version
+
       - name: Install XcodeGen
         run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
 
@@ -254,6 +269,21 @@ jobs:
               text = text[:start] + ios + text[end:]
               path.write_text(text)
           PY
+
+      - name: Select Xcode 27 (iOS 27 SDK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          want="${XCODE_VERSION:-27.2}"
+          xcode="$(ls -d /Applications/Xcode_${want}*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [ -z "$xcode" ]; then
+            echo "::error::Xcode ${want} is not installed on this runner image. Installed:"
+            ls -d /Applications/Xcode*.app || true
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=${xcode}/Contents/Developer" >> "$GITHUB_ENV"
+          DEVELOPER_DIR="${xcode}/Contents/Developer" xcodebuild -version
+          DEVELOPER_DIR="${xcode}/Contents/Developer" xcrun --sdk iphoneos --show-sdk-version
 
       - name: Install XcodeGen
         run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
