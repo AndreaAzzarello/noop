@@ -8,11 +8,21 @@ import WidgetKit
 
 private enum PreviewData {
     static let now = Date()
-    static var full: NOOPPlusEntry { NOOPPlusEntry(date: now, widget: .placeholder, fork: .sample(now: now)) }
+    /// The upstream placeholder carries no stress curve; a fictional one, so the XL stress block has data.
+    static var widgetWithStress: WidgetSnapshot {
+        var w = WidgetSnapshot.placeholder
+        let start = Int64(Calendar.current.startOfDay(for: now).timeIntervalSince1970)
+        w.stressSeries = (7..<Int(now.timeIntervalSince1970 - Double(start)) / 3600).map { h in
+            StressPoint(ts: start + Int64(h) * 3600, level: 0.9 + 0.8 * abs(sin(Double(h) * 0.7)))
+        }
+        w.stressDay = WidgetSnapshot.localDayNumber(now)
+        return w
+    }
+    static var full: NOOPPlusEntry { NOOPPlusEntry(date: now, widget: widgetWithStress, fork: .sample(now: now)) }
     static var empty: NOOPPlusEntry { NOOPPlusEntry(date: now, widget: .unavailable, fork: .empty) }
     /// Data last confirmed 3 hours ago, Smart Wake off, low battery.
     static var old: NOOPPlusEntry {
-        var w = WidgetSnapshot.placeholder
+        var w = widgetWithStress
         w.updated = now.addingTimeInterval(-3 * 3600)
         w.batteryPct = 12
         var f = ForkWidgetSnapshot.sample(now: now)
@@ -39,4 +49,15 @@ private func fixed(_ entry: NOOPPlusEntry, _ family: WidgetFamily, _ size: CGSiz
 #Preview("SE large old", traits: .sizeThatFitsLayout) { fixed(PreviewData.old, .systemLarge, CGSize(width: 292, height: 311)) }
 #Preview("SE medium", traits: .sizeThatFitsLayout) { fixed(PreviewData.full, .systemMedium, CGSize(width: 292, height: 141)) }
 #Preview("SE small", traits: .sizeThatFitsLayout) { fixed(PreviewData.full, .systemSmall, CGSize(width: 141, height: 141)) }
+
+// Extra-large portrait exists from the iOS 27 SDK (Xcode 27 / Swift 6.4); older compilers never see it.
+#if compiler(>=6.4)
+@available(iOS 27.0, *)
+#Preview("XL", as: .systemExtraLargePortrait) { NOOPPlusWidget() } timeline: { PreviewData.full; PreviewData.old; PreviewData.empty }
+#Preview("XL fixed", traits: .sizeThatFitsLayout) {
+    if #available(iOS 27.0, *) {
+        fixed(PreviewData.full, .systemExtraLargePortrait, CGSize(width: 364, height: 740))
+    }
+}
+#endif
 #endif
