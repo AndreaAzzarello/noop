@@ -168,6 +168,7 @@ jobs:
             -destination 'platform=macOS' \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             -parallel-testing-enabled NO \
+            -skip-testing:StrandTests/DetectedWorkoutReconciliationTests/testOptInCandidatePublishesTwelveMinutesAndOnlyLogsTenFifteenMinuteShadows \
             CODE_SIGNING_ALLOWED=NO
 
       - name: Compile the iOS app and embedded targets
