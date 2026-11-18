@@ -86,7 +86,7 @@ struct NOOPPlusView: View {
         case .accessoryRectangular: rectangular
         case .systemLarge: large
         case .systemMedium: medium
-        default: small
+        default: smallOrExtraLarge
         }
     }
 
@@ -408,6 +408,140 @@ struct NOOPPlusView: View {
     }
 }
 
+// MARK: - systemExtraLargePortrait (iPhone, iOS 27)
+
+extension NOOPPlusView {
+    /// The ONLY place the view names `WidgetFamily.systemExtraLargePortrait`. That case exists in the iOS 27
+    /// SDK (Xcode 27, Swift 6.4) and not before, so the reference is hidden from older compilers: the project
+    /// still builds with Xcode 26 / SDK 26, where this is simply `small`, the fallback the switch always had.
+    @ViewBuilder
+    fileprivate var smallOrExtraLarge: some View {
+        #if compiler(>=6.4)
+        if #available(iOS 27.0, *), family == .systemExtraLargePortrait {
+            extraLarge
+        } else {
+            small
+        }
+        #else
+        small
+        #endif
+    }
+
+    /// Dashboard order, top to bottom: rings, vitals, HR by zone, stress, sleep with stages, last workout,
+    /// 7-day strip, Smart Wake + freshness. Every block without data is left out, never filled with a
+    /// placeholder number. When the widget is short, content goes in this order: the 7-day strip, then the
+    /// stress curve, then the HR axes, then the charts get shorter. `ViewThatFits` takes the first variant
+    /// whose ideal size fits, so a variant is either shown whole or skipped and no text is truncated.
+    fileprivate var extraLarge: some View {
+        ViewThatFits(in: .vertical) {
+            extraLargeBody(trend: true, stress: true, axes: true, chartHeight: 112, shortUpdated: false)
+            extraLargeBody(trend: false, stress: true, axes: true, chartHeight: 112, shortUpdated: false)
+            extraLargeBody(trend: false, stress: false, axes: true, chartHeight: 112, shortUpdated: false)
+            extraLargeBody(trend: false, stress: false, axes: false, chartHeight: 96, shortUpdated: true)
+            extraLargeBody(trend: false, stress: false, axes: false, chartHeight: 72, shortUpdated: true)
+            extraLargeBody(trend: false, stress: false, axes: false, chartHeight: 48, shortUpdated: true)
+        }
+        .padding(14)
+    }
+
+    private func extraLargeBody(trend showTrend: Bool, stress showStress: Bool, axes: Bool,
+                                chartHeight: CGFloat, shortUpdated: Bool) -> some View {
+        let stressSeries = widget.stressCurve(now: now)
+        return VStack(alignment: .leading, spacing: 8) {
+            header
+            rings(diameter: 64, lineWidth: 7, labelFont: .caption2)
+            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                statsRow
+                extraLargeVitalsRow
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                largeChartCaption(axes: axes)
+                if let day = hrToday {
+                    ForkZoneHRChart(day: day, height: chartHeight, axes: axes, style: style, flexible: true)
+                } else {
+                    ForkEmptyChart(height: chartHeight, style: style)
+                }
+            }
+            if showStress, stressSeries.contains(where: { $0.level != nil }) {
+                ForkStressBlock(series: stressSeries, height: 56, style: style)
+            }
+            extraLargeSleep
+            if let workout = fork.workoutToday(now: now) {
+                ForkWorkoutBlock(workout: workout, style: style)
+            }
+            if showTrend, let trend = fork.trendToday(now: now) {
+                ForkTrendBars(trend: trend, style: style, height: 26)
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: 6) {
+                if let wake {
+                    ViewThatFits(in: .horizontal) {
+                        extraLargeWake(wake, short: false)
+                        extraLargeWake(wake, short: true)
+                    }
+                }
+                Spacer(minLength: 0)
+                ForkFreshness(updated: updated, now: now, short: shortUpdated, style: style)
+            }
+        }
+    }
+
+    /// Respiratory rate and skin temperature, only the ones the app has a figure for.
+    @ViewBuilder
+    private var extraLargeVitalsRow: some View {
+        if let vitals = fork.vitalsToday(now: now) {
+            HStack(alignment: .top, spacing: 0) {
+                if let resp = vitals.respText {
+                    statCell(FL.s("Resp. rate"), value: resp, unit: FL.s("/min"),
+                             spoken: FL.s("\(resp) breaths per minute"))
+                }
+                if let skin = vitals.skinText {
+                    statCell(FL.s("Skin temp"), value: skin, unit: nil, spoken: skin)
+                }
+                Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    /// Duration and efficiency of last night, with the stage bar when the night could be staged. The
+    /// duration appears here and nowhere else on this family.
+    @ViewBuilder
+    private var extraLargeSleep: some View {
+        let stages = fork.sleepStagesToday(now: now)
+        let minutes = fork.sleepMinutes(now: now)
+            ?? stages.map { $0.deepMin + $0.remMin + $0.lightMin }
+        if let minutes {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Label(FL.s("Sleep \(ForkFormat.duration(minutes: minutes))"), systemImage: "moon.fill")
+                        .foregroundStyle(style.secondary)
+                        .accessibilityLabel(Text(FL.s("Sleep last night \(ForkFormat.duration(minutes: minutes))")))
+                    Spacer(minLength: 0)
+                    if let eff = stages?.efficiencyPct {
+                        Text(FL.s("Efficiency \("\(eff)%")"))
+                            .foregroundStyle(style.tertiary)
+                    }
+                }
+                .font(.system(size: 11))
+                .lineLimit(1)
+                if let stages {
+                    ForkSleepStagesBar(stages: stages, style: style)
+                }
+            }
+        }
+    }
+
+    private func extraLargeWake(_ wake: ForkNextWake, short: Bool) -> some View {
+        Label(ForkFormat.wake(wake, now: now, short: short), systemImage: "alarm")
+            .font(.system(size: 11))
+            .foregroundStyle(style.secondary)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
 // MARK: - Widget
 
 struct NOOPPlusWidget: Widget {
@@ -419,9 +553,20 @@ struct NOOPPlusWidget: Widget {
         .configurationDisplayName(LocalizedStringResource("NOOP+", table: "ForkWidgets"))
         .description(LocalizedStringResource("Charge, Effort and Rest, today's heart rate by zone, sleep and the next Smart Wake.",
                                              table: "ForkWidgets"))
-        .supportedFamilies([
+        .supportedFamilies(Self.families)
+    }
+
+    /// The families this widget offers. The extra-large portrait family is iPhone + iOS 27 only: it is
+    /// added behind `#available` for older systems and behind `#if compiler` for older SDKs, where the
+    /// case does not exist (see `smallOrExtraLarge`).
+    private static var families: [WidgetFamily] {
+        var list: [WidgetFamily] = [
             .systemSmall, .systemMedium, .systemLarge,
             .accessoryCircular, .accessoryInline, .accessoryRectangular
-        ])
+        ]
+        #if compiler(>=6.4)
+        if #available(iOS 27.0, *) { list.append(.systemExtraLargePortrait) }
+        #endif
+        return list
     }
 }
