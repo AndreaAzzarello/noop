@@ -44,8 +44,28 @@ struct NOOPPlusProvider: TimelineProvider {
             let passed = wake.latest.addingTimeInterval(1)
             if passed > now && passed < refresh { dates.append(passed) }
         }
+        // TEMP probe: remove once the extra-large layout is confirmed on a device.
+        recordXLProbe(context: context, widget: widget, fork: fork, now: now)
         let entries = dates.sorted().map { NOOPPlusEntry(date: $0, widget: widget, fork: fork) }
         completion(Timeline(entries: entries, policy: .after(refresh)))
+    }
+
+    /// TEMP probe. Writes the REAL container size WidgetKit reports for the extra-large family, plus which
+    /// blocks have data, as one counts-only line the Smart Wake diagnostics report shows. No health values.
+    /// The family is matched by name so this compiles on SDKs that do not know the case.
+    static let probeKey = "noop.fork.widget.xlProbe"
+    private func recordXLProbe(context: Context, widget: WidgetSnapshot, fork: ForkWidgetSnapshot, now: Date) {
+        guard String(describing: context.family).localizedCaseInsensitiveContains("extralarge") else { return }
+        let size = context.displaySize
+        let stressHours = widget.stressCurve(now: now).filter { $0.level != nil }.count
+        let trendDays = fork.trendToday(now: now)?.days.filter { $0.charge != nil || $0.effort != nil || $0.rest != nil }.count ?? 0
+        let line = "size=\(Int(size.width))x\(Int(size.height)) stress=\(stressHours)h trend=\(trendDays)/7 "
+            + "vitals=\(fork.vitalsToday(now: now) != nil) stages=\(fork.sleepStagesToday(now: now) != nil) "
+            + "workout=\(fork.workoutToday(now: now) != nil) hr=\(fork.hrToday(now: now) != nil)"
+        guard let defaults = UserDefaults(suiteName: WidgetSnapshot.suiteName) else { return }
+        let stamp = now.formatted(date: .omitted, time: .shortened)
+        if defaults.string(forKey: Self.probeKey)?.hasPrefix(line) == true { return }
+        defaults.set("\(line) at=\(stamp)", forKey: Self.probeKey)
     }
 }
 

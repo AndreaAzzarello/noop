@@ -58,8 +58,11 @@ struct SmartWakeDiagnosticsView: View {
 
     private func reload() {
         copied = false
+        // TEMP probe: the NOOP+ extra-large widget's real size and block data (see NOOPPlusProvider).
+        let probe = UserDefaults(suiteName: WidgetSnapshot.suiteName)?.string(forKey: "noop.fork.widget.xlProbe")
         report = SmartWakeDiagnostics.report(
-            snapshot: SmartWakeAlarmScheduler.shared.diagnosticsSnapshot(),
+            snapshot: SmartWakeAlarmScheduler.shared.diagnosticsSnapshot()
+                + "\nNOOP+ XL probe: \(probe ?? "no extra-large widget has rendered yet")",
             windowStats: UserDefaults.standard.string(forKey: SmartWakeLiveController.windowSummaryStorageKey)
         )
     }
