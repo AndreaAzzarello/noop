@@ -414,13 +414,37 @@ struct ForkSleepStagesBar: View {
             }
             .widgetAccentable()
             .frame(height: 10)
+            // One line per stage set first (name and duration side by side), the two-line columns after.
             ViewThatFits(in: .horizontal) {
+                inlineLegend(short: false)
+                inlineLegend(short: true)
                 legend(short: false)
                 legend(short: true)
             }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(FL.s("Sleep stages, deep \(ForkFormat.duration(minutes: stages.deepMin)), REM \(ForkFormat.duration(minutes: stages.remMin)), light \(ForkFormat.duration(minutes: stages.lightMin))")))
+    }
+
+    /// Dot, name and duration on ONE line per stage, the shortest legend. Measured at its ideal width so
+    /// `ViewThatFits` skips it when the three do not fit side by side.
+    private func inlineLegend(short: Bool) -> some View {
+        HStack(spacing: 10) {
+            ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                HStack(spacing: 4) {
+                    Circle().fill(part.ink).frame(width: 6, height: 6)
+                    Text(short ? part.short : part.label)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(style.secondary)
+                    Text(ForkFormat.duration(minutes: part.minutes))
+                        .font(.system(size: 10))
+                        .foregroundStyle(style.tertiary)
+                }
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            }
+            Spacer(minLength: 0)
+        }
     }
 
     /// Three equal columns, each the stage name beside its colour dot with the duration underneath, so the

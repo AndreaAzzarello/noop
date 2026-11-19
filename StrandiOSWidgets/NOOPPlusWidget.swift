@@ -455,32 +455,38 @@ extension NOOPPlusView {
     /// 7-day strip, Smart Wake + freshness. Every block without data is left out, never filled with a
     /// placeholder number.
     ///
-    /// Every plot has a FIXED height. `ViewThatFits` measures the real container and takes the first variant
-    /// whose ideal size fits, so a variant is either shown whole or skipped and no text is truncated. A block
-    /// is sacrificed only when the room is genuinely missing: first the 7-day strip, then the stress curve,
-    /// then the HR axes, then the chart gets shorter. Room left over goes to the gaps between blocks (each
-    /// gap is a `Spacer` whose minimum is the old fixed spacing), so nothing is stretched.
+    /// Measured on an iPhone (iOS 27.2): the family is 349x565 pt, 321x537 inside the padding. Every plot has
+    /// a FIXED height. `ViewThatFits` measures the real container and takes the first variant whose ideal
+    /// size fits, so a variant is either shown whole or skipped and no text is truncated. When room is
+    /// missing the sacrifice order is fixed, first to last: the HR chart and the stress curve shrink, the HR
+    /// axes and the long "Updated at" go, the HR chart shrinks again, and only then the 7-day strip and the
+    /// stress block are dropped. The workout block is never dropped: it is today's event and appears nowhere
+    /// else, while the strip is history that the rings already summarise. Room left over goes to the gaps
+    /// between blocks (each a `Spacer` whose minimum is the fixed spacing), so nothing is stretched.
     fileprivate var extraLarge: some View {
         ViewThatFits(in: .vertical) {
-            extraLargeBody(trend: true, stress: true, axes: true, chartHeight: 104, shortUpdated: false)
-            extraLargeBody(trend: false, stress: true, axes: true, chartHeight: 104, shortUpdated: false)
-            extraLargeBody(trend: false, stress: false, axes: true, chartHeight: 104, shortUpdated: false)
-            extraLargeBody(trend: false, stress: false, axes: false, chartHeight: 88, shortUpdated: true)
-            extraLargeBody(trend: false, stress: false, axes: false, chartHeight: 64, shortUpdated: true)
-            extraLargeBody(trend: false, stress: false, axes: false, chartHeight: 44, shortUpdated: true)
+            extraLargeBody(trend: true, stress: 40, axes: true, chartHeight: 80, shortUpdated: false)
+            extraLargeBody(trend: true, stress: 40, axes: true, chartHeight: 64, shortUpdated: false)
+            extraLargeBody(trend: true, stress: 30, axes: true, chartHeight: 64, shortUpdated: false)
+            extraLargeBody(trend: true, stress: 30, axes: false, chartHeight: 64, shortUpdated: true)
+            extraLargeBody(trend: true, stress: 30, axes: false, chartHeight: 52, shortUpdated: true)
+            extraLargeBody(trend: false, stress: 30, axes: false, chartHeight: 52, shortUpdated: true)
+            extraLargeBody(trend: false, stress: nil, axes: false, chartHeight: 52, shortUpdated: true)
+            extraLargeBody(trend: false, stress: nil, axes: false, chartHeight: 44, shortUpdated: true)
         }
         .padding(14)
     }
 
-    private var extraLargeGap: some View { Spacer(minLength: 8) }
+    private var extraLargeGap: some View { Spacer(minLength: 6) }
 
-    private func extraLargeBody(trend showTrend: Bool, stress showStress: Bool, axes: Bool,
+    /// `stress` is the plot height, or nil to leave the stress block out.
+    private func extraLargeBody(trend showTrend: Bool, stress stressHeight: CGFloat?, axes: Bool,
                                 chartHeight: CGFloat, shortUpdated: Bool) -> some View {
         let stressSeries = widget.stressCurve(now: now)
         return VStack(alignment: .leading, spacing: 0) {
             header
             extraLargeGap
-            rings(diameter: 64, lineWidth: 7, labelFont: .caption2)
+            rings(diameter: 56, lineWidth: 6, labelFont: .caption2)
             extraLargeGap
             Divider()
             extraLargeGap
@@ -497,9 +503,9 @@ extension NOOPPlusView {
                     ForkEmptyChart(height: chartHeight, style: style)
                 }
             }
-            if showStress, stressSeries.contains(where: { $0.level != nil }) {
+            if let stressHeight, stressSeries.contains(where: { $0.level != nil }) {
                 extraLargeGap
-                ForkStressBlock(series: stressSeries, height: 48, style: style)
+                ForkStressBlock(series: stressSeries, height: stressHeight, style: style)
             }
             extraLargeSleep
             if let workout = fork.workoutToday(now: now) {
@@ -508,7 +514,7 @@ extension NOOPPlusView {
             }
             if showTrend, let trend = fork.trendToday(now: now) {
                 extraLargeGap
-                ForkTrendBars(trend: trend, style: style, height: 26)
+                ForkTrendBars(trend: trend, style: style, height: 20)
             }
             extraLargeGap
             HStack(spacing: 6) {
