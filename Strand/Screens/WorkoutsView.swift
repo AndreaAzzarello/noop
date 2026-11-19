@@ -58,6 +58,7 @@ struct WorkoutsView: View {
     /// the rest (`expandWindow`).
     @State private var allRows: [WorkoutRow]
     @State private var loaded: Bool
+    @State private var loadMemo = LoadSeqMemo() // fork-perf: skip an unchanged reload on re-entry
     @State private var seededInitialRange = false
     /// Current (the most recent sessions) or Archived (everything older). A view split only: archived rows
     /// stay in the database and are one tap away.
@@ -226,6 +227,8 @@ struct WorkoutsView: View {
         .task(id: repo.refreshSeq) {
             let perfSpan = PerfTrace.span("workouts.load"); defer { perfSpan.end() } // fork-perf: TEMP
             guard !usesPreviewRows else { return }
+            if loaded, loadMemo.isCurrent(repo.refreshSeq) { return } // fork-perf: unchanged data on re-entry
+            let loadedSeq = repo.refreshSeq // fork-perf
             // #797: read only the currently-loaded window (bounded on first paint), not the whole history.
             let r = await repo.workoutRows(days: loadedWindowDays ?? 4000)
             allRows = r
@@ -243,6 +246,7 @@ struct WorkoutsView: View {
             let metrics = await repo.dailyMetrics(fromDay: Self.dayFormatter.string(from: fromDate), toDay: toDay)
             dailyKcal = Dictionary(metrics.compactMap { m in m.activeKcalEst.map { (m.day, $0) } },
                                    uniquingKeysWith: max)
+            if !Task.isCancelled { loadMemo.finish(loadedSeq) } // fork-perf
         }
         .onAppear {
             // Preview-seeded rows skip `.task`; still choose a range that has data.
