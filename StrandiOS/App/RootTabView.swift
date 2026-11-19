@@ -29,7 +29,10 @@ struct RootTabView: View {
     /// that state; keeping it explicit here prevents this shell's window-level sheet from covering a gate.
     let homeScreenQuickActionsEnabled: Bool
 
-    @EnvironmentObject private var repo: Repository
+    // fork-perf: the shell only calls methods on the repository; observing it re-ran this body (and rebuilt all
+    // five tab roots) on every Repository publish. The handle does not subscribe.
+    @Environment(\.repositoryHandle) private var repoHandle
+    private var repo: Repository { repoHandle! }
     /// Cross-screen navigation requests (e.g. Live → "Manage devices"). Devices isn't a tab — it lives
     /// behind the More list — so a request presents it as a sheet, matching the quick-action screens.
     @EnvironmentObject private var router: NavRouter

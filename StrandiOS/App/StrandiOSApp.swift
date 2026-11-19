@@ -228,6 +228,7 @@ struct StrandiOSApp: App {
                 .environmentObject(model.ble)   // #334: Today pull-to-sync reads BLEManager (no HR churn)
                 .environmentObject(model.live)
                 .environmentObject(model.repo)
+                .environment(\.repositoryHandle, model.repo) // fork-perf: non-observing handle for the tab shell
                 .environmentObject(model.profile)
                 .environmentObject(model.behavior)
                 .environmentObject(model.intelligence)

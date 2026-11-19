@@ -69,5 +69,6 @@ work together with `Strand/System/PerfTrace.swift` and `StrandiOS/App/PerfDispla
 | `Strand/Screens/TestCentreView.swift` | +14/-4 (kept part) | B1: the guided-row captured-day count is refreshed by a task (on toggle/appear, then every 5 s) instead of reading the whole shareable log from disk inside `body` on every LiveState publish |
 | `Strand/Data/Repository.swift` | +21/-4 | B5: registry device list cached per store instance, dropped on any registry write (`registeredDevices`; used by the union reads, `activeStrapIsWhoop5`, `activeDeviceDisplayName`) |
 | `Packages/WhoopStore/Sources/WhoopStore/DeviceRegistryStore.swift` | +34/-11 | B5: every registry write goes through `writeTracked`, which bumps the in-process `DeviceRegistryChangeCounter`; test added |
+| `StrandiOS/App/RootTabView.swift` | +4/-1 | B9: the shell holds the repository through a non-observing `repositoryHandle` (fork-only `Strand/System/RepositoryHandle.swift`) instead of `@EnvironmentObject`; `StrandiOSApp.swift` +1 injects it |
 
 Later perf commits (real fixes, kept) are appended here as they land.
