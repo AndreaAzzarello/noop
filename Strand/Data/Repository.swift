@@ -3277,9 +3277,12 @@ final class Repository: ObservableObject {
             }
             candidates = results
         } else {
-            candidates = AutoWorkoutDetector.detect(hr: hr, restingBpm: restingBpm,
-                                                    motion: nil, savedSpans: savedSpans,
-                                                    minimumSustainedMinutes: AutoWorkoutDetector.minSustainedMin)
+            // Off the main actor: scans up to ~48 h of 1 Hz samples.
+            candidates = await Task.detached(priority: .utility) {
+                AutoWorkoutDetector.detect(hr: hr, restingBpm: restingBpm,
+                                           motion: nil, savedSpans: savedSpans,
+                                           minimumSustainedMinutes: AutoWorkoutDetector.minSustainedMin)
+            }.value
         }
         candidates = await gateAutoDetectCandidates(candidates, restingBpm: restingBpm)
         let picked = Self.selectAutoDetectCandidate(

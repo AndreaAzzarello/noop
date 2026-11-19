@@ -30,12 +30,19 @@ extension Repository {
             gravity = await gravitySamplesUnion(from: start - AutoWorkoutMotionGate.gravitySmoothS - 1, to: end)
         }
 
+        // The per-candidate tally walks up to 200k step / gravity samples: keep it off the main actor.
+        let spans = candidates.map { (start: $0.startSec, end: $0.endSec) }
+        let requireMotion = settings.requireMotion
+        let tallies: [AutoWorkoutMotionGate.Tally] = await Task.detached(priority: .utility) {
+            spans.map { span in
+                requireMotion
+                    ? AutoWorkoutMotionGate.tally(steps: steps, gravity: gravity, start: span.start, end: span.end)
+                    : AutoWorkoutMotionGate.Tally(seconds: span.end - span.start + 1, covered: 0, moving: 0)
+            }
+        }.value
+
         var kept: [DetectedWorkout] = []
-        for candidate in candidates {
-            let tally = settings.requireMotion
-                ? AutoWorkoutMotionGate.tally(steps: steps, gravity: gravity,
-                                              start: candidate.startSec, end: candidate.endSec)
-                : AutoWorkoutMotionGate.Tally(seconds: candidate.endSec - candidate.startSec + 1, covered: 0, moving: 0)
+        for (candidate, tally) in zip(candidates, tallies) {
             let evaluation = AutoWorkoutMotionGate.evaluate(candidate, restingBpm: restingBpm,
                                                             tally: tally, settings: settings)
             if TestCentre.active(.workouts), let workoutsLog {
@@ -60,17 +67,26 @@ extension Repository {
         let zone1 = AutoWorkoutEdgeTrim.zone1Lower(hrMax: strainProfile?.hrMax,
                                                    customLowerBounds: AutoWorkoutEdgeTrim.storedCustomLowerBounds())
         let threshold = AutoWorkoutEdgeTrim.threshold(restingBpm: restingBpm, zone1Lower: zone1)
-        return candidates.map { candidate in
-            let result = AutoWorkoutEdgeTrim.trim(samples: samples, start: candidate.startSec, end: candidate.endSec,
-                                                  threshold: threshold.bpm, basis: threshold.basis,
-                                                  minMinutes: minMinutes)
+        // Trim + stats scan the whole span per candidate: compute off the main actor, then log and map here.
+        let minMin = minMinutes
+        let computed: [(result: AutoWorkoutEdgeTrim.Result, stats: DetectedWorkoutReview.Stats?)] =
+            await Task.detached(priority: .utility) {
+                candidates.map { candidate in
+                    let result = AutoWorkoutEdgeTrim.trim(samples: samples, start: candidate.startSec, end: candidate.endSec,
+                                                          threshold: threshold.bpm, basis: threshold.basis,
+                                                          minMinutes: minMin)
+                    let stats = (result.outcome == .trimmed || result.outcome == .capped)
+                        ? DetectedWorkoutReview.stats(samples: samples, start: result.startSec, end: result.endSec)
+                        : nil
+                    return (result, stats)
+                }
+            }.value
+        return zip(candidates, computed).map { candidate, item in
             if TestCentre.active(.workouts), let workoutsLog {
-                workoutsLog(AutoWorkoutEdgeTrim.traceLine(result))
+                workoutsLog(AutoWorkoutEdgeTrim.traceLine(item.result))
             }
-            guard result.outcome == .trimmed || result.outcome == .capped,
-                  let stats = DetectedWorkoutReview.stats(samples: samples, start: result.startSec, end: result.endSec)
-            else { return candidate }
-            return DetectedWorkout(startSec: result.startSec, endSec: result.endSec, avgBpm: stats.avgBpm,
+            guard let stats = item.stats else { return candidate }
+            return DetectedWorkout(startSec: item.result.startSec, endSec: item.result.endSec, avgBpm: stats.avgBpm,
                                    peakBpm: stats.maxBpm, durationMin: stats.durationMin)
         }
     }
