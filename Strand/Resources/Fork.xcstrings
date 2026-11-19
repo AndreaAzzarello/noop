@@ -277,6 +277,18 @@
         }
       }
     },
+    "No results for “%@”" : {
+      "comment" : "Shown in the More tab search when nothing matches; the placeholder is the typed text.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessun risultato per «%@»"
+          }
+        }
+      }
+    },
     "Not started: %@" : {
       "comment" : "Fallback result line of the strap alarm test; %@ is an English technical reason.",
       "extractionState" : "manual",
@@ -433,6 +445,18 @@
         }
       }
     },
+    "Search More and Settings" : {
+      "comment" : "Placeholder of the search field at the top of the More tab.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerca in Altro e Impostazioni"
+          }
+        }
+      }
+    },
     "Search the full list of activities." : {
       "comment" : "Subtitle of the full activity browser opened from the sport chips.",
       "extractionState" : "manual",
@@ -470,7 +494,7 @@
       }
     },
     "Smart Wake" : {
-      "comment" : "Title of the system alarm alert shown by AlarmKit. Alarms are matched by UUID, never by this text.",
+      "comment" : "Title of the system alarm alert shown by AlarmKit. Alarms are matched by UUID, never by this text. Also the Smart Wake entry in the More tab search.",
       "extractionState" : "manual",
       "localizations" : {
         "it" : {
@@ -633,6 +657,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "La sveglia qui sopra fa vibrare il polso dal firmware della fascia. Per una sveglia sul telefono, attiva Smart Wake qui sotto e consenti a NOOP di programmare sveglie di sistema (iOS 26 o successivo). AlarmKit può suonare anche con il silenzioso e la modalità Focus, e la sveglia all'orario massimo resta programmata anche senza dati di frequenza cardiaca del WHOOP. Tieni la sveglia dell'app Orologio come riserva finché non hai provato Smart Wake su questo iPhone."
+          }
+        }
+      }
+    },
+    "Try another word, for example alarm or backup." : {
+      "comment" : "Hint under the empty More tab search result.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prova con un'altra parola, ad esempio sveglia o backup."
           }
         }
       }
