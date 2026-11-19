@@ -1389,9 +1389,7 @@ private enum LiveSyncFormat {
     static func lastSyncLabel(_ ts: TimeInterval?) -> String {
         guard let ts else { return String(localized: "Never") }
         let date = Date(timeIntervalSince1970: ts)
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: Date())
+        return ForkFormatters.relativeShort().localizedString(for: date, relativeTo: Date()) // fork-perf: cached formatter
     }
 }
 

@@ -3406,7 +3406,7 @@ struct StepsCalibrationSheet: View {
     // MARK: Formatting
 
     private static func grouped(_ n: Int) -> String {
-        let f = NumberFormatter(); f.numberStyle = .decimal
+        let f = ForkFormatters.decimalFormatter() // fork-perf: cached formatter
         return f.string(from: NSNumber(value: n)) ?? "\(n)"
     }
     /// "yyyy-MM-dd" → "EEE d MMM" for the table's day column.

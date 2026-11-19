@@ -546,18 +546,9 @@ struct SmartAlarmView: View {
         let seconds = next.timeIntervalSince(now)
         // Under a minute there is no useful number left, and "in 0 minutes" reads like a bug.
         guard seconds >= 60 else { return String(localized: "Alarm in less than a minute") }
-        let formatter = DateComponentsFormatter()
-        formatter.calendar = {
-            var cal = Calendar.current
-            cal.locale = AppLanguage.activeLocale
-            return cal
-        }()
-        formatter.unitsStyle = .full
-        // Days included because a weekday-restricted alarm can be up to a week out, and "151 hours" is
-        // not an answer. Leading zero units are dropped, so a same-day alarm stays "18 hours, 6 minutes".
-        formatter.allowedUnits = [.day, .hour, .minute]
-        formatter.zeroFormattingBehavior = .dropAll
-        formatter.maximumUnitCount = 3
+        // fork-perf: cached formatter. Days included because a weekday-restricted alarm can be up to a week out,
+        // and "151 hours" is not an answer. Leading zero units are dropped ("18 hours, 6 minutes").
+        let formatter = ForkFormatters.dayHourMinuteSpan()
         guard let span = formatter.string(from: seconds), !span.isEmpty else { return nil }
         return String(localized: "Alarm in \(span)")
     }

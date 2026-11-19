@@ -8,6 +8,12 @@ enum ForkFormatters {
     private static let lock = NSLock()
     private static var dateFormatters: [String: DateFormatter] = [:]
     private static var decimalFormatters: [Int: NumberFormatter] = [:]
+    private static var componentsFormatters: [String: DateComponentsFormatter] = [:]
+    private static let relativeShortFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f
+    }()
 
     /// A formatter for `template` (`setLocalizedDateFormatFromTemplate`) in the active app-language locale.
     static func dateFormatter(template: String) -> DateFormatter {
@@ -33,6 +39,30 @@ enum ForkFormatters {
         f.locale = .autoupdatingCurrent
         if let maxFractionDigits { f.maximumFractionDigits = maxFractionDigits }
         decimalFormatters[key] = f
+        return f
+    }
+
+    /// The short relative-time formatter ("5 min. ago"), in the system locale like a freshly built one.
+    static func relativeShort() -> RelativeDateTimeFormatter {
+        lock.lock(); defer { lock.unlock() }
+        return relativeShortFormatter
+    }
+
+    /// A full-style `DateComponentsFormatter` for day/hour/minute spans in the active app-language locale
+    /// (zero units dropped, at most three units), the setup the Alarms countdown uses.
+    static func dayHourMinuteSpan() -> DateComponentsFormatter {
+        let locale = AppLanguage.activeLocale
+        lock.lock(); defer { lock.unlock() }
+        if let cached = componentsFormatters[locale.identifier] { return cached }
+        let f = DateComponentsFormatter()
+        var cal = Calendar.current
+        cal.locale = locale
+        f.calendar = cal
+        f.unitsStyle = .full
+        f.allowedUnits = [.day, .hour, .minute]
+        f.zeroFormattingBehavior = .dropAll
+        f.maximumUnitCount = 3
+        componentsFormatters[locale.identifier] = f
         return f
     }
 }
