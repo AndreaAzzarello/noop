@@ -2877,7 +2877,8 @@ private struct DiagnosticsSheet: View {
     let onClose: () -> Void
 
     /// Captured once at presentation; a snapshot, not a live monitor.
-    private let lines: [String] = IOSDiagnostics.capture().summaryLines()
+    @StateObject private var snapshot = DiagnosticsSnapshot() // fork-perf: captured once, not per redraw
+    private var lines: [String] { snapshot.lines }
 
     var body: some View {
         VStack(spacing: 0) {
