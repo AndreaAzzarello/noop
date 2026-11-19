@@ -326,6 +326,9 @@ struct ForkStressBlock: View {
     let height: CGFloat
     let style: ForkStyle
 
+    /// `StressTrace.formatLevel` prints with ".", the readout follows the locale like the other vitals.
+    private func level(_ value: Double) -> String { ForkDecimal.localize(StressTrace.formatLevel(value)) }
+
     private var latest: Double? { series.last(where: { $0.level != nil })?.level }
     private var peak: Double? { StressTrace.stats(series)?.peak.level }
 
@@ -336,7 +339,7 @@ struct ForkStressBlock: View {
 
     private var spoken: String {
         guard let latest, let peak else { return FL.s("Stress today") }
-        return FL.s("Stress today, now \(StressTrace.formatLevel(latest)), peak \(StressTrace.formatLevel(peak))")
+        return FL.s("Stress today, now \(level(latest)), peak \(level(peak))")
     }
 
     var body: some View {
@@ -351,7 +354,7 @@ struct ForkStressBlock: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if let latest, let peak {
-                    Text(FL.s("now \(StressTrace.formatLevel(latest)) · peak \(StressTrace.formatLevel(peak))"))
+                    Text(FL.s("now \(level(latest)) · peak \(level(peak))"))
                         .font(.system(size: 10))
                         .foregroundStyle(style.tertiary)
                         .lineLimit(1)

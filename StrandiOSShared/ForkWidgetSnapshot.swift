@@ -229,6 +229,29 @@ struct ForkWidgetSnapshot: Codable, Equatable {
     }
 }
 
+// MARK: - Decimal separator
+
+/// Several figures reach the fork widget already formatted with a "." (upstream helpers print with the C
+/// locale). This swaps the separator for the one the given locale uses, touching only a "." with a digit on
+/// both sides, so "32.4 °C" becomes "32,4 °C" in Italian and "v1.2.x" style text is left alone.
+enum ForkDecimal {
+    static func localize(_ text: String, locale: Locale = .current) -> String {
+        let separator = locale.decimalSeparator ?? "."
+        guard separator != ".", text.contains(".") else { return text }
+        let chars = Array(text)
+        var out = ""
+        for (i, c) in chars.enumerated() {
+            if c == ".", i > 0, i < chars.count - 1, chars[i - 1].isASCII, chars[i - 1].isNumber,
+               chars[i + 1].isASCII, chars[i + 1].isNumber {
+                out += separator
+            } else {
+                out.append(c)
+            }
+        }
+        return out
+    }
+}
+
 // MARK: - Strap battery tiers
 
 /// Battery colour bands, the same cut-offs `DevicesView.batteryTint` uses for the strap battery

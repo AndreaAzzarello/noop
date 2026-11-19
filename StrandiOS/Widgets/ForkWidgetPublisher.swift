@@ -116,7 +116,8 @@ enum ForkWidgetPublisher {
         let fahrenheit = UnitPrefs.resolveTemperature(
             system: system, override: defaults.string(forKey: UnitPrefs.temperatureKey) ?? "") == .fahrenheit
         let skinText = SkinTempDisplay.leadReading(absC: skinRow?.skinTempC, devC: skinRow?.skinTempDevC, prefer: preferred)
-            .map { SkinTempDisplay.formatReading($0, fahrenheit: fahrenheit) }
+            .map { ForkDecimal.localize(SkinTempDisplay.formatReading($0, fahrenheit: fahrenheit),
+                                        locale: AppLanguage.activeLocale) }
         let respText = resp.map { String(format: "%.1f", locale: AppLanguage.activeLocale, $0) }
         if respText != nil || skinText != nil {
             out.vitals = ForkVitals(day: day, respText: respText, skinText: skinText)
@@ -144,7 +145,9 @@ enum ForkWidgetPublisher {
         if let w = TodayWorkoutSummary.todaysWorkouts(rows, now: now).first {
             let effortText: String? = w.strain.flatMap { strain in
                 guard strain.isFinite else { return nil }
-                return scale == .whoop ? UnitFormatter.effortDisplay(strain, scale: scale) : String(Int(strain.rounded()))
+                return scale == .whoop
+                    ? ForkDecimal.localize(UnitFormatter.effortDisplay(strain, scale: scale), locale: AppLanguage.activeLocale)
+                    : String(Int(strain.rounded()))
             }
             let seconds = w.durationS ?? Double(w.endTs - w.startTs)
             out.workout = ForkWorkout(

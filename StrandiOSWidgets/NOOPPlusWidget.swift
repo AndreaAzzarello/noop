@@ -92,7 +92,9 @@ struct NOOPPlusView: View {
     private var wake: ForkNextWake? { fork.nextWake(now: now) }
     private var updated: Date? { fork.lastUpdate(widget: entry.widget) }
     private var hrToday: ForkHRDay? { fork.hrToday(now: now) }
-    private var effortText: String? { widget.effortDisplay ?? widget.effort.map(String.init) }
+    private var effortText: String? {
+        (widget.effortDisplay ?? widget.effort.map(String.init)).map { ForkDecimal.localize($0) }
+    }
 
     /// Live HR with the same age rule as the upstream trace widget (dimmed after 2 min, dropped after 15).
     private var liveHR: (bpm: Int?, stale: Bool) {
