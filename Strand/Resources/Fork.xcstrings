@@ -169,6 +169,30 @@
         }
       }
     },
+    "Not started: a NOOP alarm is ringing" : {
+      "comment" : "Result of the iPhone alarm test in the Smart Wake diagnostics.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non avviata: una sveglia NOOP sta suonando"
+          }
+        }
+      }
+    },
+    "Not started: a test is already running" : {
+      "comment" : "Result of the iPhone alarm test in the Smart Wake diagnostics.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non avviata: un test è già in corso"
+          }
+        }
+      }
+    },
     "Not started: a wake-up run is in progress" : {
       "comment" : "Result line of the strap alarm test.",
       "extractionState" : "manual",
@@ -177,6 +201,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Non avviato: è in corso una sveglia"
+          }
+        }
+      }
+    },
+    "Not started: alarm permission not granted" : {
+      "comment" : "Result of the iPhone alarm test in the Smart Wake diagnostics.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non avviata: permesso per le sveglie non concesso"
           }
         }
       }
@@ -213,6 +249,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Non avviato: la fascia non è connessa"
+          }
+        }
+      }
+    },
+    "Not started: the system refused the alarm" : {
+      "comment" : "Result of the iPhone alarm test in the Smart Wake diagnostics.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non avviata: il sistema ha rifiutato la sveglia"
           }
         }
       }
@@ -289,6 +337,18 @@
         }
       }
     },
+    "Stop Smart Wake test alarm" : {
+      "comment" : "Title of the stop intent of the iPhone test alarm (never shown).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ferma la sveglia di prova Smart Wake"
+          }
+        }
+      }
+    },
     "System Smart Wake alarms require iOS 26 or later." : {
       "comment" : "Shown on iOS versions older than 26.",
       "extractionState" : "manual",
@@ -309,6 +369,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dettaglio tecnico"
+          }
+        }
+      }
+    },
+    "Test alarm armed for %@" : {
+      "comment" : "Result of the iPhone alarm test; the argument is a clock time.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sveglia di prova programmata per le %@"
+          }
+        }
+      }
+    },
+    "Test iPhone alarm in 1 minute" : {
+      "comment" : "Button in the Smart Wake diagnostics.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prova la sveglia dell'iPhone tra 1 minuto"
           }
         }
       }

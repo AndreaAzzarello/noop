@@ -4,13 +4,15 @@ import StrandDesign
 import UIKit
 
 /// Collapsed "Diagnostics" row inside the Smart Wake card: what the scheduler last did and why, with a
-/// button that copies it all, and a one-minute test of the strap's firmware alarm. The report is read-only; only the
-/// test arms the strap, and it restores the normal alarm when it ends.
+/// button that copies it all, a one-minute test of the strap's firmware alarm, and a one-minute test of the
+/// iPhone alarm (`SmartWakeTestAlarm`, isolated from the schedule). The report is read-only; only the strap test
+/// arms the strap, and it restores the normal alarm when it ends.
 @available(iOS 26.0, *)
 struct SmartWakeDiagnosticsView: View {
     @State private var report = ""
     @State private var copied = false
     @State private var testResult: String?
+    @State private var phoneTestResult: String?
 
     var body: some View {
         DisclosureGroup {
@@ -30,6 +32,22 @@ struct SmartWakeDiagnosticsView: View {
                 .foregroundStyle(StrandPalette.accent)
                 if let testResult {
                     Text(verbatim: testResult)
+                        .font(StrandFont.footnote)
+                        .foregroundStyle(StrandPalette.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button {
+                    Task {
+                        phoneTestResult = await SmartWakeTestAlarm.shared.arm()
+                        reload()
+                    }
+                } label: {
+                    Text("Test iPhone alarm in 1 minute", tableName: "Fork")
+                }
+                .font(StrandFont.footnote)
+                .foregroundStyle(StrandPalette.accent)
+                if let phoneTestResult {
+                    Text(verbatim: phoneTestResult)
                         .font(StrandFont.footnote)
                         .foregroundStyle(StrandPalette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -58,10 +76,12 @@ struct SmartWakeDiagnosticsView: View {
 
     private func reload() {
         copied = false
+        Task { await SmartWakeTestAlarm.shared.sweep() }
         // TEMP probe: the NOOP+ extra-large widget's real size and block data (see NOOPPlusProvider).
         let probe = UserDefaults(suiteName: WidgetSnapshot.suiteName)?.string(forKey: "noop.fork.widget.xlProbe")
         report = SmartWakeDiagnostics.report(
             snapshot: SmartWakeAlarmScheduler.shared.diagnosticsSnapshot()
+                + "\n" + SmartWakeTestAlarm.shared.statusLine
                 + "\nNOOP+ XL probe: \(probe ?? "no extra-large widget has rendered yet")",
             windowStats: UserDefaults.standard.string(forKey: SmartWakeLiveController.windowSummaryStorageKey)
         )

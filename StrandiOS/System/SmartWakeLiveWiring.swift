@@ -46,6 +46,7 @@ enum SmartWakeLiveWiring {
         #if canImport(AlarmKit)
         if #available(iOS 26.0, *) {
             Task { @MainActor in SmartWakeAlarmScheduler.shared.startObserving() }
+            Task { @MainActor in await SmartWakeTestAlarm.shared.sweep() }
         }
         #endif
         let controller = SmartWakeLiveController(schedule: refreshSchedule(from: model.behavior))

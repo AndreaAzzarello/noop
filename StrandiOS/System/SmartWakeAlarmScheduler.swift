@@ -861,4 +861,14 @@ public struct SmartWakeRearmIntent: LiveActivityIntent {
         return .result()
     }
 }
+
+/// Diagnostics only (`SmartWakeTestAlarm`): schedules a one-shot alarm with the exact configuration Smart Wake
+/// alarms use, so the test shows the real Live Activity. Reads and writes none of the scheduler's state.
+@available(iOS 26.0, *)
+extension SmartWakeAlarmScheduler {
+    static func scheduleTestAlarm(id: UUID, fireDate: Date, stopIntent: any LiveActivityIntent) async throws {
+        let configuration = alarmConfiguration(schedule: .fixed(fireDate), stopIntent: stopIntent)
+        _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
+    }
+}
 #endif
