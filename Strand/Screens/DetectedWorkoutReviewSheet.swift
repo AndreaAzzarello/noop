@@ -28,6 +28,8 @@ struct DetectedWorkoutReviewSheet: View {
     @State private var end: Date
     @State private var sport = "Activity"
     @State private var saving = false
+    @State private var statsMemo = SheetMemo<DetectedWorkoutReview.Stats?>()
+    @State private var pointsMemo = SheetMemo<[TrendPoint]>()
     /// Fixed at open so every clamp uses the same clock (the edited span may never end in the future).
     private let nowSec: Int
 
@@ -48,14 +50,20 @@ struct DetectedWorkoutReviewSheet: View {
         DetectedWorkoutReview.bounds(for: workout, now: nowSec)
     }
 
+    private var windowKey: String { "\(startSec)|\(endSec)|\(samples.count)" }
+
     private var stats: DetectedWorkoutReview.Stats? {
-        DetectedWorkoutReview.stats(samples: samples, start: startSec, end: endSec)
+        statsMemo.value(for: windowKey) {
+            DetectedWorkoutReview.stats(samples: samples, start: startSec, end: endSec)
+        }
     }
 
     private var windowPoints: [TrendPoint] {
-        samples
-            .filter { $0.ts >= startSec && $0.ts <= endSec }
-            .map { TrendPoint(date: Date(timeIntervalSince1970: TimeInterval($0.ts)), value: Double($0.bpm)) }
+        pointsMemo.value(for: windowKey) {
+            samples
+                .filter { $0.ts >= startSec && $0.ts <= endSec }
+                .map { TrendPoint(date: Date(timeIntervalSince1970: TimeInterval($0.ts)), value: Double($0.bpm)) }
+        }
     }
 
     /// Both bindings route through `clamp`, so the pickers can never leave the allowed range or cross.

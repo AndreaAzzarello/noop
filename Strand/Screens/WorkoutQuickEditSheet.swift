@@ -29,6 +29,10 @@ struct WorkoutQuickEditSheet: View {
     @State private var end: Date
     @State private var sport: String
     @State private var showFullEditor = false
+    @State private var statsMemo = SheetMemo<DetectedWorkoutReview.Stats?>()
+    @State private var avgMemo = SheetMemo<Int?>()
+    @State private var pointsMemo = SheetMemo<[TrendPoint]>()
+    @State private var rowMemo = SheetMemo<WorkoutRow?>()
     /// Fixed at open so every clamp uses the same clock (the edited span may never end in the future).
     private let nowSec: Int
     /// The saved span as a detected-window value, so the review's limits and statistics apply unchanged.
@@ -52,22 +56,34 @@ struct WorkoutQuickEditSheet: View {
 
     private var bounds: DetectedWorkoutReview.Bounds { DetectedWorkoutReview.bounds(for: window, now: nowSec) }
 
+    private var windowKey: String { "\(startSec)|\(endSec)|\(samples.count)" }
+
     private var stats: DetectedWorkoutReview.Stats? {
-        DetectedWorkoutReview.stats(samples: samples, start: startSec, end: endSec)
+        statsMemo.value(for: windowKey) {
+            DetectedWorkoutReview.stats(samples: samples, start: startSec, end: endSec)
+        }
     }
 
     /// The average HR that will be saved, and the one the footer shows (see `WorkoutQuickEdit.avgHr`).
-    private var savedAvg: Int? { WorkoutQuickEdit.avgHr(row: row, start: startSec, end: endSec, samples: samples) }
+    private var savedAvg: Int? {
+        avgMemo.value(for: windowKey) {
+            WorkoutQuickEdit.avgHr(row: row, start: startSec, end: endSec, samples: samples)
+        }
+    }
 
     private var windowPoints: [TrendPoint] {
-        samples
-            .filter { $0.ts >= startSec && $0.ts <= endSec }
-            .map { TrendPoint(date: Date(timeIntervalSince1970: TimeInterval($0.ts)), value: Double($0.bpm)) }
+        pointsMemo.value(for: windowKey) {
+            samples
+                .filter { $0.ts >= startSec && $0.ts <= endSec }
+                .map { TrendPoint(date: Date(timeIntervalSince1970: TimeInterval($0.ts)), value: Double($0.bpm)) }
+        }
     }
 
     /// The row Save would write, or nil when the values cannot make an honest one (Save is then disabled).
     private var builtRow: WorkoutRow? {
-        WorkoutQuickEdit.rebuilt(row: row, start: start, end: end, sport: sport, samples: samples)
+        rowMemo.value(for: "\(windowKey)|\(start.timeIntervalSince1970)|\(end.timeIntervalSince1970)|\(sport)") {
+            WorkoutQuickEdit.rebuilt(row: row, start: start, end: end, sport: sport, samples: samples)
+        }
     }
 
     /// Both bindings route through `clamp`, so the pickers can never leave the allowed range or cross.
