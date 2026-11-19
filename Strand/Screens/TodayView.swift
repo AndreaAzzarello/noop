@@ -4571,6 +4571,9 @@ struct TodayView: View {
             announceNewDaysIfNeeded()
             return
         }
+        // fork-perf: before the first refresh has published, `repo.days` is empty and this ~40-read pass would
+        // run on nothing and then run again at seq 1. Skip it; the publish bumps the seq and the task restarts.
+        if !repo.loaded { return }
         // Defer the heavy history-wide reads ONLY on a re-load while a backfill is actively writing, so they
         // don't contend with the offload's bulk writes on the single-connection store. But ALWAYS run them on
         // the FIRST load (even mid-offload): otherwise a cold launch during a sync would show a blank
