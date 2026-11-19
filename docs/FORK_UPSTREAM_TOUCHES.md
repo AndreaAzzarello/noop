@@ -64,5 +64,6 @@ work together with `Strand/System/PerfTrace.swift` and `StrandiOS/App/PerfDispla
 | `Strand/Screens/TodayView.swift` | +10/-27 | A4: the periodic "Swipe"/"Tap" hint state and loop moved into fork-only `DayNavHintLabel` (its writes re-ran the whole classic body twice per 11.5 s); `StressModel` computed off the main actor as Liquid does |
 | `Strand/Screens/TrendsView.swift` | +11/-4 | A11: year heat-strip days parsed once per (refreshSeq, window, day count) and the sleep-performance series load skipped on tab re-entry (memo in fork-only `TrendsPerfMemo.swift`) |
 | `Strand/Screens/WorkoutsView.swift` | +5/-0 | A9: the list reload is skipped on re-entry when `refreshSeq` is unchanged (`LoadSeqMemo`, fork-only, `Strand/System/`) |
+| `Strand/Screens/WorkoutDetailView.swift` | +50/-44 | A10: the independent store reads in `load()` (HR buckets, derived zones, recovery, steps, court steps) start together instead of one after another |
 
 Later perf commits (real fixes, kept) are appended here as they land.

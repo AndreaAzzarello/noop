@@ -117,10 +117,13 @@ struct WorkoutDetailView: View {
             return pts.count >= 2 ? pts : []
         }()
 
-        // HR curve over the exact session window — a finer bucket than the 24h chart so a short run
-        // still reads as a curve, not a handful of points.
-        let buckets = await repo.workoutHrBuckets(from: row.startTs, to: row.endTs, source: row.source)
-        let points = buckets.map { TrendPoint(date: Date(timeIntervalSince1970: TimeInterval($0.ts)), value: $0.bpm) }
+        // fork-perf: the independent store reads below used to run one after another, so the first paint waited
+        // for the sum of all of them. They start together now; every value and fallback rule is unchanged.
+        let hrZoneSet = profile.hrZoneSet
+        let hrMax = Double(profile.hrMax)
+        let ticksPerStep = profile.stepTicksPerStep
+        let startTs = row.startTs, endTs = row.endTs, source = row.source
+        let rowSnapshot = row
 
         // Zones: prefer the imported per-workout percentages (a WHOOP-computed split), and only fall
         // back to deriving zone-minutes from the strap's own raw HR when the row has none — so we
@@ -134,34 +137,23 @@ struct WorkoutDetailView: View {
                 fromImport = true
             }
         }
-        if minutes == nil {
-            minutes = await repo.workoutZoneMinutes(from: row.startTs, to: row.endTs, zoneSet: profile.hrZoneSet,
-                                                    source: row.source)
-        }
+        let needsDerivedZones = minutes == nil
 
-        let hrr = await repo.workoutHeartRateRecovery(
-            from: row.startTs, to: row.endTs, maxHR: Double(profile.hrMax), source: row.source)
+        // HR curve over the exact session window — a finer bucket than the 24h chart so a short run
+        // still reads as a curve, not a handful of points.
+        async let bucketsA = repo.workoutHrBuckets(from: startTs, to: endTs, source: source)
+        async let derivedZonesA: [Double]? = needsDerivedZones
+            ? repo.workoutZoneMinutes(from: startTs, to: endTs, zoneSet: hrZoneSet, source: source) : nil
+        async let hrrA = repo.workoutHeartRateRecovery(from: startTs, to: endTs, maxHR: hrMax, source: source)
+        async let stepsA = loadStepReadout(startTs: startTs, endTs: endTs, ticksPerStep: ticksPerStep)
+        async let courtA = WorkoutWindowMetrics.loadCourtSteps(row: rowSnapshot, repo: repo, ticksPerStep: ticksPerStep)
 
-        // Steps for an on-foot session (#398), computed at display time over the exact window so it
-        // "fills in after sync": prefer the strap's own counter (MG/5.0) once it has offloaded the window,
-        // else the phone pedometer (any strap, incl. WHOOP 4.0 / CSV-import). Never shown for non-foot
-        // sports (cycling/rowing/… have no footfalls). Both sources return nil for "no data", so an empty
-        // window stays "–" rather than a fabricated 0.
-        var stepReadout: StepReadout? = nil
-        if WorkoutCatalog.isOnFoot(row.sport) {
-            if let ticks = await repo.strapStepTicks(from: row.startTs, to: row.endTs) {
-                // Same per-user ticks-per-step calibration the daily total applies (#139), floor 0.5.
-                let scaled = Int((Double(ticks) / max(profile.stepTicksPerStep, 0.5)).rounded())
-                if scaled > 0 { stepReadout = StepReadout(count: scaled, fromStrap: true) }
-            }
-            if stepReadout == nil,
-               let ped = await WorkoutPedometer.steps(fromSec: row.startTs, toSec: row.endTs), ped > 0 {
-                stepReadout = StepReadout(count: ped, fromStrap: false)
-            }
-        }
-
-        let courtStepReadout = await WorkoutWindowMetrics.loadCourtSteps(
-            row: row, repo: repo, ticksPerStep: profile.stepTicksPerStep)
+        let buckets = await bucketsA
+        let points = buckets.map { TrendPoint(date: Date(timeIntervalSince1970: TimeInterval($0.ts)), value: $0.bpm) }
+        if needsDerivedZones { minutes = await derivedZonesA }
+        let hrr = await hrrA
+        let stepReadout = await stepsA
+        let courtStepReadout = await courtA
 
         await MainActor.run {
             self.courtSteps = courtStepReadout
@@ -173,6 +165,25 @@ struct WorkoutDetailView: View {
             self.steps = stepReadout
             self.loaded = true
         }
+    }
+
+    /// Steps for an on-foot session (#398), computed at display time over the exact window so it
+    /// "fills in after sync": prefer the strap's own counter (MG/5.0) once it has offloaded the window,
+    /// else the phone pedometer (any strap, incl. WHOOP 4.0 / CSV-import). Never shown for non-foot
+    /// sports (cycling/rowing/… have no footfalls). Both sources return nil for "no data", so an empty
+    /// window stays "–" rather than a fabricated 0.
+    private func loadStepReadout(startTs: Int, endTs: Int, ticksPerStep: Double) async -> StepReadout? { // fork-perf
+        guard WorkoutCatalog.isOnFoot(row.sport) else { return nil }
+        var readout: StepReadout?
+        if let ticks = await repo.strapStepTicks(from: startTs, to: endTs) {
+            // Same per-user ticks-per-step calibration the daily total applies (#139), floor 0.5.
+            let scaled = Int((Double(ticks) / max(ticksPerStep, 0.5)).rounded())
+            if scaled > 0 { readout = StepReadout(count: scaled, fromStrap: true) }
+        }
+        if readout == nil, let ped = await WorkoutPedometer.steps(fromSec: startTs, toSec: endTs), ped > 0 {
+            readout = StepReadout(count: ped, fromStrap: false)
+        }
+        return readout
     }
 
     // MARK: - Heart-rate recovery (#516)
