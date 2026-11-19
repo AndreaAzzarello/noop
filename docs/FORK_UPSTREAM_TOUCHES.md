@@ -59,5 +59,6 @@ work together with `Strand/System/PerfTrace.swift` and `StrandiOS/App/PerfDispla
 | `Strand/Liquid/LiquidTodayView.swift` | +1/-0 | A1: `.liquidSkyScrollGate()` on the Today `ScrollView` |
 | `Strand/Liquid/LiquidTodayView.swift` | +8/-2 | A2: skip an unchanged `load()` when returning to Today within 20 s (`loadKey`, `loadMemo`; memo in fork-only `LiquidLoadMemo.swift`) |
 | `Strand/Data/Repository.swift` | +12/-8 | A3: with the Test Centre Workouts mode on, `detectTrace` and the shadow comparisons run in a detached task instead of on the main actor (log output and order unchanged); `AutoWorkoutSuggestionHost.swift` (fork-only) skips a rescan for an unchanged key under 20 s |
+| `Strand/Screens/SleepView.swift` | +10/-1 | A6: re-entering the tab with an unchanged `refreshSeq` skips the full session/motion reload and model rebuild (the snap to the newest night is kept); the `onChange(of: key)` reuses the model this body pass already built |
 
 Later perf commits (real fixes, kept) are appended here as they land.

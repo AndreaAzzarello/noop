@@ -201,7 +201,7 @@ struct SleepView: View {
             .onChangeCompat(of: key) { newKey in
                 modelKey = newKey
                 navDaysCache = SleepModel.navDays(navSessions: navSessions)
-                model = buildModel()
+                model = resolved // fork-perf: this pass's body already built it from the same inputs
                 // New data invalidates a navigated offset — the same offset would silently
                 // point at a different session. Snap back to last night. (#160)
                 nightOffset = 0
@@ -239,6 +239,13 @@ struct SleepView: View {
             .task(id: repo.refreshSeq) {
                 let perfSpan = PerfTrace.span("sleep.load"); defer { perfSpan.end() } // fork-perf: TEMP
                 let refresh = repo.refreshSeq
+                // fork-perf: re-entering the tab restarts this task with the same refreshSeq; the sessions, motion and
+                // model below are already current, so only the snap back to the newest night is repeated.
+                if loadedSleepRefresh == refresh, !allSessions.isEmpty {
+                    nightOffset = 0
+                    navNight = nil
+                    return
+                }
                 let sessions = await repo.allSleepSessions()
                 // Load the learned habitual midsleep the engine used, so the main-night pick aligns to it
                 // (a shift/late sleeper) instead of only the cold-start band. nil under threshold. (#547)
