@@ -513,6 +513,7 @@ final class HealthKitBridge: ObservableObject {
             if outcome == .failed { failedReads.append(label) }
         }
 
+        let perfAgg = PerfTrace.span("healthSync.aggregates") // fork-perf: TEMP
         // Quantity aggregates per day.
         let restingHeartRateRead = await collect(.restingHeartRate, unit: HKUnit.count().unitDivided(by: .minute()), start: start, end: end, op: .discreteAverage) { day, v in
             var a = agg(day); a.restingHr = v; byDay[day] = a
@@ -672,7 +673,10 @@ final class HealthKitBridge: ObservableObject {
         // imports these from a static Health export and Android reads them from Health Connect; iOS now
         // reads them live on-device too, so the platforms reach parity. ON-DEVICE ONLY: this is a plain
         // HealthKit read of workouts NOOP did NOT author, never any cloud/3rd-party API. (#835)
+        perfAgg.end() // fork-perf: TEMP
+        let perfWorkouts = PerfTrace.span("healthSync.workouts") // fork-perf: TEMP
         let workoutRows = await collectWorkouts(start: start, end: end)
+        perfWorkouts.end() // fork-perf: TEMP
 
         // Persist all the apple-health rows AND write back, advancing lastSync only when the WHOLE
         // round-trip succeeds. The three read-side upserts used to be swallowed by `try?`, so a failed
@@ -680,6 +684,7 @@ final class HealthKitBridge: ObservableObject {
         // lastSync — a false "success", and the next delta sync skipped the window. (Reimplemented
         // from @vulnix0x4's PR #375.)
         do {
+            let perfUpsert = PerfTrace.span("healthSync.upsert") // fork-perf: TEMP
             try await store.upsertAppleDaily(appleRows, deviceId: appleDeviceId)
             try await store.upsertDailyMetrics(dmRows, deviceId: appleDeviceId)
             try await store.upsertMetricSeries(points, deviceId: appleDeviceId)
@@ -711,6 +716,8 @@ final class HealthKitBridge: ObservableObject {
             // The caffeine card is manual-first and shows nothing until something is logged, so unlike
             // hydration there is no separate opt-in toggle to gate on: an empty Health cupboard still
             // leaves the card exactly as quiet as it is today.
+            perfUpsert.end() // fork-perf: TEMP
+            let perfExtras = PerfTrace.span("healthSync.caffeineAndHourlySteps") // fork-perf: TEMP
             if let caffeineStart = cal.date(byAdding: .hour,
                                             value: -Int(CaffeineLogStore.retentionHours), to: end) {
                 // nil means the READ failed; only an actual empty result is allowed to clear the set.
@@ -743,7 +750,10 @@ final class HealthKitBridge: ObservableObject {
                     UserDefaults.standard.set(true, forKey: Self.hourlyStepsBackfilledKey)
                 }
             }
+            perfExtras.end() // fork-perf: TEMP
+            let perfWriteBack = PerfTrace.span("healthSync.writeBack") // fork-perf: TEMP
             try await writeBack(whoopStore: store)
+            perfWriteBack.end() // fork-perf: TEMP
             lastSync = Date()
             // Record the window alongside the time: an observer wake may only stand down for a sync that
             // actually covered ITS days (see `observerCoalesceWindow`). Set on the success path only.

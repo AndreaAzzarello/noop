@@ -396,8 +396,9 @@ struct StrandiOSApp: App {
                     }
                     let perfSpan = PerfTrace.span("healthSync.total"); defer { perfSpan.end() } // fork-perf: TEMP
                     await HealthSyncRefreshCoordinator.run(
-                        sync: { await health.sync() },
+                        sync: { let sp = PerfTrace.span("healthSync.sync"); defer { sp.end() }; _ = await health.sync() }, // fork-perf: TEMP
                         refresh: {
+                            let rp = PerfTrace.span("healthSync.refresh"); defer { rp.end() } // fork-perf: TEMP
                             await model.refreshAfterAppleHealthSync(
                                 authorized: health.auth == .authorized)
                         }
