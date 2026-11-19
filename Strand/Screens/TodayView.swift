@@ -1086,10 +1086,7 @@ struct TodayView: View {
     /// back to the raw key if it can't be parsed so the caption is never empty.
     private static func lastChargeDateFmt(_ dayKey: String) -> String {
         guard let date = dayKeyParser.date(from: dayKey) else { return dayKey }
-        let f = DateFormatter()
-        f.locale = AppLanguage.activeLocale
-        f.setLocalizedDateFormatFromTemplate("dMMM")
-        return f.string(from: date)
+        return ForkFormatters.dateFormatter(template: "dMMM").string(from: date)
     }
 
     /// On-device training-readiness synthesis (HRV / resting-HR / load). Read through the
@@ -5406,10 +5403,7 @@ struct TodayView: View {
 
     /// Thousands-grouped integer string (steps / calories).
     private func intString(_ v: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .decimal
-        f.maximumFractionDigits = 0
-        return f.string(from: NSNumber(value: v)) ?? "\(Int(v.rounded()))"
+        return ForkFormatters.decimalFormatter(maxFractionDigits: 0).string(from: NSNumber(value: v)) ?? "\(Int(v.rounded()))"
     }
 
     // MARK: - Date parsing (yyyy-MM-dd, en_US_POSIX, LOCAL zone)

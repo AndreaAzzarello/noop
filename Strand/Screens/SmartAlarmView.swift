@@ -474,12 +474,10 @@ struct SmartAlarmView: View {
     /// The template formatter also follows the reader's 12/24-hour setting, unlike `timeLabel`.
     private var nextStrapAlarmLabel: String? {
         guard let next = nextStrapAlarm() else { return nil }
-        let formatter = DateFormatter()
-        // `AppLanguage.activeLocale`, not `.current`: the app language is an in-app setting, so a reader
-        // running NOOP in German on an English device must get German weekday words here, while keeping
-        // their device's 24-hour convention. The same reason every other formatter in the app uses it.
-        formatter.locale = AppLanguage.activeLocale
-        formatter.setLocalizedDateFormatFromTemplate("EEEE jj:mm")
+        // Cached per `AppLanguage.activeLocale` (not `.current`): the app language is an in-app setting, so a
+        // reader running NOOP in German on an English device must get German weekday words here, while
+        // keeping their device's 24-hour convention. The same reason every other formatter in the app uses it.
+        let formatter = ForkFormatters.dateFormatter(template: "EEEE jj:mm")
         return formatter.string(from: next)
     }
 
@@ -530,10 +528,7 @@ struct SmartAlarmView: View {
     /// tomorrow. Two lines disagreeing about one fact is the exact defect this screen exists to remove.
     private func nextStrapAlarmStamp(from now: Date = Date()) -> String? {
         nextStrapAlarm(from: now).map { date in
-            let formatter = DateFormatter()
-            formatter.locale = AppLanguage.activeLocale
-            formatter.setLocalizedDateFormatFromTemplate("EEE d MMM jj:mm")
-            return formatter.string(from: date)
+            ForkFormatters.dateFormatter(template: "EEE d MMM jj:mm").string(from: date)
         }
     }
 
