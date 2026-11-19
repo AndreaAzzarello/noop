@@ -158,6 +158,8 @@ struct LiquidTodayView: View {
     /// Flips true once the first load() completes. Until then the hero gauges + sky render STATIC so the
     /// launch data-churn (refresh publish + BLE/HR notifies) isn't fighting 4 live canvases + CoreMotion.
     @State private var dataLoaded = false
+    @State private var loadMemo = LiquidLoadMemo() // fork-perf
+    private var loadKey: String { "\(repo.refreshSeq)-\(selectedDayOffset)-\(repo.hydrationSeq)-\(hydrationEnabled)-\(dayCycleModeRaw)" } // fork-perf
 
     // Custom liquid pull-to-refresh: a vessel that FILLS as you drag, releases into a refresh (replaces
     // the system spinner). Driven by the scroll's top overscroll offset.
@@ -471,9 +473,15 @@ struct LiquidTodayView: View {
         // hydrationSeq joins the id so logging a drink re-reads the card immediately, the same trigger set
         // classic TodayView's reloadHydration() uses.
         .perfPage("today.liquid") // fork-perf: TEMP
-        .task(id: "\(repo.refreshSeq)-\(selectedDayOffset)-\(repo.hydrationSeq)-\(hydrationEnabled)-\(dayCycleModeRaw)") {
+        .task(id: loadKey) {
             DashboardCardPrefs.migrateLegacyStepsAverage()
-            await PerfTrace.measure("liquidToday.load") { await load() }
+            let key = loadKey // fork-perf: skip an unchanged reload on tab re-entry
+            guard dataLoaded, loadMemo.isFresh(for: key) else {
+                await PerfTrace.measure("liquidToday.load") { await load() }
+                if !Task.isCancelled { loadMemo.finish(key: key) }
+                return
+            }
+            PerfTrace.emit("perf liquidToday.load skipped")
         }
         .sheet(item: $guideSection) { section in
             NavigationStack { ScoringGuideView(initialSection: section, onClose: { guideSection = nil }) }

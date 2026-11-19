@@ -57,5 +57,6 @@ work together with `Strand/System/PerfTrace.swift` and `StrandiOS/App/PerfDispla
 |---|---|---|
 | `Strand/Liquid/LiquidSky.swift` | +9/-0 | A1: while the Today scroll view moves, the tab is off screen or the app is inactive, draw one frame at the last clock value instead of the 20 fps loop (logic in fork-only `Strand/Liquid/LiquidSkyGate.swift`) |
 | `Strand/Liquid/LiquidTodayView.swift` | +1/-0 | A1: `.liquidSkyScrollGate()` on the Today `ScrollView` |
+| `Strand/Liquid/LiquidTodayView.swift` | +8/-2 | A2: skip an unchanged `load()` when returning to Today within 20 s (`loadKey`, `loadMemo`; memo in fork-only `LiquidLoadMemo.swift`) |
 
 Later perf commits (real fixes, kept) are appended here as they land.
