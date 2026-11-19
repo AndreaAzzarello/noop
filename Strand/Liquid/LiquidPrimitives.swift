@@ -471,7 +471,7 @@ struct LiquidThread: View {
     }
 
     private var liveThread: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { tl in   // 60fps to flow smoothly on ProMotion
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in   // 30 fps: halves the redraw cost of the live thread
             let now = liquidSeconds(tl.date)
             Canvas { context, size in
                 LiquidRender.thread(context, size, values: bpm, now: now, tint: tint, segments: segments)
