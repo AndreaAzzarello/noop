@@ -384,6 +384,16 @@ struct StrandiOSApp: App {
                     health.refreshAuthIfPreviouslyGranted()
                     HealthWritebackBackgroundScheduler.updateSchedule(
                         isAuthorized: health.auth == .authorized)
+                    // fork-perf: the Health sync below averages ~22 s and the widget and watch publish only after it.
+                    // On a return to the foreground (data already loaded) publish what the phone holds now, in its
+                    // own task so the sync starts at once; the publish after the sync still follows. Skipped on a
+                    // cold launch, where the first refreshSeq publish owns the first snapshot.
+                    if model.repo.loaded {
+                        Task {
+                            await WidgetSnapshot.publish(from: model)
+                            await watch.pushLatest(from: model)
+                        }
+                    }
                     let perfSpan = PerfTrace.span("healthSync.total"); defer { perfSpan.end() } // fork-perf: TEMP
                     await HealthSyncRefreshCoordinator.run(
                         sync: { await health.sync() },

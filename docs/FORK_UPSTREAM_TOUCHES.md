@@ -70,5 +70,6 @@ work together with `Strand/System/PerfTrace.swift` and `StrandiOS/App/PerfDispla
 | `Strand/Data/Repository.swift` | +21/-4 | B5: registry device list cached per store instance, dropped on any registry write (`registeredDevices`; used by the union reads, `activeStrapIsWhoop5`, `activeDeviceDisplayName`) |
 | `Packages/WhoopStore/Sources/WhoopStore/DeviceRegistryStore.swift` | +34/-11 | B5: every registry write goes through `writeTracked`, which bumps the in-process `DeviceRegistryChangeCounter`; test added |
 | `StrandiOS/App/RootTabView.swift` | +4/-1 | B9: the shell holds the repository through a non-observing `repositoryHandle` (fork-only `Strand/System/RepositoryHandle.swift`) instead of `@EnvironmentObject`; `StrandiOSApp.swift` +1 injects it |
+| `StrandiOS/App/StrandiOSApp.swift` | +10/-0 (kept part) | B10: on a return to the foreground with data loaded, widget and watch are published right away in their own task, then again after the Health sync as before |
 
 Later perf commits (real fixes, kept) are appended here as they land.
