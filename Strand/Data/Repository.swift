@@ -3257,11 +3257,8 @@ final class Repository: ObservableObject {
         // ground truth. No shadow output can mutate the DB, visible card, daily scores or anything off-device.
         var candidates: [DetectedWorkout]
         if TestCentre.active(.workouts), workoutsLog != nil {
-            let (results, trace) = AutoWorkoutDetector.detectTrace(
-                hr: hr, restingBpm: restingBpm, motion: nil, savedSpans: savedSpans,
-                minimumSustainedMinutes: AutoWorkoutDetector.minSustainedMin,
-                path: "autoDetect")
-            for line in trace { emitWorkouts(line) }
+            // fork-perf: the detector and the shadow comparisons scan up to ~48 h of 1 Hz samples, so they run
+            // off the main actor; only the log lines are emitted here, in the same order as before.
             let labelledSpans = saved
                 // `workoutRows()` intentionally returns long-lived history for the UI. Shadow candidates
                 // only cover this detector scan, so count labels in that same [from, now] start-time window
@@ -3271,10 +3268,16 @@ final class Repository: ObservableObject {
                         && WorkoutSource.classify($0.source) != .detected
                 }
                 .map { SavedWorkoutSpan(startSec: $0.startTs, endSec: $0.endTs) }
-            for line in AutoWorkoutDetector.shadowComparisonLines(
-                hr: hr, restingBpm: restingBpm, motion: nil, savedSpans: labelledSpans) {
-                emitWorkouts(line)
-            }
+            let (results, lines) = await Task.detached(priority: .utility) {
+                let (results, trace) = AutoWorkoutDetector.detectTrace(
+                    hr: hr, restingBpm: restingBpm, motion: nil, savedSpans: savedSpans,
+                    minimumSustainedMinutes: AutoWorkoutDetector.minSustainedMin,
+                    path: "autoDetect")
+                let shadow = AutoWorkoutDetector.shadowComparisonLines(
+                    hr: hr, restingBpm: restingBpm, motion: nil, savedSpans: labelledSpans)
+                return (results, trace + Array(shadow))
+            }.value
+            for line in lines { emitWorkouts(line) }
             candidates = results
         } else {
             // Off the main actor: scans up to ~48 h of 1 Hz samples.

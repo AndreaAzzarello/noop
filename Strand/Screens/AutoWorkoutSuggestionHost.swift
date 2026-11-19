@@ -18,11 +18,26 @@ final class AutoWorkoutSuggestionModel: ObservableObject {
     @Published var handledThisSession = false
 
     /// Re-scan. A fresh scan resets the session guard so a NEW window can surface after one is handled.
-    func reload(repo: Repository) async {
+    func reload(repo: Repository, key: AutoWorkoutLoadKey) async {
+        // Coming back to Today restarts the host task with the same key; a scan that finished moments ago is
+        // still right, and each scan reads up to 200k samples plus the whole workout list.
+        if lastKey == key, Date().timeIntervalSince(lastScanAt) < Self.maxScanAge {
+            PerfTrace.emit("perf autoDetectCandidate skipped")
+            return
+        }
         let next = await PerfTrace.measure("autoDetectCandidate") { await repo.autoDetectCandidate() }
-        if next != candidate { handledThisSession = false }
-        candidate = next
+        guard !Task.isCancelled else { return }
+        lastKey = key
+        lastScanAt = Date()
+        if next != candidate {
+            handledThisSession = false
+            candidate = next
+        }
     }
+
+    private static let maxScanAge: TimeInterval = 20
+    private var lastKey: AutoWorkoutLoadKey?
+    private var lastScanAt = Date.distantPast
 }
 
 /// Reload key: a new sync (seq) or a toggle flip re-runs detection.
@@ -42,7 +57,7 @@ struct AutoWorkoutSuggestionHost: ViewModifier {
         content
             .environmentObject(model)
             .task(id: AutoWorkoutLoadKey(seq: repo.refreshSeq, enabled: autoDetectEnabled)) {
-                await model.reload(repo: repo)
+                await model.reload(repo: repo, key: AutoWorkoutLoadKey(seq: repo.refreshSeq, enabled: autoDetectEnabled))
             }
     }
 }
