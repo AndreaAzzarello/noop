@@ -521,6 +521,7 @@ final class SmartWakeAlarmScheduler {
         let earlySchedule = Alarm.Schedule.fixed(alertDate)
         let configuration = Self.alarmConfiguration(
             schedule: earlySchedule,
+            title: SmartWakeAlarmTitle.early(at: alertDate),
             stopIntent: SmartWakeRearmIntent(weekday: weekday, skipCurrentOccurrence: true)
         )
 
@@ -661,6 +662,7 @@ final class SmartWakeAlarmScheduler {
                 else { return false }
                 configuration = Self.alarmConfiguration(
                     schedule: .fixed(nextOccurrence),
+                    title: SmartWakeAlarmTitle.wake(hour: minutes / 60, minute: minutes % 60),
                     stopIntent: SmartWakeRearmIntent(weekday: weekday, skipCurrentOccurrence: false)
                 )
             } else {
@@ -668,7 +670,11 @@ final class SmartWakeAlarmScheduler {
                     time: Alarm.Schedule.Relative.Time(hour: minutes / 60, minute: minutes % 60),
                     repeats: .weekly([localeWeekday])
                 )
-                configuration = Self.alarmConfiguration(schedule: .relative(relative), stopIntent: nil)
+                configuration = Self.alarmConfiguration(
+                    schedule: .relative(relative),
+                    title: SmartWakeAlarmTitle.wake(hour: minutes / 60, minute: minutes % 60),
+                    stopIntent: nil
+                )
             }
             try await installFallback(weekday: weekday, configuration: configuration)
             defaults.removeObject(forKey: earlyAlarmIDKey)
@@ -735,6 +741,7 @@ final class SmartWakeAlarmScheduler {
             )
             let configuration = Self.alarmConfiguration(
                 schedule: .relative(relative),
+                title: SmartWakeAlarmTitle.wake(hour: minutes / 60, minute: minutes % 60),
                 stopIntent: nil
             )
             do {
@@ -786,6 +793,7 @@ final class SmartWakeAlarmScheduler {
 
     private static func alarmConfiguration(
         schedule: Alarm.Schedule,
+        title: LocalizedStringResource,
         stopIntent: (any LiveActivityIntent)?
     ) -> AlarmManager.AlarmConfiguration<SmartWakeAlarmMetadata> {
         let stopButton = AlarmButton(
@@ -793,7 +801,7 @@ final class SmartWakeAlarmScheduler {
             textColor: .white,
             systemImageName: "stop.circle.fill"
         )
-        let alert = AlarmPresentation.Alert(title: LocalizedStringResource("Smart Wake", table: "Fork"), stopButton: stopButton)
+        let alert = AlarmPresentation.Alert(title: title, stopButton: stopButton)
         let attributes = AlarmAttributes<SmartWakeAlarmMetadata>(
             presentation: AlarmPresentation(alert: alert),
             metadata: SmartWakeAlarmMetadata(),
@@ -867,7 +875,8 @@ public struct SmartWakeRearmIntent: LiveActivityIntent {
 @available(iOS 26.0, *)
 extension SmartWakeAlarmScheduler {
     static func scheduleTestAlarm(id: UUID, fireDate: Date, stopIntent: any LiveActivityIntent) async throws {
-        let configuration = alarmConfiguration(schedule: .fixed(fireDate), stopIntent: stopIntent)
+        let configuration = alarmConfiguration(schedule: .fixed(fireDate), title: SmartWakeAlarmTitle.wake(at: fireDate),
+                                               stopIntent: stopIntent)
         _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
     }
 }

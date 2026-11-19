@@ -121,6 +121,18 @@
         }
       }
     },
+    "Early wake · %@" : {
+      "comment" : "Title of the iPhone alarm armed after an early Smart Wake; %@ is the time it rings.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sveglia anticipata · %@"
+          }
+        }
+      }
+    },
     "Early window" : {
       "comment" : "Smart Wake card row label and hidden picker title: how long before the maximum time an early wake may fire.",
       "extractionState" : "manual",
@@ -525,6 +537,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Finestra di anticipo di Smart Wake"
+          }
+        }
+      }
+    },
+    "Smart Wake · %@" : {
+      "comment" : "Title of the Smart Wake iPhone alarm while it rings; %@ is the time it rings.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smart Wake · %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smart Wake · %@"
           }
         }
       }
