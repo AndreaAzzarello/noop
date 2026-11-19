@@ -168,6 +168,44 @@ struct ForkWidgetSnapshot: Codable, Equatable {
             && trend == other.trend
     }
 
+    // MARK: Publisher merges (pure, so the format-version invariant is testable without the app)
+
+    /// The full publish: sets every field it owns and stamps `currentFormat`. The ONLY place the version is set.
+    func applyingFullPublish(sleepMin: Int?, sleepDay: Int?, hrDay: ForkHRDay?, hrFingerprint: String?,
+                             vitals: ForkVitals?, sleepStages: ForkSleepStages?, workout: ForkWorkout?,
+                             trend: ForkTrend?, extrasKey: String?) -> ForkWidgetSnapshot {
+        var next = self
+        next.sleepMin = sleepMin
+        next.sleepDay = sleepDay
+        next.hrDay = hrDay
+        next.hrFingerprint = hrFingerprint
+        next.vitals = vitals
+        next.sleepStages = sleepStages
+        next.workout = workout
+        next.trend = trend
+        next.extrasKey = extrasKey
+        next.formatVersion = ForkWidgetSnapshot.currentFormat
+        return next
+    }
+
+    /// A Smart Wake update: touches only the schedule and the skip, and never `formatVersion`
+    /// (it neither stamps nor clears it).
+    func applyingSmartWake(schedule: SmartWakeSchedule?, skipUntil: Date?) -> ForkWidgetSnapshot {
+        var next = self
+        next.smartWake = schedule
+        next.smartWakeSkipUntil = skipUntil
+        return next
+    }
+
+    /// Whether `next` must be written, and whether the widget must be reloaded for it.
+    static func commitDecision(next: ForkWidgetSnapshot, previous: ForkWidgetSnapshot,
+                               now: Date) -> (save: Bool, reload: Bool) {
+        let unchanged = next.contentEquals(previous)
+        let fresh = now.timeIntervalSince(previous.publishedAt) < republishAfter
+        if unchanged && fresh && next.hrFingerprint == previous.hrFingerprint { return (false, false) }
+        return (true, !unchanged || !fresh)
+    }
+
     // MARK: Resolved on read (nothing runs at midnight to tidy the App Group)
 
     /// Last night's sleep in minutes, only while it belongs to today.

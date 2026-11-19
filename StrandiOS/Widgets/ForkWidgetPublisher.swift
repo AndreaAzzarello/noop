@@ -94,18 +94,11 @@ enum ForkWidgetPublisher {
         // A run that was replaced while it waited must not write over the newer one.
         guard token == generation else { return }
         // Re-read after the awaits so a Smart Wake publish that landed meanwhile is not overwritten.
-        var next = ForkWidgetSnapshot.load() ?? .empty
-        let before = next
-        next.sleepMin = sleepMin
-        next.sleepDay = sleepMin == nil ? nil : day
-        next.hrDay = hrDay
-        next.hrFingerprint = hrGate
-        next.vitals = extras.vitals
-        next.sleepStages = extras.sleepStages
-        next.workout = extras.workout
-        next.trend = extras.trend
-        next.extrasKey = extras.key
-        next.formatVersion = ForkWidgetSnapshot.currentFormat
+        let before = ForkWidgetSnapshot.load() ?? .empty
+        let next = before.applyingFullPublish(
+            sleepMin: sleepMin, sleepDay: sleepMin == nil ? nil : day, hrDay: hrDay, hrFingerprint: hrGate,
+            vitals: extras.vitals, sleepStages: extras.sleepStages, workout: extras.workout,
+            trend: extras.trend, extrasKey: extras.key)
         commit(next, previous: before, now: now)
     }
 
@@ -211,10 +204,9 @@ enum ForkWidgetPublisher {
         let enabled = model.behavior.smartWakeEnabled
         // The SAME resolver the strap alarm re-arm uses; it also drops a spent skip, as it does there.
         let armFrom = SmartWakeFirmwareSkip.armFrom(now: now, smartWakeEnabled: enabled)
-        var next = ForkWidgetSnapshot.load() ?? .empty
-        let before = next
-        next.smartWake = enabled ? schedule : nil
-        next.smartWakeSkipUntil = enabled && armFrom > now ? armFrom : nil
+        let before = ForkWidgetSnapshot.load() ?? .empty
+        let next = before.applyingSmartWake(schedule: enabled ? schedule : nil,
+                                            skipUntil: enabled && armFrom > now ? armFrom : nil)
         commit(next, previous: before, now: now)
     }
 
@@ -223,16 +215,15 @@ enum ForkWidgetPublisher {
     /// Persist and reload the NOOP+ widget only when something it renders changed, or when the last
     /// confirmation is old enough that the "data is old" hint could otherwise appear for fresh data.
     private static func commit(_ next: ForkWidgetSnapshot, previous: ForkWidgetSnapshot, now: Date) {
-        let unchanged = next.contentEquals(previous)
-        let fresh = now.timeIntervalSince(previous.publishedAt) < ForkWidgetSnapshot.republishAfter
-        if unchanged && fresh && next.hrFingerprint == previous.hrFingerprint { return }
+        let decision = ForkWidgetSnapshot.commitDecision(next: next, previous: previous, now: now)
+        guard decision.save else { return }
         var out = next
         out.publishedAt = now
         guard out.save() else {
             log.error("fork widget snapshot not saved (App Group unavailable or encode failed)")
             return
         }
-        if !unchanged || !fresh {
+        if decision.reload {
             WidgetCenter.shared.reloadTimelines(ofKind: ForkWidgetSnapshot.kind)
         }
     }
