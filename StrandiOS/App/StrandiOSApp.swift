@@ -223,7 +223,7 @@ struct StrandiOSApp: App {
     var body: some Scene {
         WindowGroup {
             iOSRootView()
-                .perfDisplayKeeper(model: model) // fork-perf: TEMP
+                .perfDisplayKeeper(model: model, health: health, router: router) // fork-perf: TEMP
                 .environmentObject(model)
                 .environmentObject(model.ble)   // #334: Today pull-to-sync reads BLEManager (no HR churn)
                 .environmentObject(model.live)

@@ -134,6 +134,7 @@ final class DisplayPerformanceMonitor {
 
     #if os(iOS)
     @objc private func onFrame(_ link: CADisplayLink) {
+        PerfTrace.noteLinkInterval(link.targetTimestamp - link.timestamp) // fork-perf: TEMP
         foldFrame(timestamp: link.timestamp)
     }
     #endif

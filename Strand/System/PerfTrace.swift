@@ -32,6 +32,17 @@ enum PerfTrace {
 
     private static var bodyCounts: [String: Int] = [:]
 
+    // MARK: publish counters (TEMP)
+    // `objectWillChange` emissions per observed object since the last `frameSummary`, as `name=emissions/turns`:
+    // `turns` counts distinct main-queue turns, so 40/3 is three bursts and 40/40 is forty separate publishes.
+    private static var publishCounts: [String: Int] = [:]
+    private static var publishTurns: [String: Int] = [:]
+    private static var publishLastTurn: [String: Int] = [:]
+    private static var turnId = 0
+    private static var turnOpen = false
+    private static var linkIntervalSum: Double = 0
+    private static var linkIntervalCount = 0
+
     static var enabled: Bool { DisplayPerformanceMonitor.shared.isRunning }
 
     static func emit(_ line: String) {
@@ -73,6 +84,28 @@ enum PerfTrace {
         Span(name: name, state: signposter.beginInterval(name), start: CFAbsoluteTimeGetCurrent())
     }
 
+    /// Count one publish of `name` (an `ObservableObject`, a `@Published` seq, a defaults write).
+    static func notePublish(_ name: String) {
+        guard enabled else { return }
+        if !turnOpen {
+            turnOpen = true
+            turnId += 1
+            DispatchQueue.main.async { turnOpen = false }
+        }
+        publishCounts[name, default: 0] += 1
+        if publishLastTurn[name] != turnId {
+            publishLastTurn[name] = turnId
+            publishTurns[name, default: 0] += 1
+        }
+    }
+
+    /// Display-link frame interval as the system scheduled it (`targetTimestamp - timestamp`), in seconds.
+    static func noteLinkInterval(_ seconds: Double) {
+        guard seconds > 0, seconds < 1 else { return }
+        linkIntervalSum += seconds
+        linkIntervalCount += 1
+    }
+
     static func bump(_ name: String) {
         guard enabled else { return }
         bodyCounts[name, default: 0] += 1
@@ -84,6 +117,19 @@ enum PerfTrace {
         if withBodies, !bodyCounts.isEmpty {
             out += " bodies=" + bodyCounts.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
             bodyCounts.removeAll(keepingCapacity: true)
+        }
+        if withBodies {
+            if !publishCounts.isEmpty {
+                out += " publishes=" + publishCounts.sorted { $0.key < $1.key }
+                    .map { "\($0.key)=\($0.value)/\(publishTurns[$0.key] ?? 0)" }.joined(separator: ",")
+                publishCounts.removeAll(keepingCapacity: true)
+                publishTurns.removeAll(keepingCapacity: true)
+            }
+            if linkIntervalCount > 0 {
+                out += " refresh=" + String(format: "%.1f", linkIntervalSum / Double(linkIntervalCount) * 1000) + "ms"
+                linkIntervalSum = 0
+                linkIntervalCount = 0
+            }
         }
         return out
     }
@@ -136,5 +182,14 @@ extension View {
     func perfPage(_ name: String) -> some View {
         PerfTrace.bump(name)
         return modifier(PerfPageModifier(name: name))
+    }
+}
+
+extension View {
+    /// TEMP (fork-perf): count one body evaluation of the caller under `name`, without tagging a page.
+    @MainActor
+    func perfCount(_ name: String) -> some View {
+        PerfTrace.bump(name)
+        return self
     }
 }

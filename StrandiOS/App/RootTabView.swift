@@ -178,6 +178,7 @@ struct RootTabView: View {
             // interactive-pop itself: far worse than the bug being fixed.
             .simultaneousGesture(tabSwipeGesture,
                                  including: tabPaths[selectedTab].isEmpty ? .all : .subviews)
+        .perfCount("root.tabs") // fork-perf: TEMP
         .task {
             do { let perfSpan = PerfTrace.span("repo.refresh.launch"); defer { perfSpan.end() }; await repo.refresh() } // fork-perf: TEMP
             // Backup & Sync: on-launch catch-up (see RootView). Detached + utility priority so a
