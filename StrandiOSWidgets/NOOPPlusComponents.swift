@@ -201,11 +201,6 @@ struct ForkZoneHRChart: View {
     let height: CGFloat
     let axes: Bool
     let style: ForkStyle
-    /// Extra-large only: `height` becomes the minimum and the plot takes whatever room is left (up to
-    /// `maxFlexibleHeight`). Off by default, so the other families keep their fixed height.
-    var flexible = false
-    private let maxFlexibleHeight: CGFloat = 240
-
     private var all: [HrPoint] {
         var seen = Set<Int64>()
         return day.runs.flatMap(\.points).filter { seen.insert($0.ts).inserted }.sorted { $0.ts < $1.ts }
@@ -228,11 +223,7 @@ struct ForkZoneHRChart: View {
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity)
         VStack(spacing: 2) {
-            if flexible {
-                plot.frame(minHeight: height, maxHeight: maxFlexibleHeight)
-            } else {
-                plot.frame(height: height)
-            }
+            plot.frame(height: height)
             if axes {
                 let ticks = HrTrace.timeTicks(pts)
                 if ticks.count >= 2 {
@@ -331,10 +322,9 @@ private struct ForkStressShape: Shape {
 /// at least one scored hour; the caller hides the whole block otherwise.
 struct ForkStressBlock: View {
     let series: [StressPoint]
-    /// Minimum height of the plot; it grows into spare room up to `maxHeight`.
+    /// Fixed height of the plot: spare room in the widget goes to the gaps between blocks, never here.
     let height: CGFloat
     let style: ForkStyle
-    private let maxHeight: CGFloat = 130
 
     private var latest: Double? { series.last(where: { $0.level != nil })?.level }
     private var peak: Double? { StressTrace.stats(series)?.peak.level }
@@ -381,7 +371,7 @@ struct ForkStressBlock: View {
             }
             .widgetAccentable()
             .frame(maxWidth: .infinity)
-            .frame(minHeight: height, maxHeight: maxHeight)
+            .frame(height: height)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(spoken))

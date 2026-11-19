@@ -59,5 +59,15 @@ private func fixed(_ entry: NOOPPlusEntry, _ family: WidgetFamily, _ size: CGSiz
         fixed(PreviewData.full, .systemExtraLargePortrait, CGSize(width: 364, height: 740))
     }
 }
+#Preview("XL medium", traits: .sizeThatFitsLayout) {
+    if #available(iOS 27.0, *) {
+        fixed(PreviewData.full, .systemExtraLargePortrait, CGSize(width: 338, height: 620))
+    }
+}
+#Preview("XL compact", traits: .sizeThatFitsLayout) {
+    if #available(iOS 27.0, *) {
+        fixed(PreviewData.full, .systemExtraLargePortrait, CGSize(width: 292, height: 520))
+    }
+}
 #endif
 #endif

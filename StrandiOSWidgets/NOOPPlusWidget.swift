@@ -449,51 +449,64 @@ extension NOOPPlusView {
 
     /// Dashboard order, top to bottom: rings, vitals, HR by zone, stress, sleep with stages, last workout,
     /// 7-day strip, Smart Wake + freshness. Every block without data is left out, never filled with a
-    /// placeholder number. When the widget is short, content goes in this order: the 7-day strip, then the
-    /// stress curve, then the HR axes, then the charts get shorter. `ViewThatFits` takes the first variant
-    /// whose ideal size fits, so a variant is either shown whole or skipped and no text is truncated.
+    /// placeholder number.
+    ///
+    /// Every plot has a FIXED height. `ViewThatFits` measures the real container and takes the first variant
+    /// whose ideal size fits, so a variant is either shown whole or skipped and no text is truncated. A block
+    /// is sacrificed only when the room is genuinely missing: first the 7-day strip, then the stress curve,
+    /// then the HR axes, then the chart gets shorter. Room left over goes to the gaps between blocks (each
+    /// gap is a `Spacer` whose minimum is the old fixed spacing), so nothing is stretched.
     fileprivate var extraLarge: some View {
         ViewThatFits(in: .vertical) {
-            extraLargeBody(trend: true, stress: true, axes: true, chartHeight: 112, shortUpdated: false)
-            extraLargeBody(trend: false, stress: true, axes: true, chartHeight: 112, shortUpdated: false)
-            extraLargeBody(trend: false, stress: false, axes: true, chartHeight: 112, shortUpdated: false)
-            extraLargeBody(trend: false, stress: false, axes: false, chartHeight: 96, shortUpdated: true)
-            extraLargeBody(trend: false, stress: false, axes: false, chartHeight: 72, shortUpdated: true)
-            extraLargeBody(trend: false, stress: false, axes: false, chartHeight: 48, shortUpdated: true)
+            extraLargeBody(trend: true, stress: true, axes: true, chartHeight: 104, shortUpdated: false)
+            extraLargeBody(trend: false, stress: true, axes: true, chartHeight: 104, shortUpdated: false)
+            extraLargeBody(trend: false, stress: false, axes: true, chartHeight: 104, shortUpdated: false)
+            extraLargeBody(trend: false, stress: false, axes: false, chartHeight: 88, shortUpdated: true)
+            extraLargeBody(trend: false, stress: false, axes: false, chartHeight: 64, shortUpdated: true)
+            extraLargeBody(trend: false, stress: false, axes: false, chartHeight: 44, shortUpdated: true)
         }
         .padding(14)
     }
 
+    private var extraLargeGap: some View { Spacer(minLength: 8) }
+
     private func extraLargeBody(trend showTrend: Bool, stress showStress: Bool, axes: Bool,
                                 chartHeight: CGFloat, shortUpdated: Bool) -> some View {
         let stressSeries = widget.stressCurve(now: now)
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 0) {
             header
+            extraLargeGap
             rings(diameter: 64, lineWidth: 7, labelFont: .caption2)
+            extraLargeGap
             Divider()
+            extraLargeGap
             VStack(alignment: .leading, spacing: 6) {
                 statsRow
                 extraLargeVitalsRow
             }
+            extraLargeGap
             VStack(alignment: .leading, spacing: 3) {
                 largeChartCaption(axes: axes)
                 if let day = hrToday {
-                    ForkZoneHRChart(day: day, height: chartHeight, axes: axes, style: style, flexible: true)
+                    ForkZoneHRChart(day: day, height: chartHeight, axes: axes, style: style)
                 } else {
                     ForkEmptyChart(height: chartHeight, style: style)
                 }
             }
             if showStress, stressSeries.contains(where: { $0.level != nil }) {
-                ForkStressBlock(series: stressSeries, height: 56, style: style)
+                extraLargeGap
+                ForkStressBlock(series: stressSeries, height: 48, style: style)
             }
             extraLargeSleep
             if let workout = fork.workoutToday(now: now) {
+                extraLargeGap
                 ForkWorkoutBlock(workout: workout, style: style)
             }
             if showTrend, let trend = fork.trendToday(now: now) {
+                extraLargeGap
                 ForkTrendBars(trend: trend, style: style, height: 26)
             }
-            Spacer(minLength: 0)
+            extraLargeGap
             HStack(spacing: 6) {
                 if let wake {
                     ViewThatFits(in: .horizontal) {
@@ -533,6 +546,7 @@ extension NOOPPlusView {
         let minutes = fork.sleepMinutes(now: now)
             ?? stages.map { $0.deepMin + $0.remMin + $0.lightMin }
         if let minutes {
+            extraLargeGap
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Label(FL.s("Sleep \(ForkFormat.duration(minutes: minutes))"), systemImage: "moon.fill")
