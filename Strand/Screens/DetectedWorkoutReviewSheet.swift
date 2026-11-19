@@ -31,10 +31,6 @@ struct DetectedWorkoutReviewSheet: View {
     /// Fixed at open so every clamp uses the same clock (the edited span may never end in the future).
     private let nowSec: Int
 
-    /// Activity token first ("Activity" is the stable, locale-independent default), then the same list the
-    /// Workouts screen offers when re-labelling a detected bout.
-    private static var sports: [String] { ["Activity"] + WorkoutsView.relabelSports }
-
     init(workout: DetectedWorkout, onFinish: @escaping (Bool) -> Void) {
         self.workout = workout
         self.onFinish = onFinish
@@ -178,17 +174,9 @@ struct DetectedWorkoutReviewSheet: View {
         }
     }
 
-    private var sportPicker: some View {
-        Picker("Sport", selection: $sport) {
-            ForEach(Self.sports, id: \.self) { s in
-                // The stored value stays the English token/sport name; only the label follows the app language.
-                Text(s == "Activity" ? String(localized: "Activity") : String(localized: String.LocalizationValue(s))).tag(s)
-            }
-        }
-        .labelsHidden()
-        .pickerStyle(.menu)
-        .tint(StrandPalette.accent)
-    }
+    /// Chips instead of a menu: the common sports are one tap away beside Start and End, "More…" opens the
+    /// full searchable list. The stored value stays the English name; only the labels are localized.
+    private var sportPicker: some View { SportChipPicker(sport: $sport) }
 
     private var actions: some View {
         VStack(spacing: NoopMetrics.space3) {

@@ -7,7 +7,8 @@ import WhoopStore
 //
 // The most recent workout of TODAY in full (header, average HR, a one-line zone summary, the zone-coloured
 // HR curve) and up to three more as compact rows. A tap opens `WorkoutDetailView`; the pencil opens the
-// same `ManualWorkoutSheet` the Workouts list uses, for the rows that list lets the user edit.
+// `WorkoutQuickEditSheet` (sport, start and end in one screen; its "More details…" opens the
+// `ManualWorkoutSheet` the Workouts list uses), for the rows that list lets the user edit.
 //
 // The caller passes the workout rows it already loaded (`TodayView.workouts` / `LiquidTodayView.workouts`)
 // instead of this card querying again, which has two consequences:
@@ -134,7 +135,7 @@ private struct TodayWorkoutSummaryContent: View {
             #endif
         }
         .sheet(item: $editTarget) { target in
-            ManualWorkoutSheet(editing: target.row) { row, replacing in
+            WorkoutQuickEditSheet(row: target.row) { row, replacing in
                 Task {
                     await repo.saveManualWorkout(row, replacing: replacing)
                     await intelligence.analyzeRecent()
@@ -187,7 +188,7 @@ private struct TodayWorkoutSummaryContent: View {
                             in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(LocalizedStringKey(display?.name ?? WorkoutSource.displaySport(featured.sport)))
+                Text(verbatim: SportDisplayName.localized(display?.name ?? WorkoutSource.displaySport(featured.sport)))
                     .font(StrandFont.headline)
                     .foregroundStyle(StrandPalette.textPrimary)
                     .lineLimit(1)
@@ -296,7 +297,7 @@ private struct TodayWorkoutSummaryContent: View {
                                 in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(LocalizedStringKey(item.name))
+                    Text(verbatim: SportDisplayName.localized(item.name))
                         .font(StrandFont.subhead)
                         .foregroundStyle(StrandPalette.textPrimary)
                         .lineLimit(1)

@@ -49,6 +49,18 @@
         }
       }
     },
+    "Choose an activity" : {
+      "comment" : "Title of the full activity browser opened from the sport chips.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scegli un'attività"
+          }
+        }
+      }
+    },
     "Copied" : {
       "comment" : "Button label after copying the diagnostics report ('Copy' is an upstream key).",
       "extractionState" : "manual",
@@ -61,6 +73,18 @@
         }
       }
     },
+    "CrossFit" : {
+      "comment" : "Sport name shown on chips and cards; the stored value stays English.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CrossFit"
+          }
+        }
+      }
+    },
     "Custom times for individual days are included automatically." : {
       "comment" : "Footnote shown when per-day overrides exist.",
       "extractionState" : "manual",
@@ -69,6 +93,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gli orari personalizzati dei singoli giorni sono inclusi automaticamente."
+          }
+        }
+      }
+    },
+    "Cycling" : {
+      "comment" : "Sport name shown on chips and cards; the stored value stays English.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ciclismo"
           }
         }
       }
@@ -109,6 +145,30 @@
         }
       }
     },
+    "HIIT" : {
+      "comment" : "Sport name shown on chips and cards; the stored value stays English.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HIIT"
+          }
+        }
+      }
+    },
+    "Hiking" : {
+      "comment" : "Sport name shown on chips and cards; the stored value stays English.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escursionismo"
+          }
+        }
+      }
+    },
     "If you don't double-tap the strap, it vibrates again every %lld minutes, up to %lld times. A double tap stops it and the iPhone alarm." : {
       "comment" : "Footnote under the insistent toggle. First number: minutes between vibrations. Second: maximum number of repeats. Both come from InsistentWakeAlarm.Configuration.insistent.",
       "extractionState" : "manual",
@@ -141,6 +201,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sveglia al più tardi"
+          }
+        }
+      }
+    },
+    "More activities" : {
+      "comment" : "VoiceOver label of the last sport chip.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Altre attività"
+          }
+        }
+      }
+    },
+    "More details…" : {
+      "comment" : "Opens the full workout editor (distance, calories) from the quick edit sheet.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Altri dettagli…"
+          }
+        }
+      }
+    },
+    "More…" : {
+      "comment" : "Last sport chip: opens the full searchable list of activities.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Altro…"
           }
         }
       }
@@ -313,6 +409,18 @@
         }
       }
     },
+    "Rowing" : {
+      "comment" : "Sport name shown on chips and cards; the stored value stays English.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Canottaggio"
+          }
+        }
+      }
+    },
     "SMART WAKE" : {
       "comment" : "Smart Wake card overline (Alarms screen). Feature name kept as is.",
       "extractionState" : "manual",
@@ -321,6 +429,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SMART WAKE"
+          }
+        }
+      }
+    },
+    "Search the full list of activities." : {
+      "comment" : "Subtitle of the full activity browser opened from the sport chips.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerca nell'elenco completo delle attività."
+          }
+        }
+      }
+    },
+    "Select" : {
+      "comment" : "Action label on an activity card in the browser opened from the sport chips.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seleziona"
           }
         }
       }
@@ -385,6 +517,30 @@
         }
       }
     },
+    "Strength Training" : {
+      "comment" : "Sport name shown on chips and cards; the stored value stays English.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allenamento di forza"
+          }
+        }
+      }
+    },
+    "Swimming" : {
+      "comment" : "Sport name shown on chips and cards; the stored value stays English.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nuoto"
+          }
+        }
+      }
+    },
     "System Smart Wake alarms require iOS 26 or later." : {
       "comment" : "Shown on iOS versions older than 26.",
       "extractionState" : "manual",
@@ -405,6 +561,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dettaglio tecnico"
+          }
+        }
+      }
+    },
+    "Tennis" : {
+      "comment" : "Sport name shown on chips and cards; the stored value stays English.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tennis"
           }
         }
       }
@@ -489,6 +657,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Giorno della settimana"
+          }
+        }
+      }
+    },
+    "Yoga" : {
+      "comment" : "Sport name shown on chips and cards; the stored value stays English.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yoga"
           }
         }
       }
