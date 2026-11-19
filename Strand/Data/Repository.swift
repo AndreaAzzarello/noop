@@ -956,7 +956,14 @@ final class Repository: ObservableObject {
     var loadFireCounts: [String: Int] = [:]
     #endif
 
+    /// fork-perf: overlapping calls share passes instead of each re-reading the store (see `RefreshCoalescer`).
+    private let refreshCoalescer = RefreshCoalescer()
+
     func refresh(days nDays: Int = 4000) async {
+        await refreshCoalescer.run(days: nDays) { await self.refreshOnce(days: $0) }
+    }
+
+    private func refreshOnce(days nDays: Int) async {
         guard let store = await ensureStore() else { return }
         refreshGen &+= 1
         let myGen = refreshGen
