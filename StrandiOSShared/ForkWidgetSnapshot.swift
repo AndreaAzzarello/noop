@@ -103,8 +103,14 @@ struct ForkWidgetSnapshot: Codable, Equatable {
     /// never appears for data the app has just verified to be unchanged. Kept below `staleAfter`.
     static let republishAfter: TimeInterval = 90 * 60
 
+    /// Version of the on-disk text formats (decimal separators, pre-formatted strings). Bump it when a
+    /// format changes: the publisher then rewrites the extras once even if their data did not move.
+    static let currentFormat = 2
+
     /// When the app last confirmed this content. Not part of `contentEquals`.
     var publishedAt: Date
+    /// The `currentFormat` the full publish last wrote. nil for a snapshot written before this field existed.
+    var formatVersion: Int?
     var sleepMin: Int?
     /// Local day number the sleep figure was banked for.
     var sleepDay: Int?
@@ -150,7 +156,8 @@ struct ForkWidgetSnapshot: Codable, Equatable {
     /// Whether `other` would render identically: everything except the confirmation timestamp and the
     /// publisher's own gate.
     func contentEquals(_ other: ForkWidgetSnapshot) -> Bool {
-        sleepMin == other.sleepMin
+        formatVersion == other.formatVersion
+            && sleepMin == other.sleepMin
             && sleepDay == other.sleepDay
             && smartWake == other.smartWake
             && smartWakeSkipUntil == other.smartWakeSkipUntil

@@ -81,6 +81,7 @@ enum ForkWidgetPublisher {
         next.workout = extras.workout
         next.trend = extras.trend
         next.extrasKey = extras.key
+        next.formatVersion = ForkWidgetSnapshot.currentFormat
         commit(next, previous: before, now: now)
     }
 
@@ -134,7 +135,8 @@ enum ForkWidgetPublisher {
         let scaleRaw = defaults.string(forKey: UnitPrefs.effortScaleKey) ?? ""
         let key = "\(day)|\(hrGate ?? "")|\(repo.refreshSeq)|\(scaleRaw)"
         out.key = key
-        if key == previous?.extrasKey {
+        // A snapshot from another format version is rebuilt once, whatever the gate says.
+        if key == previous?.extrasKey, previous?.formatVersion == ForkWidgetSnapshot.currentFormat {
             out.workout = previous?.workout
             out.trend = previous?.trend
             return out
