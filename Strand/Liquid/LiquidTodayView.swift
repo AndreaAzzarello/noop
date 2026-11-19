@@ -129,7 +129,8 @@ struct LiquidTodayView: View {
     // day navigation (0 = today, 1 = yesterday, …)
     @State private var selectedDayOffset = 0
     @State private var showDayPicker = false
-    @State private var heartRateCardFrame: CGRect = .null
+    /// Reference box: the card frame changes every scroll frame; a plain `@State` CGRect re-ran this whole body each time.
+    @State private var heartRateCardFrame = LiquidFrameBox()
     private static let daySwipeSpace = "liquidTodayDaySwipeSpace"
 
     // PERF: the body was rescanning repo.days (599 days) ~23× per pass for displayDay and ~3× for
@@ -287,7 +288,7 @@ struct LiquidTodayView: View {
     private var daySwipeGesture: some Gesture {
         DragGesture(minimumDistance: 24, coordinateSpace: .named(Self.daySwipeSpace))
             .onEnded { value in
-                guard !heartRateCardFrame.contains(value.startLocation) else { return }
+                guard !heartRateCardFrame.rect.contains(value.startLocation) else { return }
                 let dx = value.translation.width, dy = value.translation.height
                 guard abs(dx) > abs(dy) * 1.5, abs(dx) > 50 else { return }
                 let delta = TodayView.daySwipeDelta(dx: dx)
@@ -457,7 +458,7 @@ struct LiquidTodayView: View {
             .ignoresSafeArea()
         }
         .coordinateSpace(name: Self.daySwipeSpace)
-        .onPreferenceChange(LiquidHeartRateCardFrameKey.self) { heartRateCardFrame = $0 }
+        .onPreferenceChange(LiquidHeartRateCardFrameKey.self) { heartRateCardFrame.rect = $0 }
         // Swipe left/right to change DAYS (WHOOP-style). Tab-swipe is disabled on Today in RootTabView so
         // this owns the horizontal gesture here.
         .simultaneousGesture(daySwipeGesture)
@@ -2152,6 +2153,9 @@ struct LiquidTodayView: View {
                                         todayKey: displayDay?.day ?? selectedDayKey)
     }
 }
+
+/// Mutable frame holder whose writes do not invalidate SwiftUI views.
+final class LiquidFrameBox { var rect: CGRect = .null }
 
 /// Measures the heart-rate card in the same coordinate space as the day-swipe gesture.
 private struct LiquidHeartRateCardFrameKey: PreferenceKey {
