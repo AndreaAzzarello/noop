@@ -2,6 +2,7 @@
 import SwiftUI
 import StrandDesign
 import UIKit
+import ActivityKit
 
 /// Collapsed "Diagnostics" row inside the Smart Wake card: what the scheduler last did and why, with a
 /// button that copies it all, a one-minute test of the strap's firmware alarm, and a one-minute test of the
@@ -79,6 +80,7 @@ struct SmartWakeDiagnosticsView: View {
         Task { await SmartWakeTestAlarm.shared.sweep() }
         report = SmartWakeDiagnostics.report(
             snapshot: SmartWakeAlarmScheduler.shared.diagnosticsSnapshot()
+                + "\nLive Activities: " + (ActivityAuthorizationInfo().areActivitiesEnabled ? "enabled" : "disabled")
                 + "\n" + SmartWakeTestAlarm.shared.statusLine,
             windowStats: UserDefaults.standard.string(forKey: SmartWakeLiveController.windowSummaryStorageKey)
         )

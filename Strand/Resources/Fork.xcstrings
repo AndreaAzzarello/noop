@@ -409,6 +409,18 @@
         }
       }
     },
+    "Open Settings" : {
+      "comment" : "Button that opens the iOS Settings page of the app (Live Activities notice).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apri Impostazioni"
+          }
+        }
+      }
+    },
     "Restore Smart Wake fallback" : {
       "comment" : "AppIntent title (not discoverable).",
       "extractionState" : "manual",
@@ -669,6 +681,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Prova con un'altra parola, ad esempio sveglia o backup."
+          }
+        }
+      }
+    },
+    "Turn on Live Activities for NOOP, or the iPhone alarm won't ring" : {
+      "comment" : "Warning in the Smart Wake card when iOS Live Activities are off for NOOP.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attiva le Attività in tempo reale per NOOP, altrimenti la sveglia dell'iPhone non suona"
           }
         }
       }
