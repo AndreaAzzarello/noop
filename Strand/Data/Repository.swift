@@ -1521,6 +1521,11 @@ final class Repository: ObservableObject {
     /// clears the threshold; `habitualMidsleepSec` keeps the longest block per day, so window/order/source
     /// merge differences wash out. (#547)
     func habitualMidsleepSec(days: Int = 4000) async -> Int? {
+        // fork-perf: Today and Sleep each ask for this per load; it reads 4000 days of sleep blocks. The
+        // inputs only change with a refresh (every sleep edit and import ends in one), the local day and
+        // the time zone, so the answer is reused for the same (days, refreshSeq, day, offset).
+        let memoKey = "\(days)|\(refreshSeq)|\(TimeZone.current.secondsFromGMT())|\(Self.dayString(Date()))"
+        if let memo = habitualMidsleepMemo, memo.key == memoKey { return memo.value }
         guard let store = await ensureStore() else { return nil }
         let now = Int(Date().timeIntervalSince1970)
         let lo = now - days * 86_400, hi = now + 86_400
@@ -1528,18 +1533,28 @@ final class Repository: ObservableObject {
         // strap's visible retained nights would not teach the selector that chooses their main block.
         let rawIds = rawPhysiologyReadIds(store: store)
         let rawComputedIds = rawComputedReadIds(store: store)
-        let imported = Self.dedupBlocks(await unionRawSleepBlocks(store: store, ids: rawIds, from: lo, to: hi))
-        let computed = Self.dedupBlocks(await unionRawSleepBlocks(store: store, ids: rawComputedIds, from: lo, to: hi))
+        let rawImported = await unionRawSleepBlocks(store: store, ids: rawIds, from: lo, to: hi)
+        let rawComputed = await unionRawSleepBlocks(store: store, ids: rawComputedIds, from: lo, to: hi)
         let offsetSec = TimeZone.current.secondsFromGMT()
-        let blocks = (imported + computed).compactMap { s -> SleepStageTotals.HistoryBlock? in
-            let start = s.effectiveStartTs, end = s.endTs
-            guard end > start else { return nil }
-            let mid = start + (end - start) / 2
-            let dayKey = AnalyticsEngine.dayString(mid, offsetSec: offsetSec)
-            return SleepStageTotals.HistoryBlock(start: start, end: end, dayKey: dayKey)
-        }
-        return SleepStageTotals.habitualMidsleepSec(blocks, offsetSec: offsetSec)
+        // fork-perf: `dedupBlocks` is quadratic in the block count; run it and the pick off the main actor.
+        let value = await Task.detached(priority: .userInitiated) { () -> Int? in
+            let imported = Self.dedupBlocks(rawImported)
+            let computed = Self.dedupBlocks(rawComputed)
+            let blocks = (imported + computed).compactMap { s -> SleepStageTotals.HistoryBlock? in
+                let start = s.effectiveStartTs, end = s.endTs
+                guard end > start else { return nil }
+                let mid = start + (end - start) / 2
+                let dayKey = AnalyticsEngine.dayString(mid, offsetSec: offsetSec)
+                return SleepStageTotals.HistoryBlock(start: start, end: end, dayKey: dayKey)
+            }
+            return SleepStageTotals.habitualMidsleepSec(blocks, offsetSec: offsetSec)
+        }.value
+        habitualMidsleepMemo = (memoKey, value)
+        return value
     }
+
+    /// fork-perf: last `habitualMidsleepSec` answer and the key it was computed for. Not @Published.
+    private var habitualMidsleepMemo: (key: String, value: Int?)?
 
     /// Hand-correct a night's bed (onset) and/or wake (end) time. `detectedStartTs` is the immutable
     /// detected key; the corrected onset is stored in `startTsAdjusted` so the key never moves (the
