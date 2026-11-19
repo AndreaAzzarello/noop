@@ -48,10 +48,9 @@ enum ForkFormatters {
         return relativeShortFormatter
     }
 
-    /// A full-style `DateComponentsFormatter` for day/hour/minute spans in the active app-language locale
+    /// A full-style `DateComponentsFormatter` for day/hour/minute spans in the given (app-language) locale
     /// (zero units dropped, at most three units), the setup the Alarms countdown uses.
-    static func dayHourMinuteSpan() -> DateComponentsFormatter {
-        let locale = AppLanguage.activeLocale
+    static func dayHourMinuteSpan(locale: Locale) -> DateComponentsFormatter {
         lock.lock(); defer { lock.unlock() }
         if let cached = componentsFormatters[locale.identifier] { return cached }
         let f = DateComponentsFormatter()

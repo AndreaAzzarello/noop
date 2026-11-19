@@ -548,7 +548,7 @@ struct SmartAlarmView: View {
         guard seconds >= 60 else { return String(localized: "Alarm in less than a minute") }
         // fork-perf: cached formatter. Days included because a weekday-restricted alarm can be up to a week out,
         // and "151 hours" is not an answer. Leading zero units are dropped ("18 hours, 6 minutes").
-        let formatter = ForkFormatters.dayHourMinuteSpan()
+        let formatter = ForkFormatters.dayHourMinuteSpan(locale: AppLanguage.activeLocale)
         guard let span = formatter.string(from: seconds), !span.isEmpty else { return nil }
         return String(localized: "Alarm in \(span)")
     }
