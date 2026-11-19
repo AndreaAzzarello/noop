@@ -53,6 +53,33 @@ Fork-only helper files (no merge conflict possible): `Strand/Liquid/LiquidSkyGat
 | B9 | `StrandiOS/App/RootTabView.swift` | +4/-1 | shell holds the repository via the non-observing `repositoryHandle`; `StrandiOSApp.swift` +1 injects it |
 | B10 | `StrandiOS/App/StrandiOSApp.swift` | +10/-0 | on foreground with data loaded, publish widget and watch immediately, then again after the Health sync |
 
+## Perf session 2: fixes that stay
+
+Fork-only helper files: `Strand/System/TabSeqGate.swift`, `Strand/System/RefreshCoalescer.swift`
+(tests: `StrandTests/RefreshCoalescerTests.swift`). Counts are `added/removed` added by this session.
+
+| Fix | Upstream file | Lines touched | Reason |
+|---|---|---|---|
+| P1.1 | `StrandiOS/App/StrandiOSApp.swift` | +1/-1 | root `\.locale` uses the memoised `AppClock.activeLocale`; a new `Locale` per App body pass invalidated every view reading it, hidden tabs included |
+| P1.2 | `StrandiOS/Health/HealthKitBridge.swift` | +1/-1 | `lastError = nil` only when set (an equal assignment still publishes to the app root) |
+| P1.3 | `StrandiOS/App/RootTabView.swift` | +6/-5 | `tab(...)` takes `index:` and injects `\.forkTabSelected` |
+| P1.3 | `Strand/Screens/TodayView.swift`, `SleepView.swift`, `TrendsView.swift` | +3/-1 each | load `.task(id:)` keyed on `TabSeqGate.value(...)`, so a hidden tab keeps its key and does not reload on every refresh |
+| P1.3, P2.2 | `Strand/Screens/AutoWorkoutSuggestionHost.swift` (fork-only) | +10/-3 | same gate; no scan before `repo.loaded` |
+| P2.3 | `Strand/Screens/TodayView.swift` | +3/-0 | `loadAll` skips the history-wide pass until the first refresh has published |
+| P2.4 | `Strand/Data/Repository.swift` | +21/-9 | `habitualMidsleepSec` memoised per (days, refreshSeq, offset, day); `dedupBlocks` and the pick run detached |
+| P2.1 | `Strand/Data/Repository.swift` | +11/-1 | `refresh(days:)` goes through `RefreshCoalescer`; the old body is `refreshOnce(days:)` |
+
+## Perf session 2: TEMP hooks (remove at the end)
+
+| File | Lines | What |
+|---|---|---|
+| `Strand/System/RefreshCoalescer.swift` (fork-only) | +1 | `perf repo.refresh.coalesced n= days=` line |
+| `StrandiOS/Health/HealthKitBridge.swift` | +9 | `healthSync.aggregates/.workouts/.upsert/.caffeineAndHourlySteps/.writeBack` spans |
+| `StrandiOS/App/StrandiOSApp.swift` | +2 | `healthSync.sync` and `healthSync.refresh` spans |
+
+Proposed, not done: P4.2 (per-workout route/HR/steps fetch in a task group), B2 (bpm in a leaf-observed model),
+B8/C5 (single `LoadResult` for Today), `CADisableMinimumFrameDurationOnPhone` (`project.yml`, owner adds it).
+
 Not done (needs your decision, see the final report): A8 (Smart Wake diagnostics reload also runs
 `SmartWakeTestAlarm.sweep()`, which is Smart Wake logic), the `.id(refreshToken)` rebuild in the Test Centre,
 the list row identity in Workouts (`startTs|sport` is not guaranteed unique), `ProfileStore` duplication in
