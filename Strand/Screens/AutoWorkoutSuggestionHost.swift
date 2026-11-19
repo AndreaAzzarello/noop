@@ -19,7 +19,7 @@ final class AutoWorkoutSuggestionModel: ObservableObject {
 
     /// Re-scan. A fresh scan resets the session guard so a NEW window can surface after one is handled.
     func reload(repo: Repository) async {
-        let next = await repo.autoDetectCandidate()
+        let next = await PerfTrace.measure("autoDetectCandidate") { await repo.autoDetectCandidate() }
         if next != candidate { handledThisSession = false }
         candidate = next
     }
