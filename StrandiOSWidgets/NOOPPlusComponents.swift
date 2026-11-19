@@ -393,10 +393,10 @@ struct ForkSleepStagesBar: View {
         style.full ? AnyShapeStyle(StrandPalette.sleepStageColor(stage)) : AnyShapeStyle(Color.primary.opacity(step))
     }
 
-    private var parts: [(label: String, minutes: Int, ink: AnyShapeStyle)] {
-        [(FL.s("Deep"), stages.deepMin, ink(.deep, step: 0.9)),
-         (FL.s("REM"), stages.remMin, ink(.rem, step: 0.65)),
-         (FL.s("Light"), stages.lightMin, ink(.light, step: 0.4))]
+    private var parts: [(label: String, short: String, minutes: Int, ink: AnyShapeStyle)] {
+        [(FL.s("Deep"), FL.s("Deep (short)"), stages.deepMin, ink(.deep, step: 0.9)),
+         (FL.s("REM"), FL.s("REM (short)"), stages.remMin, ink(.rem, step: 0.65)),
+         (FL.s("Light"), FL.s("Light (short)"), stages.lightMin, ink(.light, step: 0.4))]
     }
 
     var body: some View {
@@ -415,28 +415,37 @@ struct ForkSleepStagesBar: View {
             .widgetAccentable()
             .frame(height: 10)
             ViewThatFits(in: .horizontal) {
-                legend(withNames: true)
-                legend(withNames: false)
+                legend(short: false)
+                legend(short: true)
             }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(FL.s("Sleep stages, deep \(ForkFormat.duration(minutes: stages.deepMin)), REM \(ForkFormat.duration(minutes: stages.remMin)), light \(ForkFormat.duration(minutes: stages.lightMin))")))
     }
 
-    private func legend(withNames: Bool) -> some View {
-        HStack(spacing: 10) {
+    /// Three equal columns, each the stage name beside its colour dot with the duration underneath, so the
+    /// name is always there. When the full names do not fit the width, the short names take over; the
+    /// duration is never shown without one.
+    private func legend(short: Bool) -> some View {
+        HStack(alignment: .top, spacing: 8) {
             ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
-                HStack(spacing: 3) {
-                    Circle().fill(part.ink).frame(width: 6, height: 6)
-                    Text(withNames ? "\(part.label) \(ForkFormat.duration(minutes: part.minutes))"
-                                   : ForkFormat.duration(minutes: part.minutes))
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 4) {
+                        Circle().fill(part.ink).frame(width: 6, height: 6)
+                        Text(short ? part.short : part.label)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(style.secondary)
+                            .lineLimit(1)
+                    }
+                    Text(ForkFormat.duration(minutes: part.minutes))
                         .font(.system(size: 10))
-                        .foregroundStyle(style.secondary)
+                        .foregroundStyle(style.tertiary)
                         .lineLimit(1)
+                        .padding(.leading, 10)
                 }
                 .fixedSize(horizontal: true, vertical: false)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Spacer(minLength: 0)
         }
     }
 }
