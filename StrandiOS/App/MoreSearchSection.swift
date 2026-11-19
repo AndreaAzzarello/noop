@@ -9,6 +9,21 @@ import StrandDesign
 // `NoopLiquidGlassSearchField`: the More tab draws its own header and hides the navigation bar, so a
 // navigation-bar `.searchable` would have nowhere to appear. Design tokens only.
 
+/// Owns the search text so a keystroke re-evaluates only this scope, not the whole tab shell
+/// (`RootTabView`). Shows the search field, then `content(searchActive)` for the regular groups.
+struct MoreQueryScope<Content: View>: View {
+
+    @Binding var path: NavigationPath
+    @ViewBuilder let content: (_ searchActive: Bool) -> Content
+
+    @State private var query = ""
+
+    var body: some View {
+        MoreSearchSection(query: $query, path: $path)
+        content(MoreSearch.isActive(query))
+    }
+}
+
 struct MoreSearchSection: View {
 
     @Binding var query: String
