@@ -1,6 +1,42 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@, under %lld beats per minute" : {
+      "comment" : "VoiceOver label for the below-Zone-1 legend entry.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, sotto %2$lld battiti al minuto"
+          }
+        }
+      }
+    },
+    "%lld–%lld bpm" : {
+      "comment" : "HR zone legend: first and last bpm of a zone.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld–%lld bpm"
+          }
+        }
+      }
+    },
+    "< %lld bpm" : {
+      "comment" : "HR zone legend: heart rate strictly below the Zone 1 start.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "< %lld bpm"
+          }
+        }
+      }
+    },
     "Alarm permission was revoked in Settings." : {
       "comment" : "Display text for SmartWakeAlarmScheduler.revokedAuthorizationMessage (the stored value stays English).",
       "extractionState" : "manual",
@@ -457,6 +493,42 @@
         }
       }
     },
+    "Zone %lld, %@" : {
+      "comment" : "VoiceOver label for a legend entry when no bpm range is available.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zona %1$lld, %2$@"
+          }
+        }
+      }
+    },
+    "Zone %lld, %@, %lld beats per minute or more" : {
+      "comment" : "VoiceOver label for the Zone 5 legend entry.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zona %1$lld, %2$@, da %3$lld battiti al minuto in su"
+          }
+        }
+      }
+    },
+    "Zone %lld, %@, %lld to %lld beats per minute" : {
+      "comment" : "VoiceOver label for a legend entry of Zones 1 to 4.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zona %1$lld, %2$@, da %3$lld a %4$lld battiti al minuto"
+          }
+        }
+      }
+    },
     "of 21" : {
       "comment" : "Caption under an Effort value on the WHOOP 0-21 scale.",
       "extractionState" : "manual",
@@ -489,6 +561,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "fascia"
+          }
+        }
+      }
+    },
+    "≥ %lld bpm" : {
+      "comment" : "HR zone legend: Zone 5, from its start upwards.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≥ %lld bpm"
           }
         }
       }

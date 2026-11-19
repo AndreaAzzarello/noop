@@ -103,6 +103,30 @@ enum HRZoneChartModel {
             .map { Threshold(zone: $0.number, value: $0.lower) }
     }
 
+    /// The bpm span a legend entry states for one zone.
+    enum BPMRange: Equatable {
+        /// Zone 0: strictly under the Zone 1 start.
+        case below(Int)
+        /// Zones 1...4: first and last whole bpm that still count as the zone.
+        case between(Int, Int)
+        /// Zone 5: from its start upwards (it includes HRmax).
+        case atLeast(Int)
+    }
+
+    /// bpm span of `zone` read from the SAME `HRZoneSet` that colours the curve. Bounds are rounded up
+    /// (`ceil`) exactly as the trailing axis labels are, so a legend range and its dashed rule always agree.
+    /// A reading sits in zone n from `ceil(lower_n)` up to the whole bpm before `ceil(lower_n+1)`.
+    static func range(forZone zone: Int, in zoneSet: HRZoneSet) -> BPMRange? {
+        let lowers = zoneSet.zones.map { Int(ceil($0.lower)) }
+        guard lowers.count == 5 else { return nil }
+        switch zone {
+        case 0: return .below(lowers[0])
+        case 1...4: return .between(lowers[zone - 1], max(lowers[zone - 1], lowers[zone] - 1))
+        case 5: return .atLeast(lowers[4])
+        default: return nil
+        }
+    }
+
     /// The plotted Y domain with headroom for the threshold rules. A rule whose bpm sits within the top
     /// margin of `domain` would run along the plot's upper edge, under the card's subtitle, so the upper
     /// bound is raised to leave one margin above it. Raising it can bring a higher threshold inside the
@@ -254,7 +278,7 @@ struct ZoneColoredHRChart: View {
     private func zoned(_ zoneSet: HRZoneSet) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             chart(zoneSet)
-            legend
+            legend(zoneSet)
         }
     }
 
@@ -374,25 +398,60 @@ struct ZoneColoredHRChart: View {
         }
     }
 
-    private var legend: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 8, alignment: .leading)],
-                  alignment: .leading, spacing: 6) {
+    /// Two flexible columns; each entry stacks the zone name over its bpm span, so a long Italian name wraps
+    /// instead of truncating on a small phone.
+    private func legend(_ zoneSet: HRZoneSet) -> some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .topLeading),
+                            GridItem(.flexible(), spacing: 12, alignment: .topLeading)],
+                  alignment: .leading, spacing: 8) {
             ForEach(legendZones, id: \.self) { zone in
-                HStack(spacing: 5) {
+                let title = zone >= 1 ? "Z\(zone) · \(Self.name(forZone: zone))" : Self.name(forZone: zone)
+                let range = HRZoneChartModel.range(forZone: zone, in: zoneSet)
+                HStack(alignment: .top, spacing: 6) {
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
                         .fill(Self.color(forZone: zone))
                         .frame(width: 9, height: 9)
-                    Text(verbatim: zone >= 1 ? "Z\(zone) · \(Self.name(forZone: zone))" : Self.name(forZone: zone))
-                        .font(StrandFont.footnote)
-                        .foregroundStyle(StrandPalette.textTertiary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .padding(.top, 3)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(verbatim: title)
+                            .font(StrandFont.footnote)
+                            .foregroundStyle(StrandPalette.textSecondary)
+                        if let range {
+                            Text(verbatim: Self.rangeLabel(range))
+                                .font(StrandFont.caption)
+                                .foregroundStyle(StrandPalette.textTertiary)
+                        }
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(verbatim: Self.spokenLabel(zone: zone, range: range)))
             }
         }
         .fixedSize(horizontal: false, vertical: true)
         .layoutPriority(1)
-        .accessibilityHidden(true)
+    }
+
+    private static func rangeLabel(_ range: HRZoneChartModel.BPMRange) -> String {
+        switch range {
+        case .below(let hi): return String(localized: "< \(hi) bpm", table: "Fork")
+        case .between(let lo, let hi): return String(localized: "\(lo)–\(hi) bpm", table: "Fork")
+        case .atLeast(let lo): return String(localized: "≥ \(lo) bpm", table: "Fork")
+        }
+    }
+
+    private static func spokenLabel(zone: Int, range: HRZoneChartModel.BPMRange?) -> String {
+        let name = name(forZone: zone)
+        switch range {
+        case .below(let hi)?:
+            return String(localized: "\(name), under \(hi) beats per minute", table: "Fork")
+        case .between(let lo, let hi)?:
+            return String(localized: "Zone \(zone), \(name), \(lo) to \(hi) beats per minute", table: "Fork")
+        case .atLeast(let lo)?:
+            return String(localized: "Zone \(zone), \(name), \(lo) beats per minute or more", table: "Fork")
+        case nil:
+            return zone >= 1 ? String(localized: "Zone \(zone), \(name)", table: "Fork") : name
+        }
     }
 }
 

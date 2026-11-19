@@ -141,4 +141,41 @@ final class HRZoneChartModelTests: XCTestCase {
         // A rule at or below the lower bound never moves the top.
         XCTAssertEqual(HRZoneChartModel.paddedDomain(120...150, zoneSet: zones).lowerBound, 120)
     }
+
+    // MARK: Legend bpm ranges
+
+    func testRangesForHRMax191MatchTheAxisThresholds() {
+        let z = HRZones.zones(maxHR: 191, source: "manual")
+        XCTAssertEqual(HRZoneChartModel.range(forZone: 0, in: z), .below(96))
+        XCTAssertEqual(HRZoneChartModel.range(forZone: 1, in: z), .between(96, 114))
+        XCTAssertEqual(HRZoneChartModel.range(forZone: 2, in: z), .between(115, 133))
+        XCTAssertEqual(HRZoneChartModel.range(forZone: 3, in: z), .between(134, 152))
+        XCTAssertEqual(HRZoneChartModel.range(forZone: 4, in: z), .between(153, 171))
+        XCTAssertEqual(HRZoneChartModel.range(forZone: 5, in: z), .atLeast(172))
+    }
+
+    func testRangesFollowCustomLowerBounds() {
+        let z = HRZones.zones(maxHR: 200, customLowerBounds: [90, 110, 130, 150, 170])
+        XCTAssertEqual(HRZoneChartModel.range(forZone: 0, in: z), .below(90))
+        XCTAssertEqual(HRZoneChartModel.range(forZone: 1, in: z), .between(90, 109))
+        XCTAssertEqual(HRZoneChartModel.range(forZone: 5, in: z), .atLeast(170))
+    }
+
+    func testRangesAreContiguousAndAgreeWithZoneNumber() {
+        let z = HRZones.zones(maxHR: 191, source: "manual")
+        // Every whole bpm falls in exactly the zone whose printed range contains it.
+        for bpm in 60...200 {
+            let zone = z.zoneNumber(forBPM: Double(bpm))
+            switch HRZoneChartModel.range(forZone: zone, in: z)! {
+            case .below(let hi): XCTAssertLessThan(bpm, hi)
+            case .between(let lo, let hi): XCTAssertTrue((lo...hi).contains(bpm), "\(bpm) in Z\(zone)")
+            case .atLeast(let lo): XCTAssertGreaterThanOrEqual(bpm, lo)
+            }
+        }
+    }
+
+    func testRangeIsNilForUnknownZone() {
+        XCTAssertNil(HRZoneChartModel.range(forZone: 6, in: zones))
+        XCTAssertNil(HRZoneChartModel.range(forZone: -1, in: zones))
+    }
 }
