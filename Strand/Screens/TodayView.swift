@@ -1229,12 +1229,7 @@ struct TodayView: View {
         return selectedLogicalDay.formatted(date: .numeric, time: .omitted)
     }
 
-    /// Periodic one-word hint shown in place of the date for ~1.5s every ~10s (nil = show the date). With the
-    /// arrows gone the day-nav affordances are otherwise invisible, so this teaches them in the accent colour.
-    @State private var dayNavHint: String? = nil
-    private static var dayNavHints: [String] {
-        [String(localized: "Swipe"), String(localized: "Tap")]
-    }
+    // fork-perf: the periodic "Swipe"/"Tap" hint state moved into `DayNavHintLabel` so its writes no longer re-run this body.
     #endif
 
     /// #829 follow-up: the named coordinate space the day-swipe drag and the HR-chart frame reader share,
@@ -1298,12 +1293,7 @@ struct TodayView: View {
                 // it swaps for ~1.5s to a one-word "Swipe" / "Tap" hint in the accent colour so users learn
                 // they can change the day by swiping across or tapping here. fixedSize makes it claim its own
                 // width so a tight top bar never compresses it, and the trailing icon cluster keeps its room.
-                Text(dayNavHint ?? dayNavDateText)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(dayNavHint != nil ? StrandPalette.accent : StrandPalette.textPrimary)
-                    .lineLimit(1)
-                    .fixedSize()
-                    .contentTransition(.opacity)
+                DayNavHintLabel(dateText: dayNavDateText) // fork-perf
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -1377,19 +1367,7 @@ struct TodayView: View {
             }
         }
         .frame(height: 46)
-        // Cycle the swipe/tap hint: roughly every 10s flash a one-word hint for ~1.5s, alternating "Swipe" /
-        // "Tap", then return to the date. One async loop, auto-cancelled when Today goes away (no leaked timer).
-        .task {
-            var i = 0
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
-                if Task.isCancelled { break }
-                withAnimation(.easeInOut(duration: 0.3)) { dayNavHint = Self.dayNavHints[i % Self.dayNavHints.count] }
-                i += 1
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                withAnimation(.easeInOut(duration: 0.3)) { dayNavHint = nil }
-            }
-        }
+        // fork-perf: the swipe/tap hint cycle now runs inside `DayNavHintLabel`.
     }
 
     /// Settings presented as a sheet from the top-bar profile button (sheets inherit the app
@@ -4757,7 +4735,11 @@ struct TodayView: View {
         // preferred, else derived off the live RHR/HRV baseline), so the pinned card never lags the detail
         // page on a day with no banked stress row. nil (no usable signal) keeps the honest "Calibrating"
         // placeholder, matching StressView's empty state. Fitness age / Vitality keep their merged reads.
-        stressToday = StressModel(days: repo.days, stored: await stressStoredA)?.score
+        let stressDays = repo.days // fork-perf: StressModel off the main actor, as Liquid Today does
+        let stressStored = await stressStoredA
+        stressToday = await Task.detached(priority: .utility) {
+            StressModel(days: stressDays, stored: stressStored)?.score
+        }.value
         fitnessAgeToday = (await fitnessAgeSeriesA).last?.value
         vo2maxToday = (await vo2maxSeriesA).last?.value   // #1391: latest banked VO₂max estimate
         vitalityToday = (await vitalitySeriesA).last?.value
