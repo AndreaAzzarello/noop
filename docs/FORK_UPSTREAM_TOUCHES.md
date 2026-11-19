@@ -77,6 +77,24 @@ Fork-only helper files: `Strand/System/TabSeqGate.swift`, `Strand/System/Refresh
 | `StrandiOS/Health/HealthKitBridge.swift` | +9 | `healthSync.aggregates/.workouts/.upsert/.caffeineAndHourlySteps/.writeBack` spans |
 | `StrandiOS/App/StrandiOSApp.swift` | +2 | `healthSync.sync` and `healthSync.refresh` spans |
 
+## Perf session 3: fix that stays
+
+| Fix | Upstream file | Lines touched | Reason |
+|---|---|---|---|
+| P5.1 | `StrandiOS/Resources/Info.plist` | +2/-0 | `CADisableMinimumFrameDurationOnPhone` carried in the committed plist (same key as `project.yml`), so restoring the plist after a local `xcodegen generate` no longer drops ProMotion |
+
+## Perf session 3: TEMP hooks (remove at the end)
+
+Fork-only (delete the whole file or the added blocks): `Strand/System/PerfTrace.swift` (publish counters, `perfCount`,
+link interval) and `StrandiOS/App/PerfDisplayKeeper.swift` (publish sinks, `perf display` line).
+
+| File | Lines | What |
+|---|---|---|
+| `Strand/System/DisplayPerformanceMonitor.swift` | +1 | `PerfTrace.noteLinkInterval(...)` in `onFrame` (feeds `refresh=` on `frameSummary`) |
+| `StrandiOS/App/RootTabView.swift` | +1 | `.perfCount("root.tabs")` |
+| `StrandiOS/App/StrandiOSApp.swift` | +0/-0 | `.perfDisplayKeeper(model:health:router:)` (same TEMP line, new arguments) |
+| `StrandiOS/Health/HealthKitBridge.swift` | +16 | `healthSync.wb.migrate/vitals/sleep/hr/workouts` spans, `healthSync.wb.counts` lines, `healthSync.writeBackAfterNewData` span |
+
 Proposed, not done: P4.2 (per-workout route/HR/steps fetch in a task group), B2 (bpm in a leaf-observed model),
 B8/C5 (single `LoadResult` for Today), `CADisableMinimumFrameDurationOnPhone` (`project.yml`, owner adds it).
 
