@@ -416,6 +416,7 @@ struct LiquidTodayView: View {
             #endif
         }
         .coordinateSpace(name: Self.pullSpace)
+        .liquidSkyScrollGate() // fork-perf: pause the animated sky while scrolling / off screen
         #if os(iOS)
         // #697 parity: ScreenScaffold already stops a vertical scroll from drifting/bouncing the
         // screen left-right on every other tab. Liquid Today runs its own ScrollView (not

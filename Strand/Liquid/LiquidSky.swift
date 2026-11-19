@@ -118,6 +118,8 @@ struct LiquidSky: View {
     /// frame loop stand down from inside, so the gate travels with the view.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var motion = NoopMotionState.shared
+    @ObservedObject private var gate = LiquidSkyGate.shared // fork-perf: pause while scrolling / off screen
+    @State private var clock = LiquidSkyClock() // fork-perf
 
     var body: some View {
         // The sky must dissolve into the SAME canvas colour the body uses (theme-aware surfaceBase),
@@ -137,9 +139,16 @@ struct LiquidSky: View {
             Canvas { ctx, size in
                 render(ctx, size, hour: h, now: 0, settle: settle, light: !dark)
             }
+        } else if gate.paused { // fork-perf: one frame at the clock value the loop stopped at
+            let h = hour ?? liveHour()
+            let frozen = clock.now
+            Canvas { ctx, size in
+                render(ctx, size, hour: h, now: frozen, settle: settle, light: !dark)
+            }
         } else {
             TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { tl in
                 let now = liquidSeconds(tl.date)
+                let _ = clock.record(now) // fork-perf
                 let h = hour ?? liveHour()
                 Canvas { ctx, size in
                     render(ctx, size, hour: h, now: now, settle: settle, light: !dark)

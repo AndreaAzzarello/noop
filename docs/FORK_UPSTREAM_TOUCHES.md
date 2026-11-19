@@ -51,4 +51,11 @@ work together with `Strand/System/PerfTrace.swift` and `StrandiOS/App/PerfDispla
 | `Strand/Screens/TrendsView.swift` | +2/-0 | `.perfPage`, series-load span | TEMP, remove |
 | `Strand/Screens/SmartAlarmView.swift` | +1/-0 | `.perfPage("alarms")` | TEMP, remove |
 
+## Perf fixes (kept)
+
+| File | Lines | Reason |
+|---|---|---|
+| `Strand/Liquid/LiquidSky.swift` | +9/-0 | A1: while the Today scroll view moves, the tab is off screen or the app is inactive, draw one frame at the last clock value instead of the 20 fps loop (logic in fork-only `Strand/Liquid/LiquidSkyGate.swift`) |
+| `Strand/Liquid/LiquidTodayView.swift` | +1/-0 | A1: `.liquidSkyScrollGate()` on the Today `ScrollView` |
+
 Later perf commits (real fixes, kept) are appended here as they land.
