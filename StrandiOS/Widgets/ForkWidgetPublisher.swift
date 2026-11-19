@@ -20,23 +20,45 @@ enum ForkWidgetPublisher {
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "noop", category: "ForkWidget")
     private static var inFlight = false
     private static var pending = false
+    /// Start of the pass now running, and the id of the run that owns `inFlight`.
+    private static var passStartedAt: Date?
+    private static var generation = 0
+    /// A pass older than this is presumed stuck (e.g. awaiting a store open that never returns).
+    static let stuckAfter: TimeInterval = 120
 
     // MARK: Full publish (sleep + today's HR curve)
 
     /// Fire-and-forget. Safe to call on every upstream publish.
+    ///
+    /// Only one run owns `inFlight`. If its current pass has been going for more than `stuckAfter`, the next
+    /// request takes over under a new generation; the abandoned run can no longer commit, loop again or
+    /// release the flag, so two publishes never write at the same time.
     static func requestPublish(from model: AppModel) {
-        if inFlight { pending = true; return }
+        if inFlight {
+            guard let started = passStartedAt, Date().timeIntervalSince(started) > stuckAfter else {
+                pending = true
+                return
+            }
+            log.error("fork widget publish pass stuck for over \(Int(stuckAfter))s; starting a new one")
+        }
+        generation += 1
+        let mine = generation
         inFlight = true
+        pending = false
         Task { @MainActor in
-            repeat {
+            defer {
+                if generation == mine { inFlight = false; passStartedAt = nil }
+            }
+            while generation == mine {
                 pending = false
-                await publish(from: model)
-            } while pending
-            inFlight = false
+                passStartedAt = Date()
+                await publish(from: model, generation: mine)
+                if !pending { break }
+            }
         }
     }
 
-    private static func publish(from model: AppModel) async {
+    private static func publish(from model: AppModel, generation token: Int) async {
         let now = Date()
         let calendar = Calendar.current
         let day = WidgetSnapshot.localDayNumber(now, calendar: calendar)
@@ -69,6 +91,8 @@ enum ForkWidgetPublisher {
         // 7-day strip need a database read, which only runs when `extrasKey` moved.
         let extras = await buildExtras(from: model, now: now, day: day, hrGate: gate, previous: previous)
 
+        // A run that was replaced while it waited must not write over the newer one.
+        guard token == generation else { return }
         // Re-read after the awaits so a Smart Wake publish that landed meanwhile is not overwritten.
         var next = ForkWidgetSnapshot.load() ?? .empty
         let before = next
