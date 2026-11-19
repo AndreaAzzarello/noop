@@ -61,7 +61,9 @@ struct NOOPPlusProvider: TimelineProvider {
         let trendDays = fork.trendToday(now: now)?.days.filter { $0.charge != nil || $0.effort != nil || $0.rest != nil }.count ?? 0
         let line = "size=\(Int(size.width))x\(Int(size.height)) stress=\(stressHours)h trend=\(trendDays)/7 "
             + "vitals=\(fork.vitalsToday(now: now) != nil) stages=\(fork.sleepStagesToday(now: now) != nil) "
-            + "workout=\(fork.workoutToday(now: now) != nil) hr=\(fork.hrToday(now: now) != nil)"
+            + "workout=\(fork.workoutToday(now: now) != nil) hr=\(fork.hrToday(now: now) != nil) "
+            + "fork=\(fork.publishedAt == .distantPast ? "never" : fork.publishedAt.formatted(date: .omitted, time: .shortened)) "
+            + "fmt=\(fork.formatVersion.map(String.init) ?? "nil")"
         guard let defaults = UserDefaults(suiteName: WidgetSnapshot.suiteName) else { return }
         let stamp = now.formatted(date: .omitted, time: .shortened)
         if defaults.string(forKey: Self.probeKey)?.hasPrefix(line) == true { return }
