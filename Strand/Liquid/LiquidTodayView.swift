@@ -477,11 +477,11 @@ struct LiquidTodayView: View {
             DashboardCardPrefs.migrateLegacyStepsAverage()
             let key = loadKey // fork-perf: skip an unchanged reload on tab re-entry
             guard dataLoaded, loadMemo.isFresh(for: key) else {
-                await PerfTrace.measure("liquidToday.load") { await load() }
+                await PerfTrace.measure("liquidToday.load") { await load() } // fork-perf: TEMP
                 if !Task.isCancelled { loadMemo.finish(key: key) }
                 return
             }
-            PerfTrace.emit("perf liquidToday.load skipped")
+            PerfTrace.emit("perf liquidToday.load skipped") // fork-perf: TEMP
         }
         .sheet(item: $guideSection) { section in
             NavigationStack { ScoringGuideView(initialSection: section, onClose: { guideSection = nil }) }

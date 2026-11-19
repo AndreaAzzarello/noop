@@ -1,75 +1,76 @@
 # Fork touches on upstream files
 
 Files that exist in `ryanbr/noop` `main` and are edited by this fork, so a merge from upstream knows where
-conflicts can appear. Line counts are `added/removed` against `upstream/main`. Logic lives in fork-only files
-wherever possible; the edits below are the minimum hooks.
+conflicts can appear. Logic lives in fork-only files wherever possible; the edits below are the minimum hooks.
 
-Perf-session edits are marked in the source with `// fork-perf:` (`grep -rn "fork-perf:" Strand StrandiOS`).
-Lines marked `fork-perf: TEMP` are temporary measurement hooks and **must be removed** at the end of the perf
-work together with `Strand/System/PerfTrace.swift` and `StrandiOS/App/PerfDisplayKeeper.swift` (fork-only).
+- Totals are `added/removed` lines of `git diff upstream/main --numstat` on the branch (all fork work in that file).
+- Perf-session edits are marked in source with `// fork-perf:` (`grep -rn "fork-perf:" Strand StrandiOS Packages`).
+- Lines marked **`fork-perf: TEMP`** are measurement hooks and **must be removed** at the end of the perf work,
+  together with the fork-only `Strand/System/PerfTrace.swift` and `StrandiOS/App/PerfDisplayKeeper.swift`
+  (`grep -rn "fork-perf: TEMP" Strand StrandiOS`).
 
-## Smart Wake, workouts, widgets, watch (earlier work)
+## Earlier fork work (Smart Wake, workouts, NOOP+ widget, watch)
 
-| File | Lines | Reason |
+| File | Total | Reason |
 |---|---|---|
 | `Strand/App/AppModel.swift` | +6/-1 | Smart Wake hooks (firmware alarm ownership, fallback alarms) |
 | `Strand/BLE/BLEManager.swift` | +1/-0 | feed readable HR samples to Smart Wake |
 | `Strand/BLE/LiveState.swift` | +2/-0 | expose readable HR samples to Smart Wake |
 | `Strand/Data/BehaviorStore.swift` | +9/-0 | independent Smart Wake preferences |
-| `Strand/Data/Repository.swift` | +18/-7 | auto-detect scan off the main actor, gating, tracing |
 | `Strand/Liquid/LiquidPrimitives.swift` | +1/-1 | live HR thread at 30 fps |
 | `Strand/Screens/AutoWorkoutCard.swift` | +32/-25 | detected-workout review, scan anchoring |
 | `Strand/Screens/JournalReminderCard.swift` | +13/-8 | fix card never loading |
-| `Strand/Screens/SmartAlarmView.swift` | +14/-20 | Smart Wake card moved to its own view, cached formatters |
-| `Strand/Screens/WorkoutDetailView.swift` | +12/-4 | court-sport Effort/steps, zone-coloured HR curve |
-| `StrandiOS/Resources/Info.plist` | +2/-0 | AlarmKit usage description (restore after `xcodegen generate`) |
+| `Strand/Screens/SmartAlarmView.swift` | +17/-32 | Smart Wake card moved to its own view, cached formatters (perf: see A7) |
+| `StrandiOS/Resources/Info.plist` | +2/-0 | AlarmKit usage description (restore with `git checkout` after `xcodegen generate`) |
 | `StrandiOS/Widgets/WidgetPublish.swift` | +1/-0 | fork NOOP+ publish hook |
 | `StrandiOSWidgets/NOOPWidgetBundle.swift` | +2/-0 | register NOOP+ widget and alarm Live Activity |
 | `project.yml` | +5/-0 | AlarmKit plist key, Smart Wake test targets |
-| `NOOPWatch/*` (5 files) | +142/-28 | watch: tickers only while a session runs, HR sampling, session recovery |
+| `NOOPWatch/WatchBreatheView.swift`, `WatchGlanceView.swift`, `WatchIntervalView.swift`, `WatchLiveHR.swift`, `WatchWorkoutView.swift` | +142/-28 | watch: tickers only while a session runs, HR sampling, session recovery |
 
-## Shared between earlier work and the perf session
+## Perf session: fixes that stay
 
-| File | Lines | Reason |
-|---|---|---|
-| `Strand/Liquid/LiquidTodayView.swift` | +22/-15 | `LiquidFrameBox`, formatter cache, workout card placement; **perf: `.perfPage` (TEMP, 1 line)** |
-| `Strand/Screens/TodayView.swift` | +14/-12 | workout summary / auto-workout cards, formatter cache; **perf: `.perfPage` + load span (TEMP, 2 lines)** |
-| `Strand/Screens/SettingsView.swift` | +2/-0 | auto-detect thresholds; **perf: `.perfPage` (TEMP, 1 line)** |
-| `Strand/Screens/WorkoutsView.swift` | +3/-1 | detected-workout review; **perf: `.perfPage` + load span (TEMP, 2 lines)** |
-| `StrandiOS/App/RootTabView.swift` | +6/-2 | More search scope; **perf: launch refresh span (TEMP, 1 line changed)** |
-| `StrandiOS/App/StrandiOSApp.swift` | +6/-0 | AlarmKit observer, Smart Wake wiring; **perf: launch stamp, keeper modifier, Health sync span (TEMP, 3 lines)** |
+Fork-only helper files (no merge conflict possible): `Strand/Liquid/LiquidSkyGate.swift`,
+`Strand/Liquid/LiquidLoadMemo.swift`, `Strand/Screens/DayNavHintLabel.swift`,
+`Strand/Screens/TrendsPerfMemo.swift`, `Strand/System/LoadSeqMemo.swift`,
+`Strand/System/DiagnosticsSnapshot.swift`, `Strand/System/RepositoryHandle.swift`.
 
-## Perf session (this work)
-
-| File | Lines | Reason | Status |
+| Fix | Upstream file | Lines touched by the fix | Reason |
 |---|---|---|---|
-| `Strand/System/DisplayPerformanceMonitor.swift` | +3/-3 | append layout/background/page context to `frameSummary` and `memoryHighWater` lines | TEMP, remove |
-| `Strand/Screens/TestCentreView.swift` | +4/-3 | keep the Display monitor alive off-screen; time `capturedUnits`; `.perfPage` | TEMP, remove |
-| `Strand/Screens/CoachView.swift` | +1/-0 | `.perfPage("coach")` | TEMP, remove |
-| `Strand/Screens/LiveView.swift` | +1/-0 | `.perfPage("live")` | TEMP, remove |
-| `Strand/Screens/SleepView.swift` | +3/-1 | `.perfPage`, load span, `buildModel` timing | TEMP, remove |
-| `Strand/Screens/TrendsView.swift` | +2/-0 | `.perfPage`, series-load span | TEMP, remove |
-| `Strand/Screens/SmartAlarmView.swift` | +1/-0 | `.perfPage("alarms")` | TEMP, remove |
+| A1 | `Strand/Liquid/LiquidSky.swift` | +9/-0 | draw one frame at the last clock value instead of the 20 fps loop while the Today scroll view moves, the tab is off screen or the app is inactive |
+| A1 | `Strand/Liquid/LiquidTodayView.swift` | +1/-0 | `.liquidSkyScrollGate()` on the Today `ScrollView` |
+| A2 | `Strand/Liquid/LiquidTodayView.swift` | +8/-2 | skip an unchanged `load()` when returning to Today within 20 s (`loadKey`, `loadMemo`) |
+| A3 | `Strand/Data/Repository.swift` | +12/-8 | test-mode `detectTrace` and shadow comparisons run in a detached task, same log order |
+| A4 | `Strand/Screens/TodayView.swift` | +10/-27 | "Swipe"/"Tap" hint state moved into `DayNavHintLabel`; `StressModel` computed off the main actor |
+| A5 | `Strand/Screens/SettingsView.swift` | +2/-1 | diagnostics sheet captured once (`DiagnosticsSnapshot`) |
+| A6 | `Strand/Screens/SleepView.swift` | +10/-1 | skip the full reload on tab re-entry; `onChange(of: key)` reuses the model already built in the same body pass |
+| A7 | `Strand/Screens/LiveView.swift`, `SmartAlarmView.swift`, `SettingsView.swift` (+ fork-only `Strand/Data/ForkFormatters.swift`) | +1/-3 each | cached relative-time, components and number formatters |
+| A9 | `Strand/Screens/WorkoutsView.swift` | +5/-0 | list reload skipped on re-entry when `refreshSeq` is unchanged (`LoadSeqMemo`) |
+| A10 | `Strand/Screens/WorkoutDetailView.swift` | +36/-30 | independent store reads in `load()` start together (`async let`) |
+| A11 | `Strand/Screens/TrendsView.swift` | +11/-4 | year heat-strip parsed once per (refreshSeq, window, day count); sleep-performance series load skipped on re-entry |
+| B1 | `Strand/Screens/TestCentreView.swift` | +14/-4 | captured-day count refreshed by a task (on toggle/appear, then every 5 s), not read from disk inside `body` |
+| B5 | `Strand/Data/Repository.swift` | +21/-4 | registry list cached per store instance, dropped on any registry write |
+| B5 | `Packages/WhoopStore/Sources/WhoopStore/DeviceRegistryStore.swift` | +39/-11 (+ test) | every registry write goes through `writeTracked`, which bumps `DeviceRegistryChangeCounter` |
+| B9 | `StrandiOS/App/RootTabView.swift` | +4/-1 | shell holds the repository via the non-observing `repositoryHandle`; `StrandiOSApp.swift` +1 injects it |
+| B10 | `StrandiOS/App/StrandiOSApp.swift` | +10/-0 | on foreground with data loaded, publish widget and watch immediately, then again after the Health sync |
 
-## Perf fixes (kept)
+Not done (needs your decision, see the final report): A8 (Smart Wake diagnostics reload also runs
+`SmartWakeTestAlarm.sweep()`, which is Smart Wake logic), the `.id(refreshToken)` rebuild in the Test Centre,
+the list row identity in Workouts (`startTs|sport` is not guaranteed unique), `ProfileStore` duplication in
+the workout detail (a missing environment object would crash).
 
-| File | Lines | Reason |
+## Perf session: TEMP hooks (remove at the end)
+
+| Upstream file | Lines | What |
 |---|---|---|
-| `Strand/Liquid/LiquidSky.swift` | +9/-0 | A1: while the Today scroll view moves, the tab is off screen or the app is inactive, draw one frame at the last clock value instead of the 20 fps loop (logic in fork-only `Strand/Liquid/LiquidSkyGate.swift`) |
-| `Strand/Liquid/LiquidTodayView.swift` | +1/-0 | A1: `.liquidSkyScrollGate()` on the Today `ScrollView` |
-| `Strand/Liquid/LiquidTodayView.swift` | +8/-2 | A2: skip an unchanged `load()` when returning to Today within 20 s (`loadKey`, `loadMemo`; memo in fork-only `LiquidLoadMemo.swift`) |
-| `Strand/Data/Repository.swift` | +12/-8 | A3: with the Test Centre Workouts mode on, `detectTrace` and the shadow comparisons run in a detached task instead of on the main actor (log output and order unchanged); `AutoWorkoutSuggestionHost.swift` (fork-only) skips a rescan for an unchanged key under 20 s |
-| `Strand/Screens/SleepView.swift` | +10/-1 | A6: re-entering the tab with an unchanged `refreshSeq` skips the full session/motion reload and model rebuild (the snap to the newest night is kept); the `onChange(of: key)` reuses the model this body pass already built |
-| `Strand/Screens/SettingsView.swift` | +4/-1 | A5: the diagnostics sheet captures `IOSDiagnostics` once (`DiagnosticsSnapshot` in `Strand/System/`, fork-only) instead of re-reading the provisioning profile on every redraw |
-| `Strand/Screens/TodayView.swift` | +10/-27 | A4: the periodic "Swipe"/"Tap" hint state and loop moved into fork-only `DayNavHintLabel` (its writes re-ran the whole classic body twice per 11.5 s); `StressModel` computed off the main actor as Liquid does |
-| `Strand/Screens/TrendsView.swift` | +11/-4 | A11: year heat-strip days parsed once per (refreshSeq, window, day count) and the sleep-performance series load skipped on tab re-entry (memo in fork-only `TrendsPerfMemo.swift`) |
-| `Strand/Screens/WorkoutsView.swift` | +5/-0 | A9: the list reload is skipped on re-entry when `refreshSeq` is unchanged (`LoadSeqMemo`, fork-only, `Strand/System/`) |
-| `Strand/Screens/WorkoutDetailView.swift` | +50/-44 | A10: the independent store reads in `load()` (HR buckets, derived zones, recovery, steps, court steps) start together instead of one after another |
-| `Strand/Data/ForkFormatters.swift`, `LiveView.swift`, `SmartAlarmView.swift`, `SettingsView.swift` | +1/-3 each | A7: cached `RelativeDateTimeFormatter`, `DateComponentsFormatter` and `NumberFormatter` replace per-call allocations |
-| `Strand/Screens/TestCentreView.swift` | +14/-4 (kept part) | B1: the guided-row captured-day count is refreshed by a task (on toggle/appear, then every 5 s) instead of reading the whole shareable log from disk inside `body` on every LiveState publish |
-| `Strand/Data/Repository.swift` | +21/-4 | B5: registry device list cached per store instance, dropped on any registry write (`registeredDevices`; used by the union reads, `activeStrapIsWhoop5`, `activeDeviceDisplayName`) |
-| `Packages/WhoopStore/Sources/WhoopStore/DeviceRegistryStore.swift` | +34/-11 | B5: every registry write goes through `writeTracked`, which bumps the in-process `DeviceRegistryChangeCounter`; test added |
-| `StrandiOS/App/RootTabView.swift` | +4/-1 | B9: the shell holds the repository through a non-observing `repositoryHandle` (fork-only `Strand/System/RepositoryHandle.swift`) instead of `@EnvironmentObject`; `StrandiOSApp.swift` +1 injects it |
-| `StrandiOS/App/StrandiOSApp.swift` | +10/-0 (kept part) | B10: on a return to the foreground with data loaded, widget and watch are published right away in their own task, then again after the Health sync as before |
-
-Later perf commits (real fixes, kept) are appended here as they land.
+| `Strand/System/DisplayPerformanceMonitor.swift` | +3/-3 | append page/layout/background context to `frameSummary` and `memoryHighWater` lines |
+| `Strand/Screens/TestCentreView.swift` | +3 | keep the Display monitor alive when the Test Centre is left; `.perfPage("testCentre")` |
+| `Strand/Screens/TodayView.swift` | +2 | `.perfPage("today.classic")` and a load span |
+| `Strand/Liquid/LiquidTodayView.swift` | +1 | `.perfPage("today.liquid")` (the `PerfTrace.measure` around `load()` and the `PerfTrace.emit` skip line are TEMP too) |
+| `Strand/Screens/TrendsView.swift` | +2 | `.perfPage("trends")`, series-load span |
+| `Strand/Screens/SleepView.swift` | +3 | `.perfPage("sleep")`, load span, `buildModel` timing |
+| `Strand/Screens/WorkoutsView.swift` | +2 | `.perfPage("workouts")`, load span |
+| `Strand/Screens/WorkoutDetailView.swift` | +2 | `.perfPage("workoutDetail")`, load span |
+| `Strand/Screens/CoachView.swift`, `LiveView.swift`, `SettingsView.swift`, `SmartAlarmView.swift` | +1 each | `.perfPage(...)` |
+| `StrandiOS/App/RootTabView.swift` | +1/-1 | span around the launch `repo.refresh()` |
+| `StrandiOS/App/StrandiOSApp.swift` | +3 | launch stamp, `.perfDisplayKeeper(model:)`, Health sync span |
+| `Strand/Screens/AutoWorkoutSuggestionHost.swift` (fork-only) | — | `PerfTrace.measure` / skip line inside the model |

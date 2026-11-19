@@ -909,7 +909,7 @@ private struct TestModeRow: View {
     /// new capture days land.
     private func computeCapturedUnits() -> Int? { // fork-perf: was a computed property read from body
         guard on, case .guided = mode.capture else { return nil }
-        return PerfTrace.measureSync("testCentre.capturedUnits") { CaptureAccumulator.capturedDays(domain: mode.domain,
+        return PerfTrace.measureSync("testCentre.capturedUnits") { CaptureAccumulator.capturedDays(domain: mode.domain, // fork-perf: TEMP
                                                reportText: live.exportableLogText(),
                                                tzOffsetSeconds: TimeZone.current.secondsFromGMT()) } // fork-perf: TEMP
     }
