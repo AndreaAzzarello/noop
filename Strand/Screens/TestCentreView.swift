@@ -896,6 +896,7 @@ private struct TestModeRow: View {
     @EnvironmentObject var live: LiveState
     @EnvironmentObject var model: AppModel
     @State private var on: Bool = false
+    @State private var captured: Int? // fork-perf: refreshed by the task below, never computed in body
 
     private var elapsed: Double? {
         TestCentre.startedAt(mode.domain).map { Date().timeIntervalSince($0) }
@@ -906,7 +907,7 @@ private struct TestModeRow: View {
     /// its OWN count instead of every guided row sharing one elapsed-clock number. nil for a toggle mode
     /// (no "K of N") and when the mode is off. Recomputes with `live.log`, which the coalesced `logRevision` invalidates (#2547), so the row updates as
     /// new capture days land.
-    private var capturedUnits: Int? {
+    private func computeCapturedUnits() -> Int? { // fork-perf: was a computed property read from body
         guard on, case .guided = mode.capture else { return nil }
         return PerfTrace.measureSync("testCentre.capturedUnits") { CaptureAccumulator.capturedDays(domain: mode.domain,
                                                reportText: live.exportableLogText(),
@@ -921,7 +922,7 @@ private struct TestModeRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(mode.title).font(StrandFont.body).foregroundStyle(StrandPalette.textPrimary)
                     Text(TestCentreLayout.statusText(for: mode, active: on, elapsedSeconds: elapsed,
-                                                     capturedUnits: capturedUnits))
+                                                     capturedUnits: captured))
                         .font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
                 }
                 Spacer()
@@ -979,6 +980,17 @@ private struct TestModeRow: View {
                 // sheet. Nothing is sent anywhere.
                 Button("Share") { report.start(mode: mode, live: live, repo: model.repo) }
                     .buttonStyle(.plain).font(StrandFont.mono).foregroundStyle(StrandPalette.accent)
+            }
+        }
+        // fork-perf: `capturedUnits` read the whole shareable log from disk inside body, i.e. on every LiveState
+        // publish (HR ticks included). A captured DAY count changes at most once a day, so it is refreshed when
+        // the row turns on or appears and then every 5 s while it is on screen.
+        .task(id: on) {
+            guard on, case .guided = mode.capture else { captured = nil; return }
+            while !Task.isCancelled {
+                let next = computeCapturedUnits()
+                if next != captured { captured = next }
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
             }
         }
         .onAppear {
