@@ -748,7 +748,7 @@ final class HealthKitBridge: ObservableObject {
             // Record the window alongside the time: an observer wake may only stand down for a sync that
             // actually covered ITS days (see `observerCoalesceWindow`). Set on the success path only.
             lastSyncDays = days
-            lastError = nil
+            if lastError != nil { lastError = nil } // fork-perf: an equal assignment still publishes to the app root
             return true
         } catch {
             // A failed sync must never let a later wake skip on the strength of it — the rows it would

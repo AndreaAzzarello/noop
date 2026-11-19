@@ -243,7 +243,7 @@ struct StrandiOSApp: App {
                 .preferredColorScheme(AppearanceMode.resolve(appearanceRaw).colorScheme)
                 // Match SwiftUI format styles to the localization selected by the app's bundles. Language
                 // changes are process-wide on Apple and are applied after the documented reopen.
-                .environment(\.locale, AppLanguage.activeLocale)
+                .environment(\.locale, AppClock.activeLocale) // fork-perf: memoised, a fresh Locale per body pass invalidated every tab
                 .chartStyle(chartStyleRaw)
                 .noopAccent(accentRaw, customHex: accentCustomHex)
                 // Dynamic Type now scales the prose/label roles (StrandFont). Cap the upper end so the
