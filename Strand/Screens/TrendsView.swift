@@ -342,7 +342,9 @@ struct TrendsView: View {
         // Rest score uses (not raw efficiency). Mirrors TodayView's restScore read. Keyed on the day
         // count so a newly-banked/-scored night refreshes Rest reactively, like the other metrics that
         // read `repo.days` directly (and like the Android LaunchedEffect(days) twin).
+        .perfPage("trends") // fork-perf: TEMP
         .task(id: repo.days.count) {
+            let perfSpan = PerfTrace.span("trends.sleepPerfSeries"); defer { perfSpan.end() } // fork-perf: TEMP
             let s = await repo.exploreSeries(key: "sleep_performance", source: "my-whoop")
             sleepPerfByDay = Dictionary(s.map { ($0.day, $0.value) }, uniquingKeysWith: { _, last in last })
             sleepPerfRevision += 1

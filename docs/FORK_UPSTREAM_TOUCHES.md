@@ -1,0 +1,54 @@
+# Fork touches on upstream files
+
+Files that exist in `ryanbr/noop` `main` and are edited by this fork, so a merge from upstream knows where
+conflicts can appear. Line counts are `added/removed` against `upstream/main`. Logic lives in fork-only files
+wherever possible; the edits below are the minimum hooks.
+
+Perf-session edits are marked in the source with `// fork-perf:` (`grep -rn "fork-perf:" Strand StrandiOS`).
+Lines marked `fork-perf: TEMP` are temporary measurement hooks and **must be removed** at the end of the perf
+work together with `Strand/System/PerfTrace.swift` and `StrandiOS/App/PerfDisplayKeeper.swift` (fork-only).
+
+## Smart Wake, workouts, widgets, watch (earlier work)
+
+| File | Lines | Reason |
+|---|---|---|
+| `Strand/App/AppModel.swift` | +6/-1 | Smart Wake hooks (firmware alarm ownership, fallback alarms) |
+| `Strand/BLE/BLEManager.swift` | +1/-0 | feed readable HR samples to Smart Wake |
+| `Strand/BLE/LiveState.swift` | +2/-0 | expose readable HR samples to Smart Wake |
+| `Strand/Data/BehaviorStore.swift` | +9/-0 | independent Smart Wake preferences |
+| `Strand/Data/Repository.swift` | +18/-7 | auto-detect scan off the main actor, gating, tracing |
+| `Strand/Liquid/LiquidPrimitives.swift` | +1/-1 | live HR thread at 30 fps |
+| `Strand/Screens/AutoWorkoutCard.swift` | +32/-25 | detected-workout review, scan anchoring |
+| `Strand/Screens/JournalReminderCard.swift` | +13/-8 | fix card never loading |
+| `Strand/Screens/SmartAlarmView.swift` | +14/-20 | Smart Wake card moved to its own view, cached formatters |
+| `Strand/Screens/WorkoutDetailView.swift` | +12/-4 | court-sport Effort/steps, zone-coloured HR curve |
+| `StrandiOS/Resources/Info.plist` | +2/-0 | AlarmKit usage description (restore after `xcodegen generate`) |
+| `StrandiOS/Widgets/WidgetPublish.swift` | +1/-0 | fork NOOP+ publish hook |
+| `StrandiOSWidgets/NOOPWidgetBundle.swift` | +2/-0 | register NOOP+ widget and alarm Live Activity |
+| `project.yml` | +5/-0 | AlarmKit plist key, Smart Wake test targets |
+| `NOOPWatch/*` (5 files) | +142/-28 | watch: tickers only while a session runs, HR sampling, session recovery |
+
+## Shared between earlier work and the perf session
+
+| File | Lines | Reason |
+|---|---|---|
+| `Strand/Liquid/LiquidTodayView.swift` | +22/-15 | `LiquidFrameBox`, formatter cache, workout card placement; **perf: `.perfPage` (TEMP, 1 line)** |
+| `Strand/Screens/TodayView.swift` | +14/-12 | workout summary / auto-workout cards, formatter cache; **perf: `.perfPage` + load span (TEMP, 2 lines)** |
+| `Strand/Screens/SettingsView.swift` | +2/-0 | auto-detect thresholds; **perf: `.perfPage` (TEMP, 1 line)** |
+| `Strand/Screens/WorkoutsView.swift` | +3/-1 | detected-workout review; **perf: `.perfPage` + load span (TEMP, 2 lines)** |
+| `StrandiOS/App/RootTabView.swift` | +6/-2 | More search scope; **perf: launch refresh span (TEMP, 1 line changed)** |
+| `StrandiOS/App/StrandiOSApp.swift` | +6/-0 | AlarmKit observer, Smart Wake wiring; **perf: launch stamp, keeper modifier, Health sync span (TEMP, 3 lines)** |
+
+## Perf session (this work)
+
+| File | Lines | Reason | Status |
+|---|---|---|---|
+| `Strand/System/DisplayPerformanceMonitor.swift` | +3/-3 | append layout/background/page context to `frameSummary` and `memoryHighWater` lines | TEMP, remove |
+| `Strand/Screens/TestCentreView.swift` | +4/-3 | keep the Display monitor alive off-screen; time `capturedUnits`; `.perfPage` | TEMP, remove |
+| `Strand/Screens/CoachView.swift` | +1/-0 | `.perfPage("coach")` | TEMP, remove |
+| `Strand/Screens/LiveView.swift` | +1/-0 | `.perfPage("live")` | TEMP, remove |
+| `Strand/Screens/SleepView.swift` | +3/-1 | `.perfPage`, load span, `buildModel` timing | TEMP, remove |
+| `Strand/Screens/TrendsView.swift` | +2/-0 | `.perfPage`, series-load span | TEMP, remove |
+| `Strand/Screens/SmartAlarmView.swift` | +1/-0 | `.perfPage("alarms")` | TEMP, remove |
+
+Later perf commits (real fixes, kept) are appended here as they land.

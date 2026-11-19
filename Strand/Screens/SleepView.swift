@@ -235,7 +235,9 @@ struct SleepView: View {
             // whose blocks live under the computed source. Re-runs whenever a sync/import bumps
             // refreshSeq; snaps back to the newest day and rebuilds the model so offset 0 reflects
             // the freshly-loaded blocks. (#170)
+            .perfPage("sleep") // fork-perf: TEMP
             .task(id: repo.refreshSeq) {
+                let perfSpan = PerfTrace.span("sleep.load"); defer { perfSpan.end() } // fork-perf: TEMP
                 let refresh = repo.refreshSeq
                 let sessions = await repo.allSleepSessions()
                 // Load the learned habitual midsleep the engine used, so the main-night pick aligns to it
@@ -252,7 +254,7 @@ struct SleepView: View {
                 navNight = nil
                 modelKey = dataKey
                 navDaysCache = SleepModel.navDays(navSessions: navSessions)
-                model = buildModel()
+                model = PerfTrace.measureSync("sleep.buildModel") { buildModel() } // fork-perf: TEMP
                 loadedSleepRefresh = refresh
                 observeResultChange()
             }

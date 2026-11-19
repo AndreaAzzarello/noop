@@ -127,7 +127,7 @@ final class DisplayPerformanceMonitor {
 
         // Flush whatever the last partial window holds, then the high-water mark.
         flushWindow()
-        emit?(DisplayTrace.memoryHighWaterLine(peakMB: memoryPeakMB))
+        emit?(PerfTrace.decorate(DisplayTrace.memoryHighWaterLine(peakMB: memoryPeakMB), withBodies: false)) // fork-perf: TEMP
     }
 
     // MARK: - Frame sampling
@@ -161,11 +161,11 @@ final class DisplayPerformanceMonitor {
     private func flushWindow() {
         guard !windowDurationsMs.isEmpty else { return }
         let stats = DisplayPerformanceMonitor.windowStats(durationsMs: windowDurationsMs)
-        emit?(DisplayTrace.frameSummaryLine(
+        emit?(PerfTrace.decorate(DisplayTrace.frameSummaryLine( // fork-perf: TEMP
             frames: windowDurationsMs.count,
             meanMs: stats.mean, p95Ms: stats.p95,
             hitches: windowHitches, worstMs: windowWorstMs,
-            hitchThresholdMs: Self.hitchThresholdMs))
+            hitchThresholdMs: Self.hitchThresholdMs)))
         resetWindow()
     }
 

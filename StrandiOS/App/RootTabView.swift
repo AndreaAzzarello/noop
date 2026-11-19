@@ -176,7 +176,7 @@ struct RootTabView: View {
             .simultaneousGesture(tabSwipeGesture,
                                  including: tabPaths[selectedTab].isEmpty ? .all : .subviews)
         .task {
-            await repo.refresh()
+            do { let perfSpan = PerfTrace.span("repo.refresh.launch"); defer { perfSpan.end() }; await repo.refresh() } // fork-perf: TEMP
             // Backup & Sync: on-launch catch-up (see RootView). Detached + utility priority so a
             // 100MB+ whole-DB ZIP never blocks startup; gated on the auto toggle (default OFF). (Must-fix #4.)
             let backupRepo = repo

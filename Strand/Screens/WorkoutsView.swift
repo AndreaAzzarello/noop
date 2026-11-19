@@ -222,7 +222,9 @@ struct WorkoutsView: View {
                 sessionsSection(rows: windowRows)
             }
         }
+        .perfPage("workouts") // fork-perf: TEMP
         .task(id: repo.refreshSeq) {
+            let perfSpan = PerfTrace.span("workouts.load"); defer { perfSpan.end() } // fork-perf: TEMP
             guard !usesPreviewRows else { return }
             // #797: read only the currently-loaded window (bounded on first paint), not the whole history.
             let r = await repo.workoutRows(days: loadedWindowDays ?? 4000)

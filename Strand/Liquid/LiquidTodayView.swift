@@ -469,6 +469,7 @@ struct LiquidTodayView: View {
         .liquidMediumHaptic(trigger: pullHaptic)
         // hydrationSeq joins the id so logging a drink re-reads the card immediately, the same trigger set
         // classic TodayView's reloadHydration() uses.
+        .perfPage("today.liquid") // fork-perf: TEMP
         .task(id: "\(repo.refreshSeq)-\(selectedDayOffset)-\(repo.hydrationSeq)-\(hydrationEnabled)-\(dayCycleModeRaw)") {
             DashboardCardPrefs.migrateLegacyStepsAverage()
             await PerfTrace.measure("liquidToday.load") { await load() }

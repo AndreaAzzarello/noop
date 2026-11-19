@@ -54,6 +54,7 @@ struct StrandiOSApp: App {
     @AppStorage(UnitPrefs.systemKey) private var unitSystemRaw = UnitSystem.metric.rawValue
 
     init() {
+        _ = PerfTrace.launchStart // fork-perf: TEMP
         // #1008: pin the pre-change Overnight-only default for existing installs before
         // anything reads it. Idempotent; a no-op on fresh installs and after the first launch.
         PuffinExperiment.migrateContinuousHrvOvernightDefault()
@@ -222,6 +223,7 @@ struct StrandiOSApp: App {
     var body: some Scene {
         WindowGroup {
             iOSRootView()
+                .perfDisplayKeeper(model: model) // fork-perf: TEMP
                 .environmentObject(model)
                 .environmentObject(model.ble)   // #334: Today pull-to-sync reads BLEManager (no HR churn)
                 .environmentObject(model.live)
@@ -381,6 +383,7 @@ struct StrandiOSApp: App {
                     health.refreshAuthIfPreviouslyGranted()
                     HealthWritebackBackgroundScheduler.updateSchedule(
                         isAuthorized: health.auth == .authorized)
+                    let perfSpan = PerfTrace.span("healthSync.total"); defer { perfSpan.end() } // fork-perf: TEMP
                     await HealthSyncRefreshCoordinator.run(
                         sync: { await health.sync() },
                         refresh: {

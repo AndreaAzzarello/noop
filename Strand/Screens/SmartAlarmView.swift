@@ -55,6 +55,7 @@ struct SmartAlarmView: View {
                 windDownCard
             }
         }
+        .perfPage("alarms") // fork-perf: TEMP
         .alert(String(localized: "Notifications are off"), isPresented: $showNotifDeniedAlert) {
             Button(String(localized: "Open Settings")) { Self.openNotificationSettings() }
             Button(String(localized: "Not now"), role: .cancel) {}
