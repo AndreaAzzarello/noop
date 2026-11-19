@@ -460,7 +460,7 @@ struct ForkWorkoutBlock: View {
 
     private func figures(_ level: Int) -> String {
         var parts: [String] = []
-        if let e = workout.effortText { parts.append(FL.s("Effort \(e)")) }
+        if let e = workout.effortText.map({ ForkDecimal.localize($0) }) { parts.append(FL.s("Effort \(e)")) }
         if let avg = workout.avgHr {
             switch (level, workout.maxHr) {
             case (0, let max?): parts.append(FL.s("HR avg \(avg) · max \(max)"))

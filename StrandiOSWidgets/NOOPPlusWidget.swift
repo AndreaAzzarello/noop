@@ -527,11 +527,12 @@ extension NOOPPlusView {
     private var extraLargeVitalsRow: some View {
         if let vitals = fork.vitalsToday(now: now) {
             HStack(alignment: .top, spacing: 0) {
-                if let resp = vitals.respText {
+                // Localised again here: a snapshot written by an older build may still carry a "." separator.
+                if let resp = vitals.respText.map({ ForkDecimal.localize($0) }) {
                     statCell(FL.s("Resp. rate"), value: resp, unit: FL.s("/min"),
                              spoken: FL.s("\(resp) breaths per minute"))
                 }
-                if let skin = vitals.skinText {
+                if let skin = vitals.skinText.map({ ForkDecimal.localize($0) }) {
                     statCell(FL.s("Skin temp"), value: skin, unit: nil, spoken: skin)
                 }
                 Spacer(minLength: 0)
