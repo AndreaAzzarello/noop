@@ -17,6 +17,14 @@ public struct DeviceRegistryStore: Sendable {
     let dbQueue: any DatabaseWriter
     public init(dbQueue: any DatabaseWriter) { self.dbQueue = dbQueue }
 
+    // fork-perf: every registry write goes through here so readers can cache `all()` and drop the cache on a
+    // change. The counter is bumped AFTER the write commits; a reader must read it BEFORE it fetches.
+    private func writeTracked<T>(_ body: (Database) throws -> T) throws -> T {
+        let result = try dbQueue.write(body)
+        DeviceRegistryChangeCounter.bump()
+        return result
+    }
+
     public func all() throws -> [PairedDevice] {
         try dbQueue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM pairedDevice ORDER BY addedAt ASC").map(Self.decode)
@@ -44,12 +52,12 @@ public struct DeviceRegistryStore: Sendable {
     }
 
     public func add(_ d: PairedDevice) throws {
-        try dbQueue.write { db in try Self.upsert(db, d) }
+        try writeTracked { db in try Self.upsert(db, d) } // fork-perf: bumps the change counter
     }
 
     /// I1: promoting one device demotes whatever was active, atomically (single write transaction).
     public func setActive(_ id: String) throws {
-        try dbQueue.write { db in
+        try writeTracked { db in // fork-perf: bumps the change counter
             try db.execute(sql: "UPDATE pairedDevice SET status = 'paired' WHERE status = 'active'")
             try db.execute(sql: "UPDATE pairedDevice SET status = 'active', lastSeenAt = ? WHERE id = ?",
                            arguments: [Int(Date().timeIntervalSince1970), id])
@@ -57,7 +65,7 @@ public struct DeviceRegistryStore: Sendable {
     }
 
     public func archive(_ id: String) throws {
-        try dbQueue.write { db in
+        try writeTracked { db in // fork-perf: bumps the change counter
             try db.execute(sql: "UPDATE pairedDevice SET status = 'archived' WHERE id = ?", arguments: [id])
         }
     }
@@ -70,14 +78,14 @@ public struct DeviceRegistryStore: Sendable {
     /// `deleteAllData(deviceId:)` (registry entry vs. recordings are separate ops, exactly as
     /// `adoptSerialIdentity` treats them). Idempotent: removing an absent id is a no-op.
     public func remove(_ id: String) throws {
-        try dbQueue.write { db in
+        try writeTracked { db in // fork-perf: bumps the change counter
             try db.execute(sql: "DELETE FROM pairedDevice WHERE id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM device WHERE id = ?", arguments: [id])
         }
     }
 
     public func rename(_ id: String, nickname: String?) throws {
-        try dbQueue.write { db in
+        try writeTracked { db in // fork-perf: bumps the change counter
             try db.execute(sql: "UPDATE pairedDevice SET nickname = ? WHERE id = ?", arguments: [nickname, id])
         }
     }
@@ -85,7 +93,7 @@ public struct DeviceRegistryStore: Sendable {
     /// Update the model label for an existing device (e.g. seeded "WHOOP" → "WHOOP 4.0" once the
     /// strap's service family is known from a live BLE connect).
     public func setModel(_ id: String, model: String) throws {
-        try dbQueue.write { db in
+        try writeTracked { db in // fork-perf: bumps the change counter
             try db.execute(sql: "UPDATE pairedDevice SET model = ? WHERE id = ?", arguments: [model, id])
         }
     }
@@ -98,7 +106,7 @@ public struct DeviceRegistryStore: Sendable {
     /// Archived rows are excluded: "Removed - data kept" is a deliberate resting state, and a stray
     /// connect must not quietly resurrect one into looking live.
     public func touchLastSeen(_ id: String, at ts: Int) throws {
-        try dbQueue.write { db in
+        try writeTracked { db in // fork-perf: bumps the change counter
             try db.execute(sql: "UPDATE pairedDevice SET lastSeenAt = ? WHERE id = ? AND status != 'archived'",
                            arguments: [ts, id])
         }
@@ -107,7 +115,7 @@ public struct DeviceRegistryStore: Sendable {
     /// Adopt (or clear) the stable BLE identity for a registry row. `peripheralId` is the
     /// CBPeripheral.identifier.uuidString on iOS/Mac; passing nil un-adopts it.
     public func setPeripheralId(_ id: String, peripheralId: String?) throws {
-        try dbQueue.write { db in
+        try writeTracked { db in // fork-perf: bumps the change counter
             try db.execute(sql: "UPDATE pairedDevice SET peripheralId = ? WHERE id = ?",
                            arguments: [peripheralId, id])
         }
@@ -179,7 +187,7 @@ public struct DeviceRegistryStore: Sendable {
     /// with `DELETE FROM <table> WHERE deviceId = ?`; a missing table would throw, but every table here
     /// is created unconditionally by the migrator, so the set is stable.
     public func deleteAllData(deviceId: String) throws {
-        try dbQueue.write { db in
+        try writeTracked { db in // fork-perf: bumps the change counter
             for table in Self.deviceScopedTables {
                 try db.execute(sql: "DELETE FROM \(table) WHERE deviceId = ?", arguments: [deviceId])
             }
@@ -204,7 +212,7 @@ public struct DeviceRegistryStore: Sendable {
     @discardableResult
     public func adoptSerialIdentity(from activeId: String, to serialId: String) throws -> Bool {
         guard activeId != serialId else { return false }
-        return try dbQueue.write { db in
+        return try writeTracked { db in // fork-perf: bumps the change counter
             guard try Bool.fetchOne(db, sql: "SELECT 1 FROM pairedDevice WHERE id = ?", arguments: [activeId]) ?? false
             else { return false }   // nothing to re-point
             let serialExists = try Bool.fetchOne(db, sql: "SELECT 1 FROM pairedDevice WHERE id = ?", arguments: [serialId]) ?? false
@@ -253,7 +261,7 @@ public struct DeviceRegistryStore: Sendable {
     public struct DayOwner: Equatable { public let deviceId: String; public let locked: Bool }
 
     public func setDayOwner(day: String, deviceId: String, locked: Bool) throws {
-        try dbQueue.write { db in
+        try writeTracked { db in // fork-perf: bumps the change counter
             try db.execute(sql: """
                 INSERT INTO dayOwnership (day, deviceId, locked) VALUES (?, ?, ?)
                 ON CONFLICT(day) DO UPDATE SET deviceId = excluded.deviceId, locked = excluded.locked
@@ -312,5 +320,25 @@ public struct DeviceRegistryStore: Sendable {
                             sourceKind: SourceKind(rawValue: row["sourceKind"]) ?? .liveBLE,
                             capabilities: caps, status: DeviceStatus(rawValue: row["status"]) ?? .paired,
                             addedAt: row["addedAt"], lastSeenAt: row["lastSeenAt"])
+    }
+}
+
+/// fork-perf: in-process count of writes to the paired-device registry. Lets a reader cache the device list
+/// and know exactly when it went stale, without a database read per use. Process-wide, so it covers every
+/// `DeviceRegistryStore` value (the store is a struct created per call) and every store instance.
+public enum DeviceRegistryChangeCounter {
+    private final class Box: @unchecked Sendable {
+        let lock = NSLock()
+        var count = 0
+    }
+    private static let box = Box()
+
+    public static var current: Int {
+        box.lock.lock(); defer { box.lock.unlock() }
+        return box.count
+    }
+
+    static func bump() {
+        box.lock.lock(); box.count &+= 1; box.lock.unlock()
     }
 }

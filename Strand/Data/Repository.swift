@@ -270,13 +270,28 @@ final class Repository: ObservableObject {
 
     // MARK: - Union reads (active strap + canonical)
     //
+    // fork-perf: the registry list was read with a synchronous GRDB read on the main actor by every union read
+    // (~20 call sites). It is cached per store instance and dropped the moment any registry write commits
+    // (`DeviceRegistryChangeCounter`, bumped by `DeviceRegistryStore`). The counter is read BEFORE the fetch,
+    // so a write that lands mid-fetch leaves a stale key and the next call refetches. A failed read is not cached.
+    private var registryCache: (store: ObjectIdentifier, generation: Int, devices: [PairedDevice])?
+
+    private func registeredDevices(store: WhoopStore) -> [PairedDevice] {
+        let generation = DeviceRegistryChangeCounter.current
+        let id = ObjectIdentifier(store)
+        if let c = registryCache, c.store == id, c.generation == generation { return c.devices }
+        guard let fetched = try? DeviceRegistryStore(dbQueue: store.registryWriter).all() else { return [] }
+        registryCache = (id, generation, fetched)
+        return fetched
+    }
+
     /// Raw physiological streams are a worn timeline, not a property of whichever strap is active now.
     /// Resolve every registered physical WHOOP, active first, and keep the canonical import namespace as
     /// the final fallback. Archived devices intentionally remain: archive means "stop connecting, keep
     /// data", and historical timelines must not orphan their retained samples. The active id remains first
     /// even for a non-WHOOP provider, preserving the pre-multi-strap cross-provider path.
     private func rawPhysiologyReadIds(store: WhoopStore) -> [String] {
-        let paired = (try? DeviceRegistryStore(dbQueue: store.registryWriter).all()) ?? []
+        let paired = registeredDevices(store: store)
         let registeredWhoops = paired.filter {
             $0.brand.caseInsensitiveCompare("WHOOP") == .orderedSame
         }.map(\.id)
@@ -2067,7 +2082,7 @@ final class Repository: ObservableObject {
     /// without a store, so this changes no behaviour for a WHOOP). Twin of Android's `FullDayChartScreen`.
     func activeStrapIsWhoop5() -> Bool {
         guard let store else { return false }
-        let devices = (try? DeviceRegistryStore(dbQueue: store.registryWriter).all()) ?? []
+        let devices = registeredDevices(store: store) // fork-perf: cached
         let d = devices.first(where: { $0.id == deviceId })
         return DeviceFamily.isWhoop5Registry(model: d?.model, brand: d?.brand)
     }
@@ -2079,7 +2094,7 @@ final class Repository: ObservableObject {
     /// hardcoded strap label it was shipped with. Twin of Android's `FullDayChartScreen` source pill.
     func activeDeviceDisplayName() -> String? {
         guard let store else { return nil }
-        let devices = (try? DeviceRegistryStore(dbQueue: store.registryWriter).all()) ?? []
+        let devices = registeredDevices(store: store) // fork-perf: cached
         return devices.first(where: { $0.id == deviceId })?.displayName
     }
 

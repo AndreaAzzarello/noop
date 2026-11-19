@@ -31,6 +31,21 @@ final class DeviceRegistryStoreTests: XCTestCase {
         XCTAssertEqual(device.capabilities, [.hr, .hrv, .skinTemp, .sleep])
     }
 
+    /// fork-perf: readers cache `all()` keyed on this counter, so every registry write must advance it and a
+    /// read must not.
+    func testRegistryWritesBumpTheChangeCounterAndReadsDoNot() throws {
+        let store = DeviceRegistryStore(dbQueue: try makeDB())
+        let before = DeviceRegistryChangeCounter.current
+        try store.setActive("my-whoop")
+        let afterWrite = DeviceRegistryChangeCounter.current
+        XCTAssertGreaterThan(afterWrite, before)
+        _ = try store.all()
+        _ = try store.activeDeviceId()
+        XCTAssertEqual(DeviceRegistryChangeCounter.current, afterWrite)
+        try store.rename("my-whoop", nickname: "Test")
+        XCTAssertGreaterThan(DeviceRegistryChangeCounter.current, afterWrite)
+    }
+
     func testSeededWhoopIsActive() throws {
         let store = DeviceRegistryStore(dbQueue: try makeDB())
         let devices = try store.all()
