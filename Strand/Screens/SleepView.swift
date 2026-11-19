@@ -28,6 +28,8 @@ import UIKit
 
 struct SleepView: View {
     @EnvironmentObject var repo: Repository
+    @Environment(\.forkTabSelected) private var tabSelected // fork-perf: hidden tabs keep their load key
+    @State private var seqGate = TabSeqGate() // fork-perf
     @EnvironmentObject private var router: NavRouter
     // NOTE: SleepView itself deliberately does NOT observe `LiveState` OR `AppModel`. A connected strap
     // publishes at ~1 Hz, and `AppModel` itself publishes `bpm` at that same ~1 Hz (AppModel.swift:202) —
@@ -236,7 +238,7 @@ struct SleepView: View {
             // refreshSeq; snaps back to the newest day and rebuilds the model so offset 0 reflects
             // the freshly-loaded blocks. (#170)
             .perfPage("sleep") // fork-perf: TEMP
-            .task(id: repo.refreshSeq) {
+            .task(id: seqGate.value(repo.refreshSeq, selected: tabSelected)) {
                 let perfSpan = PerfTrace.span("sleep.load"); defer { perfSpan.end() } // fork-perf: TEMP
                 let refresh = repo.refreshSeq
                 // fork-perf: re-entering the tab restarts this task with the same refreshSeq; the sessions, motion and

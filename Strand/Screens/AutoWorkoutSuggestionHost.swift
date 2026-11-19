@@ -52,12 +52,19 @@ struct AutoWorkoutSuggestionHost: ViewModifier {
     @EnvironmentObject private var repo: Repository
     @AppStorage(PuffinExperiment.autoDetectWorkoutsKey) private var autoDetectEnabled = false
     @StateObject private var model = AutoWorkoutSuggestionModel()
+    @Environment(\.forkTabSelected) private var tabSelected // fork-perf: no scan for a hidden Today tab
+    @State private var seqGate = TabSeqGate() // fork-perf
 
     func body(content: Content) -> some View {
-        content
+        // fork-perf: the key follows the gated seq, so a hidden tab does not rescan on every refresh, and the
+        // scan waits for the first published refresh (`repo.loaded`): at launch it used to run at seq 0
+        // beside the refresh and the Today load, reading 48 h of heart rate and the whole workout list twice.
+        let key = AutoWorkoutLoadKey(seq: seqGate.value(repo.refreshSeq, selected: tabSelected), enabled: autoDetectEnabled)
+        return content
             .environmentObject(model)
-            .task(id: AutoWorkoutLoadKey(seq: repo.refreshSeq, enabled: autoDetectEnabled)) {
-                await model.reload(repo: repo, key: AutoWorkoutLoadKey(seq: repo.refreshSeq, enabled: autoDetectEnabled))
+            .task(id: key) {
+                guard repo.loaded else { return }
+                await model.reload(repo: repo, key: key)
             }
     }
 }

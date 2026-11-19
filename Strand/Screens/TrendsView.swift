@@ -14,6 +14,8 @@ import Foundation
 
 struct TrendsView: View {
     @EnvironmentObject var repo: Repository
+    @Environment(\.forkTabSelected) private var tabSelected // fork-perf: hidden tabs keep their load key
+    @State private var seqGate = TabSeqGate() // fork-perf
     @Environment(\.locale) private var locale
     // NOTE: deliberately does NOT observe LiveState — Trends shows historical data only, and
     // observing it forced a full re-render of this subtree on every ~1 Hz live-HR tick.
@@ -344,7 +346,7 @@ struct TrendsView: View {
         // count so a newly-banked/-scored night refreshes Rest reactively, like the other metrics that
         // read `repo.days` directly (and like the Android LaunchedEffect(days) twin).
         .perfPage("trends") // fork-perf: TEMP
-        .task(id: repo.days.count) {
+        .task(id: seqGate.value(repo.days.count, selected: tabSelected)) {
             let perfSpan = PerfTrace.span("trends.sleepPerfSeries"); defer { perfSpan.end() } // fork-perf: TEMP
             let loadKey = "\(repo.days.count)-\(repo.refreshSeq)" // fork-perf: skip on tab re-entry
             if perfMemo.sleepPerfLoaded(for: loadKey) { return }

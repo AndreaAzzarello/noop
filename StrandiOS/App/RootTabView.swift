@@ -129,9 +129,9 @@ struct RootTabView: View {
         // its dynamic interaction with scrolling content automatically; older supported releases use
         // the corresponding system material and safe-area behaviour from the same TabView.
         TabView(selection: nativeTabSelection) {
-            tab(todayTabRoot, "Today", "square.grid.2x2", path: $tabPaths[0], scrollSignal: scrollTop[0]).tag(0)
-            tab(TrendsView(), "Trends", "chart.line.uptrend.xyaxis", path: $tabPaths[1], scrollSignal: scrollTop[1]).tag(1)
-            tab(SleepView(), "Sleep", "bed.double", path: $tabPaths[2], scrollSignal: scrollTop[2]).tag(2)
+            tab(todayTabRoot, "Today", "square.grid.2x2", index: 0, path: $tabPaths[0], scrollSignal: scrollTop[0]).tag(0)
+            tab(TrendsView(), "Trends", "chart.line.uptrend.xyaxis", index: 1, path: $tabPaths[1], scrollSignal: scrollTop[1]).tag(1)
+            tab(SleepView(), "Sleep", "bed.double", index: 2, path: $tabPaths[2], scrollSignal: scrollTop[2]).tag(2)
             // K3: Coach promoted to a top-level tab (was behind the More list). The sparkles icon
             // matches the More-tab row and the macOS sidebar entry.
             // Conditional on the master switch. The tags stay LITERAL rather than being renumbered when
@@ -139,7 +139,7 @@ struct RootTabView: View {
             // shapes, so a wearer's More tab keeps its identity, its navigation path and its scroll
             // position across a flip instead of inheriting Coach's.
             if coachEnabled {
-                tab(CoachView(), "Coach", "sparkles", path: $tabPaths[3], scrollSignal: scrollTop[3]).tag(3)
+                tab(CoachView(), "Coach", "sparkles", index: 3, path: $tabPaths[3], scrollSignal: scrollTop[3]).tag(3)
             }
             moreTab(path: $tabPaths[4], scrollSignal: scrollTop[4]).tag(4)
         }
@@ -434,7 +434,7 @@ struct RootTabView: View {
         }
     }
 
-    private func tab<V: View>(_ view: V, _ title: LocalizedStringKey, _ icon: String,
+    private func tab<V: View>(_ view: V, _ title: LocalizedStringKey, _ icon: String, index: Int,
                               path: Binding<NavigationPath>, scrollSignal: Int) -> some View {
         // Each primary tab gets its OWN NavigationStack so the in-content NavigationLinks (e.g. the Today
         // dashboard card rows) both navigate AND render opaque. An ORPHANED NavigationLink (no
@@ -453,6 +453,7 @@ struct RootTabView: View {
         // Drive this tab's root scroll-to-top on an at-root re-tap (#198 follow-up); read by ScreenScaffold
         // / LiquidTodayView inside. Only THIS tab's token changes on its reselect, so the others don't scroll.
         .environment(\.scrollToTopSignal, scrollSignal)
+        .environment(\.forkTabSelected, selectedTab == index) // fork-perf
         .tabItem { Label(title, systemImage: icon) }
     }
 

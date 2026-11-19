@@ -194,6 +194,8 @@ struct TodayView: View {
     /// classification and tint selection stable when the app language changes.
     private static let whoopBrandName = "WHOOP"
     @EnvironmentObject var repo: Repository
+    @Environment(\.forkTabSelected) private var tabSelected // fork-perf: hidden tabs keep their load key
+    @State private var seqGate = TabSeqGate() // fork-perf
     // PERF (scroll stutter): TodayView deliberately does NOT observe `LiveState` directly. A connected
     // strap publishes `LiveState` ~1 Hz (heart rate + each R-R packet), and an `@EnvironmentObject live`
     // here would invalidate the ENTIRE Today `body` on every tick, re-evaluating the scene backdrop, the
@@ -1542,7 +1544,7 @@ struct TodayView: View {
         // Reload when the data refreshes OR the selected day changes, the HR trend and Rest score are
         // day-scoped, so navigating must re-fetch them for the newly selected window.
         .perfPage("today.classic") // fork-perf: TEMP
-        .task(id: TodayLoadKey(seq: repo.refreshSeq, offset: selectedDayOffset,
+        .task(id: TodayLoadKey(seq: seqGate.value(repo.refreshSeq, selected: tabSelected), offset: selectedDayOffset,
                               dayCycleMode: dayCycleModeRaw)) { let perfSpan = PerfTrace.span("todayClassic.loadAll"); defer { perfSpan.end() }; await loadAll() } // fork-perf: TEMP
         // #989: hydration writes don't bump refreshSeq, so the card needs its own triggers, a logged /
         // edited / deleted drink (hydrationSeq) and the Settings feature toggle both re-read just the two
