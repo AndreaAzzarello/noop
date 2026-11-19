@@ -59,6 +59,7 @@ enum ForkWidgetPublisher {
     }
 
     private static func publish(from model: AppModel, generation token: Int) async {
+        noteTrace("full-start", "")
         let now = Date()
         let calendar = Calendar.current
         let day = WidgetSnapshot.localDayNumber(now, calendar: calendar)
@@ -99,7 +100,7 @@ enum ForkWidgetPublisher {
             sleepMin: sleepMin, sleepDay: sleepMin == nil ? nil : day, hrDay: hrDay, hrFingerprint: hrGate,
             vitals: extras.vitals, sleepStages: extras.sleepStages, workout: extras.workout,
             trend: extras.trend, extrasKey: extras.key)
-        commit(next, previous: before, now: now)
+        commit(next, previous: before, now: now, source: "full")
     }
 
     // MARK: Extra-large extras
@@ -207,22 +208,36 @@ enum ForkWidgetPublisher {
         let before = ForkWidgetSnapshot.load() ?? .empty
         let next = before.applyingSmartWake(schedule: enabled ? schedule : nil,
                                             skipUntil: enabled && armFrom > now ? armFrom : nil)
-        commit(next, previous: before, now: now)
+        commit(next, previous: before, now: now, source: "wake")
+    }
+
+    // MARK: TEMP write trace
+
+    /// TEMP: when each kind of pass last started / saved / skipped, counts-only, for the Smart Wake
+    /// diagnostics report. Removed together with the widget probe.
+    static let writeTraceKey = "noop.fork.widget.writeTrace"
+    private static func noteTrace(_ part: String, _ what: String) {
+        var d = UserDefaults.standard.dictionary(forKey: writeTraceKey) as? [String: String] ?? [:]
+        let time = Date().formatted(.dateTime.hour().minute().second())
+        d[part] = what.isEmpty ? time : "\(what) \(time)"
+        UserDefaults.standard.set(d, forKey: writeTraceKey)
     }
 
     // MARK: Shared
 
     /// Persist and reload the NOOP+ widget only when something it renders changed, or when the last
     /// confirmation is old enough that the "data is old" hint could otherwise appear for fresh data.
-    private static func commit(_ next: ForkWidgetSnapshot, previous: ForkWidgetSnapshot, now: Date) {
+    private static func commit(_ next: ForkWidgetSnapshot, previous: ForkWidgetSnapshot, now: Date, source: String) {
         let decision = ForkWidgetSnapshot.commitDecision(next: next, previous: previous, now: now)
-        guard decision.save else { return }
+        guard decision.save else { noteTrace(source, "skipped"); return }
         var out = next
         out.publishedAt = now
         guard out.save() else {
             log.error("fork widget snapshot not saved (App Group unavailable or encode failed)")
+            noteTrace(source, "save-failed")
             return
         }
+        noteTrace(source, "saved fmt=\(out.formatVersion.map(String.init) ?? "nil")")
         if decision.reload {
             WidgetCenter.shared.reloadTimelines(ofKind: ForkWidgetSnapshot.kind)
         }

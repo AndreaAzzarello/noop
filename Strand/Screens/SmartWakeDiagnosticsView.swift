@@ -79,10 +79,18 @@ struct SmartWakeDiagnosticsView: View {
         Task { await SmartWakeTestAlarm.shared.sweep() }
         // TEMP probe: the NOOP+ extra-large widget's real size and block data (see NOOPPlusProvider).
         let probe = UserDefaults(suiteName: WidgetSnapshot.suiteName)?.string(forKey: "noop.fork.widget.xlProbe")
+        // TEMP: what the APP sees in the same snapshot, and which pass wrote last (see ForkWidgetPublisher).
+        let fork = ForkWidgetSnapshot.load()
+        let trace = (UserDefaults.standard.dictionary(forKey: ForkWidgetPublisher.writeTraceKey) as? [String: String] ?? [:])
+            .sorted { $0.key < $1.key }.map { "\($0.key): \($0.value)" }.joined(separator: " | ")
+        let forkLine = "NOOP+ snapshot (app): fork="
+            + (fork.map { $0.publishedAt.formatted(date: .omitted, time: .shortened) } ?? "none")
+            + " fmt=\(fork?.formatVersion.map(String.init) ?? "nil") | \(trace.isEmpty ? "no pass yet" : trace)"
         report = SmartWakeDiagnostics.report(
             snapshot: SmartWakeAlarmScheduler.shared.diagnosticsSnapshot()
                 + "\n" + SmartWakeTestAlarm.shared.statusLine
-                + "\nNOOP+ XL probe: \(probe ?? "no extra-large widget has rendered yet")",
+                + "\nNOOP+ XL probe: \(probe ?? "no extra-large widget has rendered yet")"
+                + "\n" + forkLine,
             windowStats: UserDefaults.standard.string(forKey: SmartWakeLiveController.windowSummaryStorageKey)
         )
     }
