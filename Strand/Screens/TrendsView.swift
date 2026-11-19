@@ -60,6 +60,7 @@ struct TrendsView: View {
     @State private var sleepPerfByDay: [String: Double] = [:]
     @State private var sleepPerfRevision = 0
     @State private var resolvedCache = ResolvedCache()
+    @State private var perfMemo = TrendsPerfMemo() // fork-perf
 
     // #710 — browse previous weeks in the Week-in-review digest. 0 = the week containing today; each step
     // back is one Mon–Sun week earlier. Clamped so it never runs past the earliest day we hold (see
@@ -345,9 +346,13 @@ struct TrendsView: View {
         .perfPage("trends") // fork-perf: TEMP
         .task(id: repo.days.count) {
             let perfSpan = PerfTrace.span("trends.sleepPerfSeries"); defer { perfSpan.end() } // fork-perf: TEMP
+            let loadKey = "\(repo.days.count)-\(repo.refreshSeq)" // fork-perf: skip on tab re-entry
+            if perfMemo.sleepPerfLoaded(for: loadKey) { return }
             let s = await repo.exploreSeries(key: "sleep_performance", source: "my-whoop")
+            guard !Task.isCancelled else { return }
             sleepPerfByDay = Dictionary(s.map { ($0.day, $0.value) }, uniquingKeysWith: { _, last in last })
             sleepPerfRevision += 1
+            perfMemo.markSleepPerfLoaded(loadKey)
         }
     }
 
@@ -777,10 +782,12 @@ struct TrendsView: View {
     private var yearStrip: some View {
         // Always show at least a full year for context; expand to all history on ALL.
         let stripDays = max(range.days ?? repo.days.count, 365)
-        let recent = repo.days.suffix(stripDays)
-        let recoveryDays: [RecoveryDay] = recent.compactMap { d in
-            guard let dt = date(d.day) else { return nil }
-            return RecoveryDay(date: dt, score: d.recovery)
+        // fork-perf: parsed once per (refreshSeq, window, day count), not on every body pass.
+        let recoveryDays: [RecoveryDay] = perfMemo.yearStripDays(for: "\(repo.refreshSeq)-\(stripDays)-\(repo.days.count)") {
+            repo.days.suffix(stripDays).compactMap { d in
+                guard let dt = date(d.day) else { return nil }
+                return RecoveryDay(date: dt, score: d.recovery)
+            }
         }
         let title = (range == .all && repo.days.count > 365) ? String(localized: "Charge (all history)") : String(localized: "Charge (past year)")
         return NoopCard {
