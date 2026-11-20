@@ -82,7 +82,7 @@ enum DashboardCard: String, CaseIterable, Identifiable {
         case .stepsAverage30: return String(localized: "Rolling average over the last 30 days")
         case .stress:      return String(localized: "Autonomic load")
         case .fitnessAge:  return String(localized: "Updated weekly")
-        case .vo2max:      return String(localized: "Estimated, updated weekly")
+        case .vo2max:      return String(localized: "Estimated, updated weekly", table: "Fork") // fork: default table had no it entry
         case .vitality:    return String(localized: "Wellness score")
         case .bloodOxygen: return String(localized: "Blood oxygen")
         case .skinTemp:    return String(localized: "Skin temperature")
@@ -125,7 +125,7 @@ enum DashboardCard: String, CaseIterable, Identifiable {
         case .respiratory: return "rpm"
         case .steps, .stepsAverage30: return ""
         case .stress:      return ""
-        case .fitnessAge:  return "yrs"
+        case .fitnessAge:  return String(localized: "yrs", table: "Fork") // fork: was an unlocalized literal
         case .vo2max:      return ""    // the estimated VO₂max number alone; ml/kg/min is too long for a tile
         case .vitality:    return ""
         case .bloodOxygen: return ""    // value carries the % itself

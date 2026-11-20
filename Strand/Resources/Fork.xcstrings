@@ -157,6 +157,18 @@
         }
       }
     },
+    "Estimated, updated weekly" : {
+      "comment" : "Caption under the VO2 max Today card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimato, aggiornato settimanalmente"
+          }
+        }
+      }
+    },
     "HIIT" : {
       "comment" : "Sport name shown on chips and cards; the stored value stays English.",
       "extractionState" : "manual",
@@ -607,6 +619,18 @@
         }
       }
     },
+    "Swipe" : {
+      "comment" : "One-word hint flashed in the Today top bar. The default-table 'it' value is Portuguese; this table overrides it for Today.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scorri"
+          }
+        }
+      }
+    },
     "System Smart Wake alarms require iOS 26 or later." : {
       "comment" : "Shown on iOS versions older than 26.",
       "extractionState" : "manual",
@@ -615,6 +639,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Le sveglie di sistema Smart Wake richiedono iOS 26 o successivo."
+          }
+        }
+      }
+    },
+    "Tap" : {
+      "comment" : "One-word hint flashed in the Today top bar, alternating with Swipe.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tocca"
           }
         }
       }
@@ -831,6 +867,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "fascia"
+          }
+        }
+      }
+    },
+    "yrs" : {
+      "comment" : "Unit suffix after the fitness age value on the Today card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "anni"
           }
         }
       }

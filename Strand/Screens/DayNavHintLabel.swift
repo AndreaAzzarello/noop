@@ -9,7 +9,7 @@ struct DayNavHintLabel: View {
     let dateText: String
     @State private var hint: String?
 
-    private static var hints: [String] { [String(localized: "Swipe"), String(localized: "Tap")] }
+    private static var hints: [String] { [String(localized: "Swipe", table: "Fork"), String(localized: "Tap", table: "Fork")] }
 
     var body: some View {
         Text(hint ?? dateText)
