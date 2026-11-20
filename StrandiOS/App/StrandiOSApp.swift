@@ -390,9 +390,21 @@ struct StrandiOSApp: App {
                             await watch.pushLatest(from: model)
                         }
                     }
+                    // fork-perf: a return to the foreground within 15 minutes of a completed pass has no news to
+                    // fetch (observers wake NOOP for new Health samples), and the window shrinks to the days since
+                    // the last pass; a full 30-day pass still runs at least every 24 h (HealthForegroundSyncPolicy).
+                    let fgSync = HealthForegroundSyncState.plan(repoLoaded: model.repo.loaded)
                     await HealthSyncRefreshCoordinator.run(
-                        sync: { _ = await health.sync() },
+                        sync: {
+                            guard fgSync.run else {
+                                ForkEnergyCounters.shared.note(.fgSyncSkipped) // fork-perf: TEMP
+                                return
+                            }
+                            ForkEnergyCounters.shared.note(.fgSyncRun) // fork-perf: TEMP
+                            if await health.sync(days: fgSync.days) { HealthForegroundSyncState.recordCompleted(fgSync) }
+                        },
                         refresh: {
+                            guard fgSync.run else { return }
                             await model.refreshAfterAppleHealthSync(
                                 authorized: health.auth == .authorized)
                         }
