@@ -34,7 +34,11 @@ final class HealthKitBridge: ObservableObject {
     /// Coalesces a fresh-data notification that arrives while another HealthKit pass owns the bridge.
     /// Without this, a strap offload finishing during the foreground read/write pass was deferred until
     /// the next app open even though the newly-banked rows were already available locally.
-    private var writeBackPending = false
+    ///
+    /// Only fresh strap data is recorded here, and only as far as it is not already inside the pass in
+    /// flight (`HealthWriteBackGate`). A read-side `sync` that finds the bridge busy records nothing: the
+    /// observer wakes that cause those are mostly this app's own write-back samples.
+    private var writeBackGate = HealthWriteBackGate()
     /// How many days the last COMPLETED sync covered, so an observer wake can tell whether a sync that
     /// just ran already read its window. Paired with `lastSync` (the time). Reset to 0 by a failed sync,
     /// so a failure never lets a later wake be skipped on the strength of it.
@@ -479,9 +483,9 @@ final class HealthKitBridge: ObservableObject {
     func sync(days: Int = 30) async -> Bool {
         guard auth == .authorized else { return false }
         guard !syncing else {
-            // A full sync includes write-back. If new strap data is landing concurrently, guarantee one
-            // final write-only reconciliation after the current owner releases the bridge.
-            writeBackPending = true
+            // Busy: the owner is a sync (which writes back) or a write-back. A read request owes no write,
+            // so nothing is recorded; the observer anchor stays put and the next wake re-reads the window.
+            PerfTrace.emit("perf healthSync.pending source=sync dropped=1") // fork-perf: TEMP
             return false
         }
         syncing = true
@@ -800,7 +804,7 @@ final class HealthKitBridge: ObservableObject {
         // its app-owned operation after observing this state, so it does not keep waking unnecessarily.
         guard auth == .authorized else { return true }
         guard !syncing else {
-            writeBackPending = true
+            writeBackGate.noteNewData()
             return true
         }
         syncing = true
@@ -821,8 +825,10 @@ final class HealthKitBridge: ObservableObject {
     /// (rather than recursing in the defer) guarantees the current pass has fully returned first.
     private func finishHealthPass() {
         syncing = false
-        guard writeBackPending else { return }
-        writeBackPending = false
+        let decision = writeBackGate.finishPass()
+        guard decision != .none else { return }
+        PerfTrace.emit("perf healthSync.pending source=newData rerun=\(decision == .rerun ? 1 : 0)") // fork-perf: TEMP
+        guard decision == .rerun else { return }
         Task { await writeBackAfterNewData() }
     }
 
@@ -845,6 +851,8 @@ final class HealthKitBridge: ObservableObject {
     /// Throws on save failure so the caller can decide whether to advance `lastSync`.
     private func writeBack(whoopStore: WhoopStore, days: Int = 14) async throws {
         guard auth == .authorized else { return }
+        // From here the pass reads the rows it writes: fresh data announced later is not inside it.
+        writeBackGate.readsStarted()
         let now = Date()
         guard let fromDate = Calendar.current.date(byAdding: .day, value: -days, to: now) else { return }
         let fromTs = Int(fromDate.timeIntervalSince1970)
