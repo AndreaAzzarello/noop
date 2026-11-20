@@ -6,8 +6,17 @@ struct SmartWakeSchedule: Equatable, Codable {
     let wakeMinutes: Int
     let weekdays: Set<Int>
     let overrides: [Int: Int]
+    /// The window every weekday uses unless `windowOverrides` names its own.
     let windowDuration: TimeInterval
     let baselineLookback: TimeInterval
+    // fork: per-weekday data for the Smart Wake alarm list. All empty for a schedule built from the single WHOOP
+    // alarm settings, in which case it behaves, and encodes, exactly as before the list existed.
+    /// weekday -> early window, for the weekdays whose alarm has its own.
+    let windowOverrides: [Int: TimeInterval]
+    /// weekday -> label of the alarm that rings that day (shown in the alert title, widget and Night card).
+    let labels: [Int: String]
+    /// Weekdays whose alarm has "Insistent strap alarm" on.
+    let insistentDays: Set<Int>
 
     static let standard = SmartWakeSchedule(
         wakeMinutes: 7 * 60,
@@ -20,7 +29,10 @@ struct SmartWakeSchedule: Equatable, Codable {
         weekdays: Set<Int> = [],
         overrides: [Int: Int] = [:],
         windowDuration: TimeInterval = 30 * 60,
-        baselineLookback: TimeInterval = 60 * 60
+        baselineLookback: TimeInterval = 60 * 60,
+        windowOverrides: [Int: TimeInterval] = [:],
+        labels: [Int: String] = [:],
+        insistentDays: Set<Int> = []
     ) {
         self.wakeMinutes = min(max(wakeMinutes, 0), 24 * 60 - 1)
         self.weekdays = Set(weekdays.filter { (1...7).contains($0) })
@@ -29,7 +41,76 @@ struct SmartWakeSchedule: Equatable, Codable {
         }
         self.windowDuration = min(max(0, windowDuration), 3 * 60 * 60)
         self.baselineLookback = min(max(0, baselineLookback), 6 * 60 * 60)
+        self.windowOverrides = windowOverrides
+            .filter { (1...7).contains($0.key) }
+            .mapValues { min(max(0, $0), 3 * 60 * 60) }
+        var cleanLabels: [Int: String] = [:]
+        for (day, text) in labels where (1...7).contains(day) {
+            let trimmed = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(32))
+            if !trimmed.isEmpty { cleanLabels[day] = trimmed }
+        }
+        self.labels = cleanLabels
+        self.insistentDays = Set(insistentDays.filter { (1...7).contains($0) })
     }
+
+    // The five original keys keep the form the synthesized coder gave them, so a stored or shared snapshot from before
+    // the list still decodes. The three new ones are optional on read and written only when set (string keys and a
+    // sorted array, so equal schedules encode to equal bytes).
+    private enum CodingKeys: String, CodingKey {
+        case wakeMinutes, weekdays, overrides, windowDuration, baselineLookback
+        case windowOverrides, labels, insistentDays
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func day(_ key: String) -> Int? { Int(key) }
+        let rawWindows = try c.decodeIfPresent([String: TimeInterval].self, forKey: .windowOverrides) ?? [:]
+        let rawLabels = try c.decodeIfPresent([String: String].self, forKey: .labels) ?? [:]
+        self.init(
+            wakeMinutes: try c.decode(Int.self, forKey: .wakeMinutes),
+            weekdays: try c.decode(Set<Int>.self, forKey: .weekdays),
+            overrides: try c.decode([Int: Int].self, forKey: .overrides),
+            windowDuration: try c.decode(TimeInterval.self, forKey: .windowDuration),
+            baselineLookback: try c.decode(TimeInterval.self, forKey: .baselineLookback),
+            // A hand-edited blob with "1" and "01" must not trap: the last one read wins.
+            windowOverrides: Dictionary(rawWindows.compactMap { key, value in day(key).map { ($0, value) } }, uniquingKeysWith: { $1 }),
+            labels: Dictionary(rawLabels.compactMap { key, value in day(key).map { ($0, value) } }, uniquingKeysWith: { $1 }),
+            insistentDays: Set(try c.decodeIfPresent([Int].self, forKey: .insistentDays) ?? []))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(wakeMinutes, forKey: .wakeMinutes)
+        // A `Set` encodes in hash order, which differs between instances: sorted, equal schedules are equal bytes. Still a
+        // plain array of weekdays, so an older reader decodes it as before.
+        try c.encode(weekdays.sorted(), forKey: .weekdays)
+        try c.encode(overrides, forKey: .overrides)
+        try c.encode(windowDuration, forKey: .windowDuration)
+        try c.encode(baselineLookback, forKey: .baselineLookback)
+        if !windowOverrides.isEmpty {
+            try c.encode(Dictionary(uniqueKeysWithValues: windowOverrides.map { (String($0.key), $0.value) }), forKey: .windowOverrides)
+        }
+        if !labels.isEmpty {
+            try c.encode(Dictionary(uniqueKeysWithValues: labels.map { (String($0.key), $0.value) }), forKey: .labels)
+        }
+        if !insistentDays.isEmpty { try c.encode(insistentDays.sorted(), forKey: .insistentDays) }
+    }
+
+    /// The early window on `weekday`: that day's own, else the schedule-wide one.
+    func windowDuration(onWeekday weekday: Int) -> TimeInterval {
+        windowOverrides[weekday] ?? windowDuration
+    }
+
+    /// The early window of the alarm that rings at `maximumWakeTime` (its weekday decides).
+    func windowDuration(for maximumWakeTime: Date, calendar: Calendar) -> TimeInterval {
+        windowDuration(onWeekday: calendar.component(.weekday, from: maximumWakeTime))
+    }
+
+    /// The label of the alarm that rings on `weekday`, if it has one.
+    func label(onWeekday weekday: Int) -> String? { labels[weekday] }
+
+    /// Whether the alarm that rings on `weekday` has "Insistent strap alarm" on.
+    func isInsistent(onWeekday weekday: Int) -> Bool { insistentDays.contains(weekday) }
 
     /// Compatibility initializer for deterministic tests and explicit time-of-day schedules.
     init(
