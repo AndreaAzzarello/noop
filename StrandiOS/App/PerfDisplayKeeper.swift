@@ -67,7 +67,7 @@ private struct PerfDisplayKeeper: ViewModifier {
     /// One sink per shared object; each emission is a `PerfTrace.notePublish`, drained into the next `frameSummary`.
     private func watchPublishes() {
         watch.bag.removeAll()
-        PerfTrace.resetDefaultsSnapshot()
+        PerfTrace.startDefaultsProbe()
         func count<O: ObservableObject>(_ name: String, _ object: O) where O.ObjectWillChangePublisher == ObservableObjectPublisher {
             object.objectWillChange.sink { MainActor.assumeIsolated { PerfTrace.notePublish(name) } }.store(in: &watch.bag)
         }
@@ -97,7 +97,6 @@ private struct PerfDisplayKeeper: ViewModifier {
             .sink { _ in
                 MainActor.assumeIsolated {
                     PerfTrace.notePublish("defaults")
-                    PerfTrace.noteDefaultsNotification()
                 }
             }.store(in: &watch.bag)
     }

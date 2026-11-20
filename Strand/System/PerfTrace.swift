@@ -44,42 +44,14 @@ enum PerfTrace {
     private static var linkIntervalCount = 0
 
     // MARK: defaults attribution (TEMP)
-    // Which `UserDefaults.standard` keys changed behind each `didChangeNotification`, from a snapshot diff.
-    // `defaultsSame` counts notifications that found no difference at observation time: a rewrite of an
-    // equal value, or a write already folded into an earlier notification's diff (the notification is
-    // delivered a turn late, so two writes can share one diff). `defaultsDiffMs` is what the diff itself
-    // cost on the main thread, so this instrumentation can be discounted from the numbers it reports.
-    private static var defaultsSnapshot: [String: Any]?
-    private static var defaultsKeyChanges: [String: Int] = [:]
-    private static var defaultsSame = 0
-    private static var defaultsDiffSeconds: Double = 0
+    // Each `UserDefaults.didChangeNotification` is classified when it is delivered, on the writing thread, by
+    // `DefaultsWriteProbe`: a key that differs from the snapshot is `defaultsKeys`, a notification with no
+    // difference is `defaultsEqual` (an equal rewrite, with the caller frames in `defaultsEqualBy`), and
+    // system keys (METAL_*, NS*, Apple*) are counted apart as `defaultsSys`. `defaultsDiffMs` is what the diff
+    // itself cost, so this instrumentation can be discounted from the numbers it reports.
 
-    /// Fold one `didChangeNotification` into the per-key counters.
-    static func noteDefaultsNotification() {
-        guard enabled else { return }
-        let t0 = CFAbsoluteTimeGetCurrent()
-        let now = UserDefaults.standard.dictionaryRepresentation()
-        defer { defaultsDiffSeconds += CFAbsoluteTimeGetCurrent() - t0 }
-        guard let before = defaultsSnapshot else {
-            defaultsSnapshot = now
-            return
-        }
-        var changed = 0
-        for (key, value) in now {
-            if let old = before[key], (old as AnyObject).isEqual(value) { continue }
-            defaultsKeyChanges[key, default: 0] += 1
-            changed += 1
-        }
-        for key in before.keys where now[key] == nil {
-            defaultsKeyChanges[key, default: 0] += 1
-            changed += 1
-        }
-        if changed == 0 { defaultsSame += 1 }
-        defaultsSnapshot = now
-    }
-
-    /// Drop the snapshot so a monitor restart does not attribute the gap to one notification.
-    static func resetDefaultsSnapshot() { defaultsSnapshot = nil }
+    /// Start (or restart) the probe; called when the monitor starts.
+    static func startDefaultsProbe() { DefaultsWriteProbe.shared.start() }
 
     /// Writes `perf.probe` 20 times, one per main-queue turn 20 ms apart, so the next frame lines show whether
     /// a burst of foreign defaults writes alone re-evaluates `root.app` / `root.tabs` / the tabs (the question
@@ -177,14 +149,18 @@ enum PerfTrace {
                 publishCounts.removeAll(keepingCapacity: true)
                 publishTurns.removeAll(keepingCapacity: true)
             }
-            if !defaultsKeyChanges.isEmpty || defaultsSame > 0 {
-                out += " defaultsKeys=" + defaultsKeyChanges.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+            if let d = DefaultsWriteProbe.shared.drain() {
+                out += " defaultsKeys=" + d.changed.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
                     .prefix(6).map { "\($0.key)=\($0.value)" }.joined(separator: ",")
-                out += " defaultsSame=\(defaultsSame)"
-                out += " defaultsDiffMs=" + String(format: "%.1f", defaultsDiffSeconds * 1000)
-                defaultsKeyChanges.removeAll(keepingCapacity: true)
-                defaultsSame = 0
-                defaultsDiffSeconds = 0
+                out += " defaultsEqual=\(d.equal)"
+                if !d.equalBy.isEmpty {
+                    out += " defaultsEqualBy=" + d.equalBy.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+                        .prefix(4).map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+                }
+                if !d.sys.isEmpty {
+                    out += " defaultsSys=" + d.sys.sorted { $0.key < $1.key }.prefix(4).map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+                }
+                out += " defaultsDiffMs=" + String(format: "%.1f", d.diffSeconds * 1000)
             }
             if linkIntervalCount > 0 {
                 out += " refresh=" + String(format: "%.1f", linkIntervalSum / Double(linkIntervalCount) * 1000) + "ms"
@@ -252,5 +228,90 @@ extension View {
     func perfCount(_ name: String) -> some View {
         PerfTrace.bump(name)
         return self
+    }
+}
+
+/// TEMP (fork-perf): per-notification classification of `UserDefaults.standard` writes (see `PerfTrace`).
+/// Not main-actor isolated: the notification arrives on whichever thread wrote, and the lock guards the state.
+private final class DefaultsWriteProbe: @unchecked Sendable {
+    static let shared = DefaultsWriteProbe()
+    struct Drained {
+        var changed: [String: Int]
+        var equal: Int
+        var equalBy: [String: Int]
+        var sys: [String: Int]
+        var diffSeconds: Double
+    }
+
+    private let lock = NSLock()
+    private var token: NSObjectProtocol?
+    private var snapshot: [String: Any]?
+    private var changed: [String: Int] = [:]
+    private var equal = 0
+    private var equalBy: [String: Int] = [:]
+    private var sys: [String: Int] = [:]
+    private var diffSeconds: Double = 0
+
+    func start() {
+        lock.lock(); defer { lock.unlock() }
+        snapshot = nil
+        guard token == nil else { return }
+        token = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: UserDefaults.standard, queue: nil
+        ) { [weak self] _ in self?.note() }
+    }
+
+    private static func isSystem(_ key: String) -> Bool {
+        key.hasPrefix("METAL_") || key.hasPrefix("NS") || key.hasPrefix("Apple") || key.hasPrefix("AK")
+    }
+
+    private func note() {
+        let t0 = CFAbsoluteTimeGetCurrent()
+        let now = UserDefaults.standard.dictionaryRepresentation()
+        var stack: [String] = []
+        lock.lock()
+        defer { lock.unlock() }
+        defer { diffSeconds += CFAbsoluteTimeGetCurrent() - t0 }
+        guard let before = snapshot else { snapshot = now; return }
+        var diffs: [String] = []
+        for (key, value) in now {
+            if let old = before[key], (old as AnyObject).isEqual(value) { continue }
+            diffs.append(key)
+        }
+        for key in before.keys where now[key] == nil { diffs.append(key) }
+        snapshot = now
+        if diffs.isEmpty {
+            equal += 1
+            stack = Self.callers()
+            equalBy[stack.joined(separator: ">"), default: 0] += 1
+            return
+        }
+        for key in diffs {
+            if Self.isSystem(key) { sys[key, default: 0] += 1 } else { changed[key, default: 0] += 1 }
+        }
+    }
+
+    /// The first non-framework frames of the writing call stack, as bare symbol names.
+    private static func callers() -> [String] {
+        var out: [String] = []
+        for line in Thread.callStackSymbols {
+            if ["Foundation", "CoreFoundation", "libdispatch", "libsystem", "DefaultsWriteProbe", "PerfTrace"]
+                .contains(where: { line.contains($0) }) { continue }
+            let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard parts.count > 3 else { continue }
+            var sym = parts[3...].joined(separator: " ")
+            if let r = sym.range(of: " + ") { sym = String(sym[..<r.lowerBound]) }
+            out.append(String(sym.prefix(48)))
+            if out.count == 2 { break }
+        }
+        return out.isEmpty ? ["?"] : out
+    }
+
+    func drain() -> Drained? {
+        lock.lock(); defer { lock.unlock() }
+        guard !changed.isEmpty || equal > 0 || !sys.isEmpty else { return nil }
+        let d = Drained(changed: changed, equal: equal, equalBy: equalBy, sys: sys, diffSeconds: diffSeconds)
+        changed.removeAll(); equal = 0; equalBy.removeAll(); sys.removeAll(); diffSeconds = 0
+        return d
     }
 }
