@@ -40,18 +40,15 @@ struct StrandiOSApp: App {
     @StateObject private var liftSession: LiftSessionController
     @Environment(\.scenePhase) private var scenePhase
     /// Appearance preference (System/Light/Dark). Default follows the OS; the Settings picker writes it.
-    @AppStorage(AppearanceMode.storageKey) private var appearanceRaw = AppearanceMode.system.rawValue
-    /// Chart data-colour style (Titanium / Classic throwback). Re-colours gauges + charts.
-    @AppStorage(ChartStyle.storageKey) private var chartStyleRaw = ChartStyle.titanium.rawValue
-    /// Chrome accent colour (mint / WHOOP blue / custom). Chrome only — never the data colour worlds.
-    @AppStorage(AccentColor.storageKey) private var accentRaw = AccentColor.mint.rawValue
-    @AppStorage(AccentColor.customHexKey) private var accentCustomHex = AccentColor.defaultCustomHex
-    /// Effort's display scale is also embedded in the shared widget snapshot. Observe it here so a
-    /// Settings change gets one accurate full rebuild instead of waiting for an unrelated repo refresh.
-    @AppStorage(UnitPrefs.effortScaleKey) private var effortScaleRaw = EffortScale.hundred.rawValue
-    /// kg vs lb for the Lift Log Live Activity's "8 x 30 kg" line — the app formats it, because the
-    /// unit preference lives here and not in the widget extension.
-    @AppStorage(UnitPrefs.systemKey) private var unitSystemRaw = UnitSystem.metric.rawValue
+    // fork-perf: observe only these keys; an `@AppStorage` re-evaluated this root on EVERY defaults write.
+    @StateObject private var prefs = DefaultsKeys([AppearanceMode.storageKey, ChartStyle.storageKey, AccentColor.storageKey,
+                                                   AccentColor.customHexKey, UnitPrefs.effortScaleKey, UnitPrefs.systemKey])
+    private var appearanceRaw: String { prefs.string(AppearanceMode.storageKey, default: AppearanceMode.system.rawValue) }
+    private var chartStyleRaw: String { prefs.string(ChartStyle.storageKey, default: ChartStyle.titanium.rawValue) }
+    private var accentRaw: String { prefs.string(AccentColor.storageKey, default: AccentColor.mint.rawValue) }
+    private var accentCustomHex: String { prefs.string(AccentColor.customHexKey, default: AccentColor.defaultCustomHex) }
+    private var effortScaleRaw: String { prefs.string(UnitPrefs.effortScaleKey, default: EffortScale.hundred.rawValue) }
+    private var unitSystemRaw: String { prefs.string(UnitPrefs.systemKey, default: UnitSystem.metric.rawValue) }
 
     init() {
         _ = PerfTrace.launchStart // fork-perf: TEMP
@@ -470,9 +467,11 @@ struct StrandiOSApp: App {
 /// excluded `RootView()` sidebar for `RootTabView()`. The shared `OnboardingWizard`, `TermsGateView`,
 /// `WhatsNewView`, `AppChangelog`, and `Terms` symbols all compile into the iOS target unchanged.
 private struct iOSRootView: View {
-    @AppStorage("noop.onboarded") private var onboarded = false
-    @AppStorage("noop.lastSeenChangelogVersion") private var lastSeenChangelog = ""
-    @AppStorage("noop.acceptedTermsVersion") private var acceptedTerms = ""
+    // fork-perf: observe only the three gate keys (see DefaultsKeys).
+    @StateObject private var prefs = DefaultsKeys(["noop.onboarded", "noop.lastSeenChangelogVersion", "noop.acceptedTermsVersion"])
+    private var onboarded: Bool { get { prefs.bool("noop.onboarded", default: false) } nonmutating set { prefs.set(newValue, forKey: "noop.onboarded") } }
+    private var lastSeenChangelog: String { get { prefs.string("noop.lastSeenChangelogVersion", default: "") } nonmutating set { prefs.set(newValue, forKey: "noop.lastSeenChangelogVersion") } }
+    private var acceptedTerms: String { get { prefs.string("noop.acceptedTermsVersion", default: "") } nonmutating set { prefs.set(newValue, forKey: "noop.acceptedTermsVersion") } }
     @State private var showWhatsNew = false
     /// Starts false so a cold-launch external action can't race this view's onAppear decision about the
     /// automatic What's New sheet. It becomes true only when no sheet is due or its dismissal completes.
