@@ -104,8 +104,9 @@ final class WatchLiveHR: ObservableObject {
         let value = latest.quantity.doubleValue(for: bpmUnit)
         let rounded = Int(value.rounded())
         DispatchQueue.main.async {
-            self.bpm = rounded
-            self.denied = false
+            // fork-perf: an equal assignment to a @Published property still invalidates the glance.
+            if self.bpm != rounded { self.bpm = rounded }
+            if self.denied { self.denied = false }
         }
     }
     #endif
