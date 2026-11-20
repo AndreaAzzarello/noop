@@ -106,6 +106,13 @@ struct SmartWakeSchedule: Equatable, Codable {
         windowDuration(onWeekday: calendar.component(.weekday, from: maximumWakeTime))
     }
 
+    /// The longest early window of any day the schedule rings on. Sample retention uses it so a sample another day's
+    /// alarm still needs is never dropped.
+    var longestWindowDuration: TimeInterval {
+        let days = weekdays.isEmpty ? Set(1...7) : weekdays
+        return days.map { windowDuration(onWeekday: $0) }.max() ?? windowDuration
+    }
+
     /// The label of the alarm that rings on `weekday`, if it has one.
     func label(onWeekday weekday: Int) -> String? { labels[weekday] }
 
@@ -375,7 +382,7 @@ final class SmartWakeLiveController {
             return latestDecision
         }
 
-        let windowStart = maximumWakeTime.addingTimeInterval(-schedule.windowDuration)
+        let windowStart = maximumWakeTime.addingTimeInterval(-windowDuration(for: maximumWakeTime))
         if timestamp < windowStart {
             appendBaselineSample(
                 sample,
@@ -449,14 +456,19 @@ final class SmartWakeLiveController {
         return latestDecision
     }
 
+    /// The early window of the alarm that rings at `maximumWakeTime` (that weekday's own).
+    private func windowDuration(for maximumWakeTime: Date) -> TimeInterval {
+        schedule.windowDuration(for: maximumWakeTime, calendar: calendar)
+    }
+
     /// Builds the engine and the light-sleep rule for this window from the retained baseline.
     private func startEngine(maximumWakeTime: Date) {
         engine = makeEngine(maximumWakeTime: maximumWakeTime)
-        let windowStart = maximumWakeTime.addingTimeInterval(-schedule.windowDuration)
+        let windowStart = maximumWakeTime.addingTimeInterval(-windowDuration(for: maximumWakeTime))
         let baselineStart = windowStart.addingTimeInterval(-schedule.baselineLookback)
         var detector = SmartWakeLightSleepDetector(
             maximumWakeTime: maximumWakeTime,
-            windowDuration: schedule.windowDuration
+            windowDuration: windowDuration(for: maximumWakeTime)
         )
         detector.seed(baselineSamples.filter { $0.timestamp >= baselineStart && $0.timestamp < windowStart })
         lightSleepDetector = detector
@@ -464,7 +476,7 @@ final class SmartWakeLiveController {
     }
 
     private func makeEngine(maximumWakeTime: Date) -> SmartWakeEngine {
-        let windowStart = maximumWakeTime.addingTimeInterval(-schedule.windowDuration)
+        let windowStart = maximumWakeTime.addingTimeInterval(-windowDuration(for: maximumWakeTime))
         let baselineStart = windowStart.addingTimeInterval(-schedule.baselineLookback)
         let relevantBaseline = baselineSamples.filter {
             $0.timestamp >= baselineStart && $0.timestamp < windowStart
@@ -472,7 +484,7 @@ final class SmartWakeLiveController {
         return SmartWakeEngine(
             configuration: .standard(
                 maximumWakeTime: maximumWakeTime,
-                windowDuration: schedule.windowDuration
+                windowDuration: windowDuration(for: maximumWakeTime)
             ),
             baselineSamples: relevantBaseline
         )
@@ -489,7 +501,7 @@ final class SmartWakeLiveController {
         latestDecision = .waiting
 
         // Keep enough prior-day data for a window that crosses midnight.
-        let retention = max(2 * 60 * 60, schedule.windowDuration + schedule.baselineLookback)
+        let retention = max(2 * 60 * 60, schedule.longestWindowDuration + schedule.baselineLookback)
         let cutoff = date.addingTimeInterval(-retention)
         baselineSamples.removeAll { $0.timestamp < cutoff }
         lastReceivedTimestamp = baselineSamples.last?.timestamp
@@ -594,5 +606,15 @@ struct SmartWakeLogThrottle {
         if lastDay[key] == day { return false }
         lastDay[key] = day
         return true
+    }
+}
+
+/// Which "Insistent strap alarm" setting applies to a morning.
+enum SmartWakeInsistence {
+    /// With no alarm list the answer is nil and the one global switch decides, as before the list existed. With a list, the
+    /// alarm that rings that morning decides (a day with no schedule entry is not insistent); the global switch no longer counts.
+    static func resolve(bookExists: Bool, scheduleSaysInsistent: Bool?) -> Bool? {
+        guard bookExists else { return nil }
+        return scheduleSaysInsistent ?? false
     }
 }

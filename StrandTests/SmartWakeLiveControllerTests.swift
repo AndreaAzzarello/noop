@@ -224,4 +224,42 @@ final class SmartWakeLiveControllerTests: XCTestCase {
         XCTAssertEqual(controller.evaluate(at: date(7, 19)), .waiting)
         XCTAssertEqual(controller.evaluate(at: date(7, 20)), .wake(.maximumWakeTime))
     }
+
+    // Alarm list: each weekday carries its own early window.
+    func testTheDetectionWindowIsTheOneOfTheDayThatRings() {
+        // Friday (6) rings at 09:30 with a 45 min window; every other day uses 15 min.
+        let schedule = SmartWakeSchedule(
+            wakeMinutes: 9 * 60 + 30, weekdays: [6], windowDuration: 15 * 60, windowOverrides: [6: 45 * 60])
+        let controller = makeController(schedule: schedule)
+        for minute in 0..<45 { XCTAssertEqual(controller.ingest(bpm: 60, at: date(8, minute, day: 13)), .waiting) }
+        XCTAssertEqual(controller.ingest(bpm: 66, at: date(8, 45, day: 13)), .waiting)
+        XCTAssertEqual(controller.ingest(bpm: 67, at: date(8, 46, day: 13)), .waiting)
+        XCTAssertEqual(controller.ingest(bpm: 67, at: date(8, 47, day: 13)), .wake(.sustainedHeartRateRise))
+    }
+
+    func testADayWithoutItsOwnWindowKeepsTheScheduleWideOne() {
+        let schedule = SmartWakeSchedule(
+            wakeMinutes: 9 * 60 + 30, weekdays: [5, 6], windowDuration: 15 * 60, windowOverrides: [6: 45 * 60])
+        XCTAssertEqual(schedule.windowDuration(for: date(9, 30, day: 12), calendar: calendar), 15 * 60)
+        XCTAssertEqual(schedule.windowDuration(for: date(9, 30, day: 13), calendar: calendar), 45 * 60)
+    }
+
+    func testRetentionUsesTheLongestWindowOfTheActiveDays() {
+        let schedule = SmartWakeSchedule(
+            wakeMinutes: 7 * 60, weekdays: [2, 3], windowDuration: 15 * 60, windowOverrides: [3: 60 * 60])
+        XCTAssertEqual(schedule.longestWindowDuration, 60 * 60)
+        // An override on a day that is not active does not count.
+        let inactive = SmartWakeSchedule(
+            wakeMinutes: 7 * 60, weekdays: [2], windowDuration: 15 * 60, windowOverrides: [3: 60 * 60])
+        XCTAssertEqual(inactive.longestWindowDuration, 15 * 60)
+        XCTAssertEqual(SmartWakeSchedule.standard.longestWindowDuration, SmartWakeSchedule.standard.windowDuration)
+    }
+
+    func testInsistenceIsPerAlarmOnceAListExists() {
+        XCTAssertNil(SmartWakeInsistence.resolve(bookExists: false, scheduleSaysInsistent: true), "no list: the global switch decides")
+        XCTAssertNil(SmartWakeInsistence.resolve(bookExists: false, scheduleSaysInsistent: nil))
+        XCTAssertEqual(SmartWakeInsistence.resolve(bookExists: true, scheduleSaysInsistent: true), true)
+        XCTAssertEqual(SmartWakeInsistence.resolve(bookExists: true, scheduleSaysInsistent: false), false)
+        XCTAssertEqual(SmartWakeInsistence.resolve(bookExists: true, scheduleSaysInsistent: nil), false)
+    }
 }

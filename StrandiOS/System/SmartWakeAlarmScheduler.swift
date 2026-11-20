@@ -516,7 +516,7 @@ final class SmartWakeAlarmScheduler {
         let weekday = calendar.component(.weekday, from: maximumWakeTime)
         guard schedule.isEnabled(onWeekday: weekday),
               receivedAt < maximumWakeTime,
-              receivedAt >= maximumWakeTime.addingTimeInterval(-schedule.windowDuration),
+              receivedAt >= maximumWakeTime.addingTimeInterval(-schedule.windowDuration(for: maximumWakeTime, calendar: calendar)),   // fork: the day's own window
               let fallbackID = activeFallbackID(for: weekday)
         else { return false }
 

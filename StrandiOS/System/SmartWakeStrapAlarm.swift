@@ -48,7 +48,13 @@ final class SmartWakeStrapAlarm {
         Self.current = self
     }
 
-    var isInsistentEnabled: Bool { defaults.bool(forKey: Self.insistentKey) }
+    /// fork: with the alarm list, "Insistent strap alarm" belongs to each alarm, so it is asked per morning. `SmartWakeLiveWiring`
+    /// sets this; it answers nil while no list exists, and the one global switch then decides, exactly as before.
+    var insistentResolver: ((Date) -> Bool?)?
+
+    func isInsistent(for maximumWakeTime: Date) -> Bool {
+        insistentResolver?(maximumWakeTime) ?? defaults.bool(forKey: Self.insistentKey)
+    }
 
     /// Why the firmware alarm cannot be armed right now, or nil when it can.
     func unusableReason() -> String? {
@@ -61,12 +67,12 @@ final class SmartWakeStrapAlarm {
     /// An early wake (light sleep or a sustained rise): arms the firmware alarm a moment ahead, once or repeatedly.
     func beginEarly(reason: String, maximumWakeTime: Date, at now: Date) -> Start {
         start(reason: reason, maximumWakeTime: maximumWakeTime, at: now,
-              configuration: isInsistentEnabled ? .insistent : .single, isEarly: true)
+              configuration: isInsistent(for: maximumWakeTime) ? .insistent : .single, isEarly: true)
     }
 
     /// The maximum time was reached with no early wake: only the insistent option repeats the strap alarm here.
     func beginAtMaximumTime(maximumWakeTime: Date, at now: Date) {
-        guard isInsistentEnabled else { return }
+        guard isInsistent(for: maximumWakeTime) else { return }
         _ = start(reason: "maximum time", maximumWakeTime: maximumWakeTime, at: now, configuration: .insistent, isEarly: false)
     }
 

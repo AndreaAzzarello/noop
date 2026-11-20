@@ -51,6 +51,14 @@ enum SmartWakeLiveWiring {
         #endif
         let controller = SmartWakeLiveController(schedule: refreshSchedule(from: model.behavior))
         let strapAlarm = SmartWakeStrapAlarm(model: model)
+        // fork: with an alarm list, insistence is per alarm (the global switch is ignored); without one, it is the global switch.
+        strapAlarm.insistentResolver = { maximumWakeTime in
+            var bookExists = false
+            if case .book = SmartWakeAlarmBookStorage.peek(defaults: .standard) { bookExists = true }
+            let weekday = Calendar.current.component(.weekday, from: maximumWakeTime)
+            return SmartWakeInsistence.resolve(
+                bookExists: bookExists, scheduleSaysInsistent: cachedSchedule?.isInsistent(onWeekday: weekday))
+        }
         controller.onWindowSummary = { SmartWakeDiagnostics.record($0) }
         SmartWakeDiagnostics.onRecord = { [weak model] line in model?.live.append(log: AppModel.stamped(line)) }
 
