@@ -122,7 +122,11 @@ enum SmartWakeLiveWiring {
         // The controller writes its baseline rarely; save the tail when the app is suspended.
         NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
-        ) { [weak controller] _ in controller?.flushPersistence() }
+        ) { [weak controller] _ in
+            controller?.flushPersistence()
+            // A change still waiting for its quiet period would otherwise wait until the app next runs.
+            SmartWakeCommitDebouncer.shared.flush()
+        }
         return controller
     }
 }
