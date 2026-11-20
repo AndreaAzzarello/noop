@@ -377,11 +377,13 @@ final class HealthKitBridge: ObservableObject {
         // #1578: counted before any early return, so the ratio of wakes to syncs is honest. Coalescing
         // cuts the work per wake, not the wakes — this is what shows whether the wake itself is the cost.
         HealthSyncStats.recordWake()
+        ForkEnergyCounters.shared.note(.hkObserverWake) // fork-perf: TEMP
         let (touched, newAnchor) = await fetchTouchedDayWindow(type: type)
         // No new samples since the last anchor (a spurious wake): nothing to ingest, so advancing the
         // anchor now loses nothing and skips a redundant re-query next wake.
         guard let touched else {
             HealthSyncStats.recordEmptyWake()
+            ForkEnergyCounters.shared.note(.hkObserverEmptyWake) // fork-perf: TEMP
             if let newAnchor { persistAnchor(newAnchor, for: type) }
             return
         }
@@ -404,6 +406,7 @@ final class HealthKitBridge: ObservableObject {
         if let age = sinceLastSync, age >= 0, age < Self.observerCoalesceWindow,
            window <= lastSyncDays {
             HealthSyncStats.recordCoalesced()
+            ForkEnergyCounters.shared.note(.hkObserverCoalesced) // fork-perf: TEMP
             // Deliberately do NOT advance the anchor here. Samples that landed AFTER that sync's reads but
             // before this wake are not in the store yet, and advancing past them would leave them to be
             // picked up only incidentally — by whatever later sync happens to re-read the same day. Leaving
@@ -494,6 +497,7 @@ final class HealthKitBridge: ObservableObject {
         let passStart = Date()
         defer {
             HealthSyncStats.recordSync(millis: Int(Date().timeIntervalSince(passStart) * 1000))
+            ForkEnergyCounters.shared.note(.hkSync, millis: .hkSyncMs, since: passStart) // fork-perf: TEMP
             finishHealthPass()
         }
         // Before syncing: pick up any read or share type this version added (#949, #2644).
@@ -840,6 +844,8 @@ final class HealthKitBridge: ObservableObject {
         guard auth == .authorized else { return }
         // From here the pass reads the rows it writes: fresh data announced later is not inside it.
         writeBackGate.readsStarted()
+        let forkWbStart = Date() // fork-perf: TEMP
+        defer { ForkEnergyCounters.shared.note(.writeBack, millis: .writeBackMs, since: forkWbStart) } // fork-perf: TEMP
         let now = Date()
         guard let fromDate = Calendar.current.date(byAdding: .day, value: -days, to: now) else { return }
         let fromTs = Int(fromDate.timeIntervalSince1970)

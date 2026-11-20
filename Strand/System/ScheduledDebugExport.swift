@@ -307,6 +307,7 @@ enum ScheduledDebugExport {
     static func register() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: bgTaskIdentifier, using: nil) { task in
             let completion = TaskCompletionGuard(task: task)
+            ForkEnergyCounters.shared.note(.bgDebugExport) // fork-perf: TEMP
             // iOS can kill the process before our work below returns if the background budget runs out;
             // report that honestly as a failure (so the run is retried) instead of leaving the task
             // marked incomplete, and instead of the old hardcoded `success: true`.

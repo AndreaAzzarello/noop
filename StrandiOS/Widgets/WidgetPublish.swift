@@ -156,6 +156,7 @@ extension WidgetSnapshot {
         if renderedContentChanged(from: previous, to: snap) {
             snap.save(previousSeries: previous?.hrSeries ?? [])
             WidgetCenter.shared.reloadAllTimelines()
+            ForkEnergyCounters.shared.note(.widgetReload) // fork-perf: TEMP
             // Android skips the update entirely when no widget is placed; WidgetKit offers no
             // synchronous way to know, so the reload still goes out and is instead recorded honestly.
             // Counting it as a reload would make a widget-removed export read exactly like a

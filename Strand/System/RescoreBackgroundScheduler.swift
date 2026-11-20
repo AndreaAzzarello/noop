@@ -297,6 +297,7 @@ enum RescoreBackgroundScheduler {
                          onExpire: @escaping @MainActor () -> Void = {}) {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: taskIdentifier, using: nil) { task in
             let completion = TaskCompletionGuard(task: task)
+            ForkEnergyCounters.shared.note(.bgRescore) // fork-perf: TEMP
             let worker = Task { @MainActor in
                 await operation()
                 guard !Task.isCancelled else { return }

@@ -23,6 +23,7 @@ struct NOOPWatchApp: App {
     @StateObject private var liveHR = WatchLiveHR()
 
     init() {
+        WatchEnergyCounters.note(.appLaunch) // fork-perf: TEMP
         #if DEBUG
         Self.seedDemoSnapshotIfNeeded()
         #endif

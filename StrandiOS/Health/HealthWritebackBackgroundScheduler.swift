@@ -17,6 +17,7 @@ enum HealthWritebackBackgroundScheduler {
     static func register(perform operation: @escaping @MainActor () async -> Bool) {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: taskIdentifier, using: nil) { task in
             let completion = TaskCompletionGuard(task: task)
+            ForkEnergyCounters.shared.note(.bgHealthWriteback) // fork-perf: TEMP
             let worker = Task { @MainActor in
                 // Refresh requests are single-shot. Arm the successor before doing any HealthKit work so
                 // expiration cannot leave periodic export permanently unscheduled.

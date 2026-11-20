@@ -66,12 +66,14 @@ final class WatchScoreStore: NSObject, ObservableObject, WCSessionDelegate {
     /// Apply a freshly received snapshot: store it, publish to the glance, refresh the complication.
     /// Hops to the main actor because it touches @Published state and WidgetCenter.
     private func apply(_ snap: WatchScoreSnapshot) {
+        WatchEnergyCounters.note(.contextReceived) // fork-perf: TEMP
         persist(snap)
         DispatchQueue.main.async {
             self.snapshot = snap
             // The phone just pushed new scores, so pull the complication timelines forward now rather
             // than waiting for WidgetKit's own cadence.
             WidgetCenter.shared.reloadAllTimelines()
+            WatchEnergyCounters.note(.complicationReload) // fork-perf: TEMP
         }
     }
 

@@ -392,6 +392,7 @@ enum CoachBriefScheduler {
         logBackgroundFailure = log
         BGTaskScheduler.shared.register(forTaskWithIdentifier: bgTaskIdentifier, using: nil) { task in
             let completion = TaskCompletionGuard(task: task)
+            ForkEnergyCounters.shared.note(.bgCoachBrief) // fork-perf: TEMP
             let worker = Task { @MainActor in
                 task.expirationHandler = { completion.finish(success: false) }
                 guard isEnabled else {

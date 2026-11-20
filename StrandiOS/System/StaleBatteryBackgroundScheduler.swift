@@ -31,6 +31,7 @@ enum StaleBatteryBackgroundScheduler {
     static func register(perform operation: @escaping @MainActor () async -> Void) {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: taskIdentifier, using: nil) { task in
             let completion = TaskCompletionGuard(task: task)
+            ForkEnergyCounters.shared.note(.bgStaleBattery) // fork-perf: TEMP
             let worker = Task { @MainActor in
                 // Arm the successor FIRST. A refresh request is single-shot, so doing the work before
                 // re-arming means one expiry leaves the warning permanently unscheduled, which is the

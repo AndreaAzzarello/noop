@@ -221,6 +221,7 @@ final class WatchSessionBridge: NSObject, ObservableObject {
             // updateApplicationContext replaces any previous context, so the watch always gets exactly
             // the latest snapshot and never a queued backlog.
             try session.updateApplicationContext([Self.contextKey: data])
+            ForkEnergyCounters.shared.note(.watchPush) // fork-perf: TEMP
         } catch {
             // A failed context update is non-fatal: the app-group mirror above still carries the latest
             // value, and the next dashboard refresh will try again.

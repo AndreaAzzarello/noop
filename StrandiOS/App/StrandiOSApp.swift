@@ -99,6 +99,7 @@ struct StrandiOSApp: App {
         // iOS's own daily report of NOOP's CPU, memory, disk writes, hangs and exits, and its crash/hang reports,
         // one strap-log line each. Registering is the whole cost; iOS gathers and delivers them (MetricKitLog).
         MetricKitLog.shared.attach(to: model.live)
+        ForkMetricKitProbe.shared.attach() // fork-perf: TEMP
         // The buzz and the strap-gesture claim are injected, so the controller itself knows nothing
         // about BLE and stays testable.
         let liftSession = LiftSessionController(
@@ -403,6 +404,7 @@ struct StrandiOSApp: App {
                     await watch.pushLatest(from: model)
                 }
             } else if phase == .background {
+                ForkEnergyCounters.shared.flush() // fork-perf: TEMP
                 // Re-submit on every transition because iOS may discard an old best-effort request.
                 HealthWritebackBackgroundScheduler.updateSchedule(
                     isAuthorized: health.auth == .authorized)

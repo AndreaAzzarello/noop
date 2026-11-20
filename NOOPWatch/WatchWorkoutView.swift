@@ -387,6 +387,7 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
                     self.builder = recoveredBuilder
                     self.elapsed = recoveredBuilder.elapsedTime
                     self.phase = recovered.state == .paused ? .paused : .active
+                    WatchEnergyCounters.note(.workoutRecovered) // fork-perf: TEMP
                 default:
                     recovered.end()
                     recoveredBuilder.discardWorkout()
@@ -462,6 +463,7 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
 
             let begin = Date()
             session.startActivity(with: begin)
+            WatchEnergyCounters.note(.workoutStart) // fork-perf: TEMP
             builder.beginCollection(withStart: begin) { [weak self] success, _ in
                 DispatchQueue.main.async {
                     guard success else {
@@ -533,6 +535,7 @@ final class WatchWorkoutSession: NSObject, ObservableObject {
                     // alive and keeps the app running in the background. Always end it, saved or not.
                     session.end()
                     StrandHaptic.success.play()  // milestone: the workout is banked to HealthKit
+                    WatchEnergyCounters.note(.workoutEnd) // fork-perf: TEMP
                     self?.phase = .saved
                     self?.session = nil
                     self?.builder = nil

@@ -61,6 +61,7 @@ final class WatchLiveHR: ObservableObject {
         #if canImport(HealthKit)
         wantsStreaming = false
         if let query { store.stop(query) }
+        if query != nil { WatchEnergyCounters.note(.hrQueryStop) } // fork-perf: TEMP
         query = nil
         #endif
     }
@@ -92,6 +93,7 @@ final class WatchLiveHR: ObservableObject {
         }
         query = q
         store.execute(q)
+        WatchEnergyCounters.note(.hrQueryStart) // fork-perf: TEMP
     }
 
     /// Pull the newest sample out of a batch and publish its BPM. Reads can arrive on a background queue,

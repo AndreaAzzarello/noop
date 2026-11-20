@@ -35,6 +35,7 @@ struct WatchGlanceView: View {
         .onDisappear { isVisible = false; syncHR() }
         .onChange(of: scenePhase) { _, _ in syncHR() }
         .onChange(of: isLuminanceReduced) { _, _ in syncHR() }
+        .watchEnergyReport() // fork-perf: TEMP
     }
 
     private func syncHR() {
