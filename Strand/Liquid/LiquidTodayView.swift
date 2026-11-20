@@ -120,6 +120,13 @@ struct LiquidTodayView: View {
     @AppStorage("today.keyMetricsWindowDays") private var keyMetricsWindowDays = 14
     @State private var kSparks: [String: [(String, Double)]] = [:]
     private var enabledKeyMetrics: [KeyMetric] { KeyMetricPrefs.decodeEnabled(keyMetricsRaw) }
+    // fork: the tiles actually drawn: no ring score while the rings show, no Blood Oxygen tile with no value (its
+    // value rule is the tile's own: today's or the carried prior row, or the opt-in candidate).
+    private var shownKeyMetrics: [KeyMetric] {
+        TodayDedup.keyMetrics(enabledKeyMetrics, heroVisible: sectionOrder.contains(.hero),
+                              hasBloodOxygenValue: displayDay?.spo2Pct != nil || vitalsDay?.spo2Pct != nil
+                                  || PuffinExperiment.spo2CandidateDisplayEnabled)
+    }
 
     /// #1001: TODAY's in-progress Effort, scored live in `load()` over the same window this view already
     /// resolves for its other reads. nil for a navigated past day, and nil when the scorer has too few
@@ -386,9 +393,13 @@ struct LiquidTodayView: View {
                         case .liveSession: if liveSessionsBeta { liveSessionStartRow }
                         case .synthesis: synthesisSection
                         case .keyMetrics: keyMetricsSection
-                        case .workouts: lastWorkoutsSection
+                        case .workouts:
+                            if TodayDedup.showsLastWorkouts(todaysWorkoutShownAbove: selectedDayOffset == 0
+                                && !TodayWorkoutSummary.todaysWorkouts(workouts, now: Date()).isEmpty) { lastWorkoutsSection } // fork
                         case .heartRate: heartRateSection
-                        case .recoveryVitals: recoveryVitalsSection
+                        case .recoveryVitals:
+                            if TodayDedup.showsRecoveryVitals(keyMetricsVisible: sectionOrder.contains(.keyMetrics),
+                                                              shownKeyMetrics: shownKeyMetrics) { recoveryVitalsSection } // fork
                         case .yourCards: yourCardsSection
                         case .menstrualCycle:
                             if selectedDayOffset == 0 { MenstrualCycleHomeCard() }
@@ -1383,7 +1394,7 @@ struct LiquidTodayView: View {
                 ),
                 spacing: NoopMetrics.gap
             ) {
-                ForEach(enabledKeyMetrics) { metric in
+                ForEach(shownKeyMetrics) { metric in // fork
                     ktileFor(metric, hrv: hrv, rhr: rhr)
                 }
             }

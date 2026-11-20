@@ -1937,7 +1937,8 @@ struct TodayView: View {
         case .heartRate:
             heartRateTrendSection
         case .recoveryVitals:
-            recoveryVitalsSection
+            if TodayDedup.showsRecoveryVitals(keyMetricsVisible: sectionOrder.contains(.keyMetrics),
+                                              shownKeyMetrics: enabledKeyMetrics) { recoveryVitalsSection } // fork
         case .yourCards:
             yourCardsSection
         case .menstrualCycle:
@@ -3601,8 +3602,8 @@ struct TodayView: View {
                         points: hrPoints,
                         sleep: sleepSpan,
                         workouts: workoutSpans,
-                        recovery: recoveryMarker,
-                        effort: effortMarker,
+                        recovery: TodayDedup.showsHRChartMarkers(heroVisible: sectionOrder.contains(.hero)) ? recoveryMarker : nil, // fork
+                        effort: TodayDedup.showsHRChartMarkers(heroVisible: sectionOrder.contains(.hero)) ? effortMarker : nil,
                         gradient: Gradient(colors: [StrandPalette.metricRose.opacity(0.55), StrandPalette.metricRose]),
                         valueRange: hrRange(v),
                         xRange: hrAxis,
@@ -4166,7 +4167,7 @@ struct TodayView: View {
         // #1702: window HERE, not on `workouts`. That array is shared — it also feeds the Data Sources
         // Apple-workout count and the HR chart's sport glyphs, both all-time by design — so windowing it
         // at the source would silently shrink two unrelated numbers on this same screen.
-        let recent = Self.recentWorkoutsFeed(workouts)
+        let recent = TodayDedup.excludingToday(Self.recentWorkoutsFeed(workouts), isViewingToday: selectedDayOffset == 0, now: Date()) // fork
         if !recent.isEmpty {
             VStack(alignment: .leading, spacing: NoopMetrics.gap) {
                 // "14 days" describes the window, like Android's today_workouts_14_days. The old
