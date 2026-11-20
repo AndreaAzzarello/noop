@@ -196,7 +196,11 @@ final class SmartWakeAlarmScheduler {
         }
         let names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
         for weekday in 1...7 {
-            rows.append("\(names[weekday - 1]): live slot \(activeSlot(for: weekday) == 0 ? "A" : "B"), A \(flag(Self.fallbackID(weekday: weekday, slot: 0))), B \(flag(Self.fallbackID(weekday: weekday, slot: 1)))")
+            var alarmText = ""
+            if let slot = loadSchedule()?.alarmProjection[weekday] {   // fork: which alarm this weekday belongs to
+                alarmText = ", alarm \(clock(slot.minutes))" + (slot.label.map { " \"\($0)\"" } ?? "")
+            }
+            rows.append("\(names[weekday - 1]): live slot \(activeSlot(for: weekday) == 0 ? "A" : "B"), A \(flag(Self.fallbackID(weekday: weekday, slot: 0))), B \(flag(Self.fallbackID(weekday: weekday, slot: 1)))\(alarmText)")
         }
         if let raw = defaults.string(forKey: earlyAlarmIDKey), let id = UUID(uuidString: raw) {
             rows.append("Early alarm: \(present.contains(id) ? "armed" : "not armed"), weekday \(defaults.integer(forKey: earlyAlarmWeekdayKey)), scheduled flag \(defaults.bool(forKey: earlyAlarmScheduledKey))")
@@ -453,13 +457,26 @@ final class SmartWakeAlarmScheduler {
         // An iOS update can silently drop or silence AlarmKit alarms, so a changed OS build forces
         // one reinstall of the fallbacks. It goes through the idle-slot swap, never through zero.
         let osChanged = defaults.string(forKey: lastOSVersionKey) != Self.currentOSVersion
-        if defaults.bool(forKey: enabledKey), loadSchedule() == schedule, !osChanged { return .unchanged }
-
-        log("sync: reinstalling fallbacks (\(osChanged ? "iOS build changed" : "schedule changed"))")
+        // fork: decide from what differs on the device, not from whether the schedule struct differs. After a disable the
+        // saved schedule outlives the alarms it described, so it only counts as "what is installed" while enabled.
+        let wasEnabled = defaults.bool(forKey: enabledKey)
+        let plan = SmartWakeSyncPlan.make(previous: wasEnabled ? loadSchedule() : nil, next: schedule, osChanged: osChanged)
+        switch plan {
+        case .nothing:
+            return .unchanged
+        case .metadataOnly:
+            // A window, insistence or the spelling of "every day" changed; every system alarm is already right.
+            saveSchedule(schedule)
+            log("sync: schedule metadata updated, no alarm change")
+            return .unchanged
+        case let .alarms(install, remove):
+            log("sync: reinstalling weekdays \(install.sorted()), removing \(remove.sorted()) "
+                + "(\(osChanged ? "iOS build changed" : "schedule changed"))")
+        }
         defaults.set(true, forKey: enabledKey)
         do {
-            try await replaceFallbacks(with: schedule)
-            log("sync finished: all fallbacks scheduled")
+            try await replaceFallbacks(with: schedule, plan: plan)
+            log("sync finished: scheduled weekdays up to date")
             return .synced
         } catch {
             log("sync failed, existing alarms kept, will retry: \(error.localizedDescription)")
@@ -662,7 +679,7 @@ final class SmartWakeAlarmScheduler {
                 else { return false }
                 configuration = Self.alarmConfiguration(
                     schedule: .fixed(nextOccurrence),
-                    title: SmartWakeAlarmTitle.wake(hour: minutes / 60, minute: minutes % 60),
+                    title: SmartWakeAlarmTitle.wake(hour: minutes / 60, minute: minutes % 60, label: schedule.label(onWeekday: weekday)),
                     stopIntent: SmartWakeRearmIntent(weekday: weekday, skipCurrentOccurrence: false)
                 )
             } else {
@@ -672,7 +689,7 @@ final class SmartWakeAlarmScheduler {
                 )
                 configuration = Self.alarmConfiguration(
                     schedule: .relative(relative),
-                    title: SmartWakeAlarmTitle.wake(hour: minutes / 60, minute: minutes % 60),
+                    title: SmartWakeAlarmTitle.wake(hour: minutes / 60, minute: minutes % 60, label: schedule.label(onWeekday: weekday)),
                     stopIntent: nil
                 )
             }
@@ -728,10 +745,14 @@ final class SmartWakeAlarmScheduler {
     /// A failure on one day keeps that day's existing alarm and does not stop the others; the first
     /// failure is thrown after the pass. The saved schedule advances only when every day succeeded,
     /// so a later sync retries.
-    private func replaceFallbacks(with schedule: SmartWakeSchedule) async throws {
+    private func replaceFallbacks(with schedule: SmartWakeSchedule, plan: SmartWakeSyncPlan? = nil) async throws {
         let selectedDays = schedule.weekdays.isEmpty ? Set(1...7) : schedule.weekdays
+        // fork: with a plan only the weekdays whose alarm changed are installed and only the dropped ones removed; without
+        // one (the first enable) every selected weekday is installed and every other one cleared, as before.
+        let installDays = plan.map { $0.installDays.intersection(selectedDays) } ?? selectedDays
+        let removeDays = plan?.removeDays ?? Set(1...7).subtracting(selectedDays)
         var firstFailure: SmartWakeSchedulingError?
-        for weekday in selectedDays.sorted() {
+        for weekday in installDays.sorted() {
             guard let localeWeekday = Self.localeWeekday(for: weekday) else { continue }
 
             let minutes = schedule.wakeMinutes(onWeekday: weekday)
@@ -741,7 +762,7 @@ final class SmartWakeAlarmScheduler {
             )
             let configuration = Self.alarmConfiguration(
                 schedule: .relative(relative),
-                title: SmartWakeAlarmTitle.wake(hour: minutes / 60, minute: minutes % 60),
+                title: SmartWakeAlarmTitle.wake(hour: minutes / 60, minute: minutes % 60, label: schedule.label(onWeekday: weekday)),
                 stopIntent: nil
             )
             do {
@@ -757,15 +778,13 @@ final class SmartWakeAlarmScheduler {
             }
         }
 
-        for weekday in 1...7 where !selectedDays.contains(weekday) {
+        for weekday in removeDays.sorted() {
             for id in fallbackIDs(for: weekday) { try? manager.cancel(id: id) }
         }
 
         if let firstFailure { throw firstFailure }
 
-        if let data = try? JSONEncoder().encode(schedule) {
-            defaults.set(data, forKey: scheduleKey)
-        }
+        saveSchedule(schedule)
         // Recorded only after a fully successful pass, so a failed one is retried at the next foreground.
         defaults.set(Self.currentOSVersion, forKey: lastOSVersionKey)
     }
@@ -784,6 +803,11 @@ final class SmartWakeAlarmScheduler {
         defaults.removeObject(forKey: earlyAlarmWeekdayKey)
         defaults.removeObject(forKey: earlyAlarmScheduledKey)
         defaults.removeObject(forKey: earlyKeepsFallbackKey)
+    }
+
+    /// Writes the saved schedule only when its bytes differ (`SmartWakeSchedule` encodes deterministically).
+    private func saveSchedule(_ schedule: SmartWakeSchedule) {
+        if let data = try? JSONEncoder().encode(schedule) { defaults.setIfChanged(data, forKey: scheduleKey) }
     }
 
     private func loadSchedule() -> SmartWakeSchedule? {

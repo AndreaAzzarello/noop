@@ -6,10 +6,12 @@ import Foundation
 /// The title is fixed when the alarm is scheduled; it never takes part in sync or reconcile decisions.
 enum SmartWakeAlarmTitle {
 
-    /// "Smart Wake · 07:15" for an alarm that rings at a fixed time of day (the maximum-time fallbacks).
-    static func wake(hour: Int, minute: Int) -> LocalizedStringResource {
+    /// "Smart Wake · 07:15" for an alarm that rings at a fixed time of day (the maximum-time fallbacks), or
+    /// "Work · 07:15" when the alarm has a label.
+    static func wake(hour: Int, minute: Int, label: String? = nil) -> LocalizedStringResource {
         let date = Calendar.current.date(from: DateComponents(hour: hour, minute: minute)) ?? Date()
-        return wake(at: date)
+        guard let label, !label.isEmpty else { return wake(at: date) }
+        return LocalizedStringResource("\(label) · \(time(date))", table: "Fork")
     }
 
     /// "Smart Wake · 07:15" for a one-shot alarm that rings at `date`.
