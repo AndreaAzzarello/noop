@@ -390,3 +390,16 @@ extension SmartWakeAlarmBook {
         return lines
     }
 }
+
+extension SmartWakeAlarmMigration {
+    /// Whether the upstream settings now differ from the ones the list was first made from (so the list, mirroring, has
+    /// changed them). Empty weekdays and all seven are the same selection. False when no snapshot exists.
+    static func mirroredValuesDiffer(snapshot: UpstreamSnapshot?, minutes: Int, weekdays: Set<Int>, overrides: [Int: Int]) -> Bool {
+        guard let snapshot else { return false }
+        func days(_ set: Set<Int>) -> Set<Int> { set.isEmpty ? Set(1...7) : set }
+        let current = UpstreamSnapshot(minutes: minutes, weekdays: weekdays, overrides: overrides)
+        return current.minutes != snapshot.minutes
+            || days(Set(current.weekdays)) != days(Set(snapshot.weekdays))
+            || current.overrides != snapshot.overrides
+    }
+}

@@ -231,4 +231,17 @@ final class SmartWakeAlarmBookTests: XCTestCase {
         XCTAssertTrue(lines.contains { $0.contains("WARNING") && $0.contains("3") })
         XCTAssertFalse(SmartWakeAlarmBook(alarms: [work]).diagnosticLines().contains { $0.contains("WARNING") })
     }
+
+    func testMirroredValuesDifferOnlyWhenTheUpstreamSettingsMoved() {
+        let snapshot = SmartWakeAlarmMigration.UpstreamSnapshot(minutes: 420, weekdays: [], overrides: [7: 600])
+        func differ(_ minutes: Int, _ weekdays: Set<Int>, _ overrides: [Int: Int]) -> Bool {
+            SmartWakeAlarmMigration.mirroredValuesDiffer(snapshot: snapshot, minutes: minutes, weekdays: weekdays, overrides: overrides)
+        }
+        XCTAssertFalse(differ(420, [], [7: 600]))
+        XCTAssertFalse(differ(420, Set(1...7), [7: 600]), "every day, in either spelling")
+        XCTAssertTrue(differ(430, [], [7: 600]))
+        XCTAssertTrue(differ(420, [2, 3], [7: 600]))
+        XCTAssertTrue(differ(420, [], [:]))
+        XCTAssertFalse(SmartWakeAlarmMigration.mirroredValuesDiffer(snapshot: nil, minutes: 1, weekdays: [2], overrides: [:]))
+    }
 }

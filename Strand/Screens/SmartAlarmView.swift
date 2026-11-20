@@ -243,6 +243,9 @@ struct SmartAlarmView: View {
 
                 if behavior.smartAlarmEnabled {
                     Divider().overlay(StrandPalette.hairline)
+                    if smartWakeListOwnsSchedule {   // fork: the Smart Wake alarm list owns the time and the days (one editor per fact)
+                        SmartWakeManagedScheduleRow(next: nextStrapAlarmLabel)
+                    } else {
                     HStack {
                         Text("Wake at").font(StrandFont.body).foregroundStyle(StrandPalette.textPrimary)
                         Spacer()
@@ -268,6 +271,8 @@ struct SmartAlarmView: View {
                     }
                     Divider().overlay(StrandPalette.hairline)
                     alarmWeekdayPicker
+                    SmartWakeMirroredNote(minutes: behavior.smartAlarmMinutes, weekdays: behavior.smartAlarmWeekdays, overrides: overrides)   // fork
+                    }
                     // #864: a WHOOP 5/MG only arms its firmware alarm when Protocol probes is on (see
                     // BLEManager.armStrapAlarm, which logs "not armed" and returns otherwise). Without this
                     // branch the card claimed "Armed on the strap itself" to a 5/MG owner whose strap was
@@ -404,11 +409,22 @@ struct SmartAlarmView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    Divider().overlay(StrandPalette.hairline)
-                    perDaySection
+                    if !smartWakeListOwnsSchedule {   // fork: the list edits per-day times
+                        Divider().overlay(StrandPalette.hairline)
+                        perDaySection
+                    }
                 }
             }
         }
+    }
+
+    /// fork: true while Smart Wake is on and its alarm list exists; the list then edits the strap alarm's time and days.
+    private var smartWakeListOwnsSchedule: Bool {
+        #if os(iOS) && canImport(AlarmKit)
+        return SmartWakeScheduleOwnership.listOwns(smartWakeEnabled: behavior.smartWakeEnabled)
+        #else
+        return false
+        #endif
     }
 
     // PR#554 — per-day wake overrides. A toggle reveals a per-weekday wake-time editor; with it off (or no

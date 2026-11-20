@@ -132,6 +132,18 @@
         }
       }
     },
+    "Change them in the Smart Wake card below." : {
+      "comment" : "Alarms screen hint.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modificali nella card Smart Wake qui sotto."
+          }
+        }
+      }
+    },
     "Choose an activity" : {
       "comment" : "Title of the full activity browser opened from the sport chips.",
       "extractionState" : "manual",
@@ -606,6 +618,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Prossima sveglia"
+          }
+        }
+      }
+    },
+    "Next buzz %@." : {
+      "comment" : "Alarms screen: next strap buzz.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prossima vibrazione: %@."
           }
         }
       }
@@ -1200,6 +1224,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Questa sveglia mantiene orari diversi per alcuni giorni."
+          }
+        }
+      }
+    },
+    "Times and days come from your Smart Wake alarms." : {
+      "comment" : "Alarms screen: replaces the strap alarm time and day editors.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orari e giorni arrivano dalle tue sveglie Smart Wake."
+          }
+        }
+      }
+    },
+    "Times updated from your Smart Wake alarms." : {
+      "comment" : "Alarms screen note when the mirrored values differ from the original ones.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orari aggiornati dalle sveglie Smart Wake."
           }
         }
       }

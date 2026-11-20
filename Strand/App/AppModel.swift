@@ -1695,12 +1695,13 @@ final class AppModel: ObservableObject {
     }
 
     func applySmartAlarm() {
+        if SmartWakeArmHold.shared.swallows() { return }   // fork: a Smart Wake list change is writing these settings; it arms once when done
         #if os(iOS) && canImport(AlarmKit)
         applySmartWakeSchedule()
         #endif
         if SmartWakeFirmwareWake.holdsAlarm(arm: { ble.armStrapAlarm(at: $0) }) { return }   // a Smart Wake run owns the strap alarm
         let overrides = WindDownNudge.perDayWakeOverrides
-        guard behavior.smartAlarmEnabled else {
+        guard behavior.smartAlarmEnabled, SmartWakeScheduleOwner.allowsStrapAlarm(smartWakeEnabled: behavior.smartWakeEnabled) else {   // fork: no active Smart Wake alarm, nothing to arm
             ble.disableStrapAlarm()
             Self.cancelSmartAlarmBackupNotification()
             return
