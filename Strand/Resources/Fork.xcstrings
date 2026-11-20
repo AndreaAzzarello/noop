@@ -49,6 +49,17 @@
         }
       }
     },
+    "Apple Health would not remove earlier NOOP samples, so new ones were not written to avoid duplicates." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salute non ha rimosso i campioni NOOP precedenti, quindi quelli nuovi non sono stati scritti per evitare duplicati."
+          }
+        }
+      }
+    },
     "Bedtime tonight" : {
       "comment" : "Row label: latest bedtime that still gives the sleep need.",
       "extractionState" : "manual",

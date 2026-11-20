@@ -1062,6 +1062,7 @@ final class HealthKitBridge: ObservableObject {
         for (type, keys) in retracted { retracted[type] = keys.filter { ledgerPlan.dirty.contains($0) } }
         retracted = retracted.filter { !$0.value.isEmpty }
         var ledgerDeleteFailed = false
+        var failedDeleteTypes = Set<HKQuantityType>() // fork-perf: a type whose delete threw is not saved (see below)
         guard !candidates.isEmpty || !retracted.isEmpty else { ledger.commit(ledgerPlan); return }
 
         // Delete any of OUR prior samples that carry the same metadata keys, then write the fresh
@@ -1077,18 +1078,22 @@ final class HealthKitBridge: ObservableObject {
                                                     allowedValues: keys)
             let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [bySource, byKey])
             let deleted = await HealthWriteBackLedgerHK.delete(self.store, of: type, predicate: pred) // fork-perf: ledger (was try?)
-            if deleted == nil { ledgerDeleteFailed = true }
+            if deleted == nil { ledgerDeleteFailed = true; failedDeleteTypes.insert(type) }
             ForkEnergyCounters.shared.note(.hkVitalsDeleted, by: deleted ?? 0) // fork-perf: TEMP
             if deleted == nil { ForkEnergyCounters.shared.note(.hkDeleteFailed) } // fork-perf: TEMP
         }
-        guard !candidates.isEmpty else { ledger.settle(ledgerPlan, deleteFailed: ledgerDeleteFailed); return } // fork-perf: ledger
-        do { try await self.store.save(candidates.map { $0.sample }) } catch { // fork-perf: ledger
-            ledger.invalidate(.vitals)
-            ForkEnergyCounters.shared.note(.hkSaveFailed) // fork-perf: TEMP
-            throw error
+        // fork-perf: a type whose delete threw is NOT saved: its earlier samples may still be in Health and a save would
+        // sit beside them as a duplicate. The section is invalidated, so the next pass rewrites it.
+        let savable = candidates.filter { !failedDeleteTypes.contains($0.type) }
+        if !savable.isEmpty {
+            do { try await self.store.save(savable.map { $0.sample }) } catch {
+                ledger.invalidate(.vitals)
+                ForkEnergyCounters.shared.note(.hkSaveFailed) // fork-perf: TEMP
+                throw error
+            }
+            ForkEnergyCounters.shared.note(.hkVitalsWritten, by: savable.count) // fork-perf: TEMP
         }
-        ForkEnergyCounters.shared.note(.hkVitalsWritten, by: candidates.count) // fork-perf: TEMP
-        ledger.settle(ledgerPlan, deleteFailed: ledgerDeleteFailed) // fork-perf: ledger
+        try ledger.settleOrFail(ledgerPlan, deleteFailed: ledgerDeleteFailed)
     }
 
     /// Write each BRIDGED NIGHT (#364) as one `.inBed` sample plus one category sample per stage
@@ -1161,13 +1166,15 @@ final class HealthKitBridge: ObservableObject {
         let deleted = await HealthWriteBackLedgerHK.delete(store, of: type, predicate: pred) // fork-perf: ledger (was try?)
         ForkEnergyCounters.shared.note(.hkSleepDeleted, by: deleted ?? 0) // fork-perf: TEMP
         if deleted == nil { ForkEnergyCounters.shared.note(.hkDeleteFailed) } // fork-perf: TEMP
-        do { try await store.save(samples) } catch { // fork-perf: ledger
+        // fork-perf: delete threw: no save (the old night may still be there and a save would duplicate it); retry next pass.
+        guard deleted != nil else { try ledger.settleOrFail(ledgerPlan, deleteFailed: true); return }
+        do { try await store.save(samples) } catch {
             ledger.invalidate(.sleep)
             ForkEnergyCounters.shared.note(.hkSaveFailed) // fork-perf: TEMP
             throw error
         }
         ForkEnergyCounters.shared.note(.hkSleepWritten, by: samples.count) // fork-perf: TEMP
-        ledger.settle(ledgerPlan, deleteFailed: deleted == nil) // fork-perf: ledger
+        try ledger.settleOrFail(ledgerPlan, deleteFailed: false)
     }
 
     /// UserDefaults key for the HR write cursor (the newest bucket ts we've written). Per-strap so a
@@ -1214,6 +1221,9 @@ final class HealthKitBridge: ObservableObject {
         let hrDelete = await HealthWriteBackLedgerHK.deleteHeartRate(store, type: type, plan: ledgerPlan, hours: hrHours, wholeWindow: pred) // fork-perf: ledger (was try?)
         ForkEnergyCounters.shared.note(.hkHeartRateDeleted, by: hrDelete.deleted) // fork-perf: TEMP
         if hrDelete.failed { ForkEnergyCounters.shared.note(.hkDeleteFailed) } // fork-perf: TEMP
+        // fork-perf: a delete that threw (it was a swallowed try?) means no save and no cursor move: the window may still
+        // hold the old samples, so saving would duplicate them. The ledger is invalidated; the next pass rewrites it.
+        if hrDelete.failed { try ledger.settleOrFail(ledgerPlan, deleteFailed: true, enabled: ledgerOn); return }
 
         let unit = HKUnit.count().unitDivided(by: .minute())
         var samples: [HKQuantitySample] = []
@@ -1249,7 +1259,7 @@ final class HealthKitBridge: ObservableObject {
             UserDefaults.standard.setIfChanged(lastSaved, forKey: hrWriteCursorKey)
         }
         ForkEnergyCounters.shared.note(.hkHeartRateWritten, by: samples.count) // fork-perf: TEMP
-        ledger.settle(ledgerPlan, deleteFailed: hrDelete.failed, enabled: ledgerOn) // fork-perf: ledger
+        try ledger.settleOrFail(ledgerPlan, deleteFailed: false, enabled: ledgerOn) // fork-perf: ledger
     }
 
     /// Write strap-detected and manual workouts into Health via `HKWorkoutBuilder`, with an
@@ -1385,6 +1395,8 @@ final class HealthKitBridge: ObservableObject {
         let deleted = await HealthWriteBackLedgerHK.delete(store, of: .workoutType(), predicate: pred) // fork-perf: ledger (was try?)
         ForkEnergyCounters.shared.note(.hkWorkoutsDeleted, by: deleted ?? 0) // fork-perf: TEMP
         if deleted == nil { ForkEnergyCounters.shared.note(.hkDeleteFailed) } // fork-perf: TEMP
+        // fork-perf: delete threw: write no workout (the old ones may still be there and a builder would duplicate them).
+        guard deleted != nil else { try ledger.settleOrFail(ledgerPlan, deleteFailed: true); return }
 
         for row in rows {
             let start = Date(timeIntervalSince1970: TimeInterval(row.startTs))
@@ -1448,7 +1460,7 @@ final class HealthKitBridge: ObservableObject {
             }
         }
         ForkEnergyCounters.shared.note(.hkWorkoutsWritten, by: rows.count) // fork-perf: TEMP
-        ledger.settle(ledgerPlan, deleteFailed: deleted == nil) // fork-perf: ledger
+        try ledger.settleOrFail(ledgerPlan, deleteFailed: false) // fork-perf: ledger
     }
 
     /// Reverse of `sportName`: NOOP's sport label → the `HKWorkoutActivityType` written to Health.

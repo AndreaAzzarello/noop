@@ -62,7 +62,8 @@ final class HealthWriteBackLedgerTests: XCTestCase {
         XCTAssertEqual(p.removed, ["b"])
         XCTAssertTrue(p.dirty.isEmpty)
         s.commit(p, now: t0.addingTimeInterval(60), enabled: true)
-        XCTAssertEqual(s.snapshot().sections["workouts"]?.fingerprints.keys.sorted(), ["a"])
+        let after = s.plan(.workouts, desired: desired([("a", 1)]), scope: scope, now: t0.addingTimeInterval(120), enabled: true)
+        XCTAssertTrue(after.removed.isEmpty, "committing drops the key the pass no longer produces")
     }
 
     func testTTLForcesFullRewrite() {
@@ -117,7 +118,8 @@ final class HealthWriteBackLedgerTests: XCTestCase {
     func testPlanAloneNeverMovesTheLedger() {
         let s = store()
         _ = s.plan(.vitals, desired: desired([("a", 1)]), scope: scope, now: t0, enabled: true)
-        XCTAssertTrue(s.snapshot().sections.isEmpty, "only commit, after a successful save, may move it")
+        XCTAssertTrue(s.plan(.vitals, desired: desired([("a", 1)]), scope: scope, now: t0, enabled: true).fullRewrite,
+                      "only commit, after a successful save, may move it")
     }
 
     func testFailureInvalidatesTheSectionOnly() {
@@ -136,8 +138,33 @@ final class HealthWriteBackLedgerTests: XCTestCase {
         XCTAssertFalse(s.recordFailure(.heartRate))
         XCTAssertFalse(s.recordFailure(.heartRate))
         XCTAssertTrue(s.recordFailure(.heartRate))
-        s.recordSuccess(.heartRate)
+        s.commit(s.plan(.heartRate, desired: desired([("a", 1)]), scope: scope, now: t0, enabled: true), now: t0, enabled: true)
         XCTAssertFalse(s.recordFailure(.heartRate), "a success resets the run")
+    }
+
+    func testSettleOrFailThrowsOnTheThirdFailedDeleteInARow() throws {
+        let s = store()
+        let d = desired([("a", 1)])
+        func attempt(_ at: Double) throws {
+            let plan = s.plan(.heartRate, desired: d, scope: scope, now: t0.addingTimeInterval(at), enabled: true)
+            try s.settleOrFail(plan, deleteFailed: true, now: t0, enabled: true)
+        }
+        try attempt(0)
+        try attempt(60)
+        XCTAssertThrowsError(try attempt(120)) { XCTAssertTrue($0 is HealthWriteBackDeleteError) }
+        // Every failed pass invalidated the section, so the next one is a full rewrite.
+        XCTAssertTrue(s.plan(.heartRate, desired: d, scope: scope, now: t0.addingTimeInterval(180), enabled: true).fullRewrite)
+    }
+
+    func testSettleOrFailCommitsOnSuccessAndResetsTheRun() throws {
+        let s = store()
+        let d = desired([("a", 1)])
+        let first = s.plan(.sleep, desired: d, scope: scope, now: t0, enabled: true)
+        try s.settleOrFail(first, deleteFailed: true, now: t0, enabled: true)
+        try s.settleOrFail(first, deleteFailed: true, now: t0, enabled: true)
+        try s.settleOrFail(first, deleteFailed: false, now: t0, enabled: true)
+        XCTAssertFalse(s.plan(.sleep, desired: d, scope: scope, now: t0.addingTimeInterval(60), enabled: true).fullRewrite)
+        try s.settleOrFail(first, deleteFailed: true, now: t0, enabled: true)   // run restarted: 1st failure is quiet
     }
 
     func testCommitResetsTheFailureRun() {
@@ -155,7 +182,6 @@ final class HealthWriteBackLedgerTests: XCTestCase {
         XCTAssertTrue(off.fullRewrite)
         XCTAssertEqual(off.dirty, ["a"])
         s.commit(off, now: t0.addingTimeInterval(60), enabled: false)
-        XCTAssertTrue(s.snapshot().sections.isEmpty, "off: nothing recorded, and the old entry is gone")
         // Switching back on must not trust anything from before.
         XCTAssertTrue(s.plan(.vitals, desired: d, scope: scope, now: t0.addingTimeInterval(120), enabled: true).fullRewrite)
     }

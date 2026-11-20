@@ -245,14 +245,19 @@ final class HealthWriteBackLedgerStore: @unchecked Sendable {
         save()
     }
 
-    /// End of a section's pass: commit it, unless a delete failed, in which case the section is invalidated so the
-    /// next pass rewrites all of it.
-    func settle(_ plan: HealthWriteBackLedger.Plan, deleteFailed: Bool, now: Date = Date(),
-                enabled: Bool = HealthWriteBackLedgerStore.isEnabled) {
-        if deleteFailed { invalidate(plan.section) } else { commit(plan, now: now, enabled: enabled) }
+    /// End of a section's pass. Success commits it. A failed delete invalidates the section (the next pass rewrites
+    /// all of it) and is counted: from the third pass in a row it throws, so `lastError` shows that Health keeps
+    /// refusing to remove our earlier samples. Until then it stays quiet: one refusal is usually transient.
+    func settleOrFail(_ plan: HealthWriteBackLedger.Plan, deleteFailed: Bool, now: Date = Date(),
+                      enabled: Bool = HealthWriteBackLedgerStore.isEnabled) throws {
+        if deleteFailed {
+            if recordFailure(plan.section) { throw HealthWriteBackDeleteError() }
+        } else {
+            commit(plan, now: now, enabled: enabled)
+        }
     }
 
-    /// Count a failed delete or save of `section`; true once it has failed enough passes in a row to be shown.
+    /// Count a failed delete of `section`; true once it has failed enough passes in a row to be shown.
     @discardableResult
     func recordFailure(_ section: HealthWriteBackLedger.Section) -> Bool {
         lock.lock(); defer { lock.unlock() }
@@ -261,17 +266,6 @@ final class HealthWriteBackLedgerStore: @unchecked Sendable {
         save()
         failures[section, default: 0] += 1
         return failures[section, default: 0] >= Self.surfaceAfterFailures
-    }
-
-    func recordSuccess(_ section: HealthWriteBackLedger.Section) {
-        lock.lock(); defer { lock.unlock() }
-        failures[section] = 0
-    }
-
-    func snapshot() -> HealthWriteBackLedger {
-        lock.lock(); defer { lock.unlock() }
-        load()
-        return ledger
     }
 
     private func load() {
@@ -285,5 +279,13 @@ final class HealthWriteBackLedgerStore: @unchecked Sendable {
     private func save() {
         guard let fileURL, let data = try? JSONEncoder().encode(ledger) else { return }
         try? data.write(to: fileURL, options: .atomic)
+    }
+}
+
+/// Health refused, several passes in a row, to remove our earlier samples, so the new ones were not written.
+struct HealthWriteBackDeleteError: LocalizedError {
+    var errorDescription: String? {
+        String(localized: "Apple Health would not remove earlier NOOP samples, so new ones were not written to avoid duplicates.",
+               table: "Fork")
     }
 }
