@@ -145,8 +145,8 @@ enum BatteryNotifier {
             fullAlerted: d.bool(forKey: fullAlertedKey))
         // Advance the persisted gate up front so the once-per-crossing limit holds regardless of
         // authorization or delivery — the in-app battery surfaces stay the live view either way.
-        d.set(result.newLowAlerted, forKey: lowAlertedKey)
-        d.set(result.newFullAlerted, forKey: fullAlertedKey)
+        d.setIfChanged(result.newLowAlerted, forKey: lowAlertedKey)
+        d.setIfChanged(result.newFullAlerted, forKey: fullAlertedKey)
         if result.fireLow {
             post(identifier: "battery-low",
                  title: String(localized: "Low battery"),
@@ -178,7 +178,7 @@ enum BatteryNotifier {
         let result = BatteryEstimator.runtimeAlert(remainingHours: remainingHours,
                                                    charging: charging,
                                                    alerted: d.bool(forKey: runtimeAlertedKey))
-        d.set(result.newAlerted, forKey: runtimeAlertedKey)
+        d.setIfChanged(result.newAlerted, forKey: runtimeAlertedKey)
         if result.fire {
             post(identifier: "battery-runtime",
                  title: String(localized: "Strap battery low"),
@@ -234,7 +234,7 @@ enum BatteryNotifier {
         let result = BatteryEstimator.criticalAlert(pct: pct,
                                                     charging: charging,
                                                     alerted: d.bool(forKey: criticalAlertedKey))
-        d.set(result.newAlerted, forKey: criticalAlertedKey)
+        d.setIfChanged(result.newAlerted, forKey: criticalAlertedKey)
         if result.fire {
             post(identifier: "battery-critical",
                  title: String(localized: "Charge your WHOOP now"),
@@ -265,7 +265,7 @@ enum BatteryNotifier {
                                                    usableRemainingHours: usableRemainingHours,
                                                    charging: charging,
                                                    alerted: d.bool(forKey: bedtimeAlertedKey))
-        d.set(result.newAlerted, forKey: bedtimeAlertedKey)
+        d.setIfChanged(result.newAlerted, forKey: bedtimeAlertedKey)
         if result.fire, let runway = result.runway {
             post(identifier: "battery-bedtime",
                  title: String(localized: "Won't last the night"),

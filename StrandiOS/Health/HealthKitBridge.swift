@@ -465,7 +465,7 @@ final class HealthKitBridge: ObservableObject {
     /// good cursor. (@bhelm)
     private func persistAnchor(_ anchor: HKQueryAnchor, for type: HKSampleType) {
         guard let data = try? NSKeyedArchiver.archivedData(withRootObject: anchor, requiringSecureCoding: true) else { return }
-        UserDefaults.standard.set(data, forKey: HealthKitBridge.anchorDefaultsKey(for: type))
+        UserDefaults.standard.setIfChanged(data, forKey: HealthKitBridge.anchorDefaultsKey(for: type))
     }
 
     /// UserDefaults key for a type's persisted HealthKit anchor. Namespaced so it can't collide with
@@ -1209,7 +1209,10 @@ final class HealthKitBridge: ObservableObject {
             pendingTs = pendingTs.dropFirst(chunk.count)
             try await store.save(chunk)
             lastSaved = max(lastSaved, chunkTs.last ?? lastSaved)
-            UserDefaults.standard.set(lastSaved, forKey: hrWriteCursorKey)
+            // Per chunk on purpose: a first run writes ~20k samples in 5000-sample chunks and each chunk must
+            // bank its progress, or a pass killed in the background restarts from day one every time. Only the
+            // unchanged case is skipped (a writeBack with no new heart rate re-asserts the same cursor).
+            UserDefaults.standard.setIfChanged(lastSaved, forKey: hrWriteCursorKey)
         }
     }
 

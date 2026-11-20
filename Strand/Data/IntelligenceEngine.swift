@@ -3028,7 +3028,7 @@ final class IntelligenceEngine: ObservableObject {
         // #836/#sleep-sync: record the complete raw-analysis fingerprint this run scored against, so a later
         // NON-forced tick can short-circuit while it's unchanged. Written ONLY at the end of a completed run (never on an
         // early guard-return), so an interrupted/failed run can't advance the watermark past unscored data.
-        if !wmKey.isEmpty { UserDefaults.standard.set(wmKey, forKey: Self.analyzeWatermarkKey) }
+        if !wmKey.isEmpty { UserDefaults.standard.setIfChanged(wmKey, forKey: Self.analyzeWatermarkKey) }
         markPostLoopPhase("tail")
         diagnosticSink?(AnalysisPhaseTally.logLine(scope: "postLoop", postLoopPhases), nil)
         // #1538: clear the started-mark and bank how long a COMPLETED pass costs on this install. The
