@@ -87,6 +87,10 @@ final class DisplayPerformanceMonitor {
 
         #if os(iOS)
         let link = CADisplayLink(target: self, selector: #selector(onFrame(_:)))
+        // fork-perf: TEMP. Without a range the link runs at the system default (60 Hz here), so `refresh=` in the
+        // frame lines described the monitor, not the panel. Asking for up to 120 Hz makes it a real probe of
+        // whether ProMotion is granted; read `refresh=` against 8.3 ms. Forces the display fast while it runs.
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
         link.add(to: .main, forMode: .common)
         displayLink = link
         #endif

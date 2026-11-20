@@ -1221,6 +1221,9 @@ private struct DisplayReadoutPanel: View {
         VStack(alignment: .leading, spacing: 4) {
             ReadoutRow(label: String(localized: "Device metrics"), value: metrics ?? String(localized: "reading…"))
             ReadoutRow(label: String(localized: "Frame summary"), value: frames ?? String(localized: "no window yet"))
+            // fork-perf: TEMP. Burst of 20 foreign defaults writes; see `PerfTrace.runDefaultsProbe`.
+            Button { PerfTrace.runDefaultsProbe() } label: { Text(verbatim: "Defaults probe") }
+                .buttonStyle(.plain).font(StrandFont.mono).foregroundStyle(StrandPalette.accent)
         }
         .padding(.top, 2)
     }

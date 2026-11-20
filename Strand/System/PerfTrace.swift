@@ -43,6 +43,58 @@ enum PerfTrace {
     private static var linkIntervalSum: Double = 0
     private static var linkIntervalCount = 0
 
+    // MARK: defaults attribution (TEMP)
+    // Which `UserDefaults.standard` keys changed behind each `didChangeNotification`, from a snapshot diff.
+    // `defaultsSame` counts notifications that found no difference at observation time: a rewrite of an
+    // equal value, or a write already folded into an earlier notification's diff (the notification is
+    // delivered a turn late, so two writes can share one diff). `defaultsDiffMs` is what the diff itself
+    // cost on the main thread, so this instrumentation can be discounted from the numbers it reports.
+    private static var defaultsSnapshot: [String: Any]?
+    private static var defaultsKeyChanges: [String: Int] = [:]
+    private static var defaultsSame = 0
+    private static var defaultsDiffSeconds: Double = 0
+
+    /// Fold one `didChangeNotification` into the per-key counters.
+    static func noteDefaultsNotification() {
+        guard enabled else { return }
+        let t0 = CFAbsoluteTimeGetCurrent()
+        let now = UserDefaults.standard.dictionaryRepresentation()
+        defer { defaultsDiffSeconds += CFAbsoluteTimeGetCurrent() - t0 }
+        guard let before = defaultsSnapshot else {
+            defaultsSnapshot = now
+            return
+        }
+        var changed = 0
+        for (key, value) in now {
+            if let old = before[key], (old as AnyObject).isEqual(value) { continue }
+            defaultsKeyChanges[key, default: 0] += 1
+            changed += 1
+        }
+        for key in before.keys where now[key] == nil {
+            defaultsKeyChanges[key, default: 0] += 1
+            changed += 1
+        }
+        if changed == 0 { defaultsSame += 1 }
+        defaultsSnapshot = now
+    }
+
+    /// Drop the snapshot so a monitor restart does not attribute the gap to one notification.
+    static func resetDefaultsSnapshot() { defaultsSnapshot = nil }
+
+    /// Writes `perf.probe` 20 times, one per main-queue turn 20 ms apart, so the next frame lines show whether
+    /// a burst of foreign defaults writes alone re-evaluates `root.app` / `root.tabs` / the tabs (the question
+    /// behind replacing the root `@AppStorage`s). The probe key is read by nothing.
+    static func runDefaultsProbe() {
+        guard enabled else { return }
+        emit("perf probe defaults start writes=20")
+        for i in 0..<20 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02 * Double(i)) {
+                UserDefaults.standard.set(i, forKey: "perf.probe")
+                if i == 19 { emit("perf probe defaults end") }
+            }
+        }
+    }
+
     static var enabled: Bool { DisplayPerformanceMonitor.shared.isRunning }
 
     static func emit(_ line: String) {
@@ -124,6 +176,15 @@ enum PerfTrace {
                     .map { "\($0.key)=\($0.value)/\(publishTurns[$0.key] ?? 0)" }.joined(separator: ",")
                 publishCounts.removeAll(keepingCapacity: true)
                 publishTurns.removeAll(keepingCapacity: true)
+            }
+            if !defaultsKeyChanges.isEmpty || defaultsSame > 0 {
+                out += " defaultsKeys=" + defaultsKeyChanges.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+                    .prefix(6).map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+                out += " defaultsSame=\(defaultsSame)"
+                out += " defaultsDiffMs=" + String(format: "%.1f", defaultsDiffSeconds * 1000)
+                defaultsKeyChanges.removeAll(keepingCapacity: true)
+                defaultsSame = 0
+                defaultsDiffSeconds = 0
             }
             if linkIntervalCount > 0 {
                 out += " refresh=" + String(format: "%.1f", linkIntervalSum / Double(linkIntervalCount) * 1000) + "ms"
