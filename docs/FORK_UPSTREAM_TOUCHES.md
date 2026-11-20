@@ -132,7 +132,7 @@ Measured against `upstream/main` after session 6, minus what the tables above li
 `MoreDestination` changed from `private` to internal), and `AutoWorkoutCard.swift` carries the detected-workout review
 (+32/-25, in the first table). These are approximate residuals, not a per-hunk audit.
 
-### Pre-existing, to evaluate later (not changed)
+### Pre-existing, to evaluate later (resolved in session 7: a failed delete now skips the save)
 
 `HealthKitBridge.writeHeartRate` deletes our previous samples in the window with `try? await store.deleteObjects(...)`
 before saving the fresh batch. If the delete fails, the error is swallowed and the save still runs, so the window
@@ -147,3 +147,31 @@ Not done (needs your decision, see the final report): A8 (Smart Wake diagnostics
 the list row identity in Workouts (`startTs|sport` is not guaranteed unique), `ProfileStore` duplication in
 the workout detail (a missing environment object would crash).
 
+
+## Session 7: battery audit (iPhone, Apple Health, Apple Watch)
+
+Fixes that stay (every hook is marked `// fork-perf:`; logic lives in fork-only files):
+
+| Area | File | Lines (+/-) | What changed |
+|---|---|---|---|
+| Health | `StrandiOS/Health/HealthKitBridge.swift` | +110/-20 | `writeVitals`, `writeSleep`, `writeHeartRate`, `writeWorkouts` filter their candidates through `HealthWriteBackLedger` (only changed keys are deleted and saved), call `HealthWriteBackLedgerHK.delete` instead of `try?`, skip the save when that delete throws, and settle the ledger only after a successful save |
+| Health | `Strand/Screens/TestCentreView.swift` | +2/-0 | two cards: the ledger switch (`ForkHealthLedgerCard`) and the TEMP energy report |
+| Health | `StrandiOS/App/StrandiOSApp.swift` | +15/-1 | foreground sync goes through `HealthForegroundSyncState` (skip within 15 min, window = days since the last pass, full 30 days every 24 h); TEMP probe attach and flush |
+| Watch | `NOOPWatch/WatchScoreStore.swift` | +9/-1 | `apply` returns early for a snapshot equal to the one shown (no persist, no complication reload) |
+| Watch | `NOOPWatch/WatchLiveHR.swift` | +5/-2 | `bpm` and `denied` are assigned only when they change |
+| Smart Wake | `Strand/Screens/SmartWakeCardView.swift`, `SmartWakeDiagnosticsView.swift` | +1/-0 each | `SmartWakeStreamNotice`: informational line when "Night only" HRV capture ends before the maximum wake time; reads settings only |
+
+Fork-only files: `Strand/System/HealthWriteBackLedger.swift`, `HealthForegroundSyncPolicy.swift`,
+`SmartWakeStreamWindowCheck.swift`, `StrandiOS/Health/HealthWriteBackLedgerHK.swift`,
+`Strand/Screens/ForkHealthLedgerCard.swift`, `SmartWakeStreamNotice.swift`, their tests, and strings in `Fork.xcstrings`.
+
+TEMP instrumentation (remove after the 24 h measurement; find it with `grep -rn "fork-perf: TEMP"`):
+`Strand/System/ForkEnergyCounters.swift`, `ForkMetricKitDays.swift`, `ForkLedgerTelemetry.swift`,
+`StrandiOS/System/ForkMetricKitProbe.swift`, `Strand/Screens/ForkEnergyReportCard.swift`,
+`NOOPWatch/WatchEnergyCounters.swift`, `StrandTests/ForkEnergyCountersTests.swift`, plus one-line hooks in
+`AppModel`, `WatchSessionBridge`, `CoachBriefScheduler`, `RescoreBackgroundScheduler`, `ScheduledDebugExport`,
+`HealthWritebackBackgroundScheduler`, `StaleBatteryBackgroundScheduler`, `WidgetPublish`, `HealthKitBridge`,
+`StrandiOSApp`, `TestCentreView` and the Watch files. `fgSyncRun` and `fgSyncSkipped` are TEMP counters too.
+
+Proposed, not done: W3 (workout timer cadence in always-on), B2 (low refresh), B3 (buffer `StrapLogArchive`),
+B4 (`logRevision` rate), MetricKit on watchOS (check the SDK first).
