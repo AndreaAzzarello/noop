@@ -34,7 +34,9 @@ struct AutoWorkoutCard: View {
 
     var body: some View {
         Group {
-            if autoDetectEnabled, !suggestion.handledThisSession, let w = suggestion.candidate {
+            if TodayFeatureStack.showsDetection(enabled: autoDetectEnabled, handledThisSession: suggestion.handledThisSession,
+                                                hasCandidate: suggestion.candidate != nil), // fork: shared with the stack order
+               let w = suggestion.candidate {
                 card(for: w)
             }
         }

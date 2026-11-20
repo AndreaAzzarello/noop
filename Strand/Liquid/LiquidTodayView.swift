@@ -367,10 +367,10 @@ struct LiquidTodayView: View {
                     // a fresh candidate belongs above the fold, same position as classic TodayView. Self-gates
                     // on the toggle AND on the detector finding an unsaved, un-dismissed window, so it
                     // renders nothing by default.
-                    AutoWorkoutCard()
-                    // Fallback only: the summary normally follows the rings (`.hero`) below.
+                    // fork: the detected-workout card, today's workout and the Night card are ONE stack ordered by
+                    // `TodayFeatureStack`; it follows the rings (`.hero`) below, and sits here only when they are hidden.
                     if !sectionOrder.contains(.hero) {
-                        TodayWorkoutSummaryCard(workouts: workouts, isViewingToday: selectedDayOffset == 0)
+                        TodayFeatureStackView(workouts: workouts, isViewingToday: selectedDayOffset == 0, includesDetection: true)
                     }
                     // #today-layout (parity with Android): every Today section — the Charge/Effort/Rest hero
                     // and Start-session included — renders in the user's saved order. Reorder via the Arrange
@@ -382,7 +382,7 @@ struct LiquidTodayView: View {
                         case .hero:
                             heroCard
                             if chargeLegacyRRGap { ChargeLegacyRRGapNote() }
-                            TodayWorkoutSummaryCard(workouts: workouts, isViewingToday: selectedDayOffset == 0)
+                            TodayFeatureStackView(workouts: workouts, isViewingToday: selectedDayOffset == 0, includesDetection: true) // fork
                         case .liveSession: if liveSessionsBeta { liveSessionStartRow }
                         case .synthesis: synthesisSection
                         case .keyMetrics: keyMetricsSection

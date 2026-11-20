@@ -8,7 +8,7 @@ import StrandDesign
 /// and only when `repo.refreshSeq` or an alarm setting changes.
 struct NightSummaryCard: View {
 
-    enum Style { case full, compact }
+    typealias Style = TodayFeatureStack.NightStyle
 
     let style: Style
     /// Preview only: a fixed summary that is never reloaded.
