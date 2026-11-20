@@ -22,10 +22,9 @@ final class AutoWorkoutSuggestionModel: ObservableObject {
         // Coming back to Today restarts the host task with the same key; a scan that finished moments ago is
         // still right, and each scan reads up to 200k samples plus the whole workout list.
         if lastKey == key, Date().timeIntervalSince(lastScanAt) < Self.maxScanAge {
-            PerfTrace.emit("perf autoDetectCandidate skipped") // fork-perf: TEMP
             return
         }
-        let next = await PerfTrace.measure("autoDetectCandidate") { await repo.autoDetectCandidate() } // fork-perf: TEMP
+        let next = await repo.autoDetectCandidate()
         guard !Task.isCancelled else { return }
         lastKey = key
         lastScanAt = Date()

@@ -223,9 +223,7 @@ struct WorkoutsView: View {
                 sessionsSection(rows: windowRows)
             }
         }
-        .perfPage("workouts") // fork-perf: TEMP
         .task(id: repo.refreshSeq) {
-            let perfSpan = PerfTrace.span("workouts.load"); defer { perfSpan.end() } // fork-perf: TEMP
             guard !usesPreviewRows else { return }
             if loaded, loadMemo.isCurrent(repo.refreshSeq) { return } // fork-perf: unchanged data on re-entry
             let loadedSeq = repo.refreshSeq // fork-perf

@@ -51,7 +51,6 @@ struct StrandiOSApp: App {
     private var unitSystemRaw: String { prefs.string(UnitPrefs.systemKey, default: UnitSystem.metric.rawValue) }
 
     init() {
-        _ = PerfTrace.launchStart // fork-perf: TEMP
         // #1008: pin the pre-change Overnight-only default for existing installs before
         // anything reads it. Idempotent; a no-op on fresh installs and after the first launch.
         PuffinExperiment.migrateContinuousHrvOvernightDefault()
@@ -220,7 +219,6 @@ struct StrandiOSApp: App {
     var body: some Scene {
         WindowGroup {
             iOSRootView()
-                .perfDisplayKeeper(model: model, health: health, router: router) // fork-perf: TEMP
                 .environmentObject(model)
                 .environmentObject(model.ble)   // #334: Today pull-to-sync reads BLEManager (no HR churn)
                 .environmentObject(model.live)
@@ -391,11 +389,9 @@ struct StrandiOSApp: App {
                             await watch.pushLatest(from: model)
                         }
                     }
-                    let perfSpan = PerfTrace.span("healthSync.total"); defer { perfSpan.end() } // fork-perf: TEMP
                     await HealthSyncRefreshCoordinator.run(
-                        sync: { let sp = PerfTrace.span("healthSync.sync"); defer { sp.end() }; _ = await health.sync() }, // fork-perf: TEMP
+                        sync: { _ = await health.sync() },
                         refresh: {
-                            let rp = PerfTrace.span("healthSync.refresh"); defer { rp.end() } // fork-perf: TEMP
                             await model.refreshAfterAppleHealthSync(
                                 authorized: health.auth == .authorized)
                         }
@@ -553,7 +549,6 @@ private struct iOSRootView: View {
             }
         }
         .onChange(of: acceptedTerms) { _, _ in showWhatsNewIfDue() }
-        .perfCount("root.shell") // fork-perf: TEMP
     }
 
     /// DEBUG: launched with --demo-seed, skip the first-run gates (onboarding / terms / What's New) so the

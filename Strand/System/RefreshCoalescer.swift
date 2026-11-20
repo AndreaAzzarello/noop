@@ -26,7 +26,6 @@ final class RefreshCoalescer {
         if running {
             pendingDays = max(pendingDays ?? 0, days)
             coalescedCount += 1
-            PerfTrace.emit("perf repo.refresh.coalesced n=\(coalescedCount) days=\(pendingDays ?? days)") // fork-perf: TEMP
             await withCheckedContinuation { waiters.append($0) }
             return
         }

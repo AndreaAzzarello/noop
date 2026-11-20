@@ -5,9 +5,6 @@ conflicts can appear. Logic lives in fork-only files wherever possible; the edit
 
 - Totals are `added/removed` lines of `git diff upstream/main --numstat` on the branch (all fork work in that file).
 - Perf-session edits are marked in source with `// fork-perf:` (`grep -rn "fork-perf:" Strand StrandiOS Packages`).
-- Lines marked **`fork-perf: TEMP`** are measurement hooks and **must be removed** at the end of the perf work,
-  together with the fork-only `Strand/System/PerfTrace.swift` and `StrandiOS/App/PerfDisplayKeeper.swift`
-  (`grep -rn "fork-perf: TEMP" Strand StrandiOS`).
 
 ## Earlier fork work (Smart Wake, workouts, NOOP+ widget, watch)
 
@@ -69,31 +66,11 @@ Fork-only helper files: `Strand/System/TabSeqGate.swift`, `Strand/System/Refresh
 | P2.4 | `Strand/Data/Repository.swift` | +21/-9 | `habitualMidsleepSec` memoised per (days, refreshSeq, offset, day); `dedupBlocks` and the pick run detached |
 | P2.1 | `Strand/Data/Repository.swift` | +11/-1 | `refresh(days:)` goes through `RefreshCoalescer`; the old body is `refreshOnce(days:)` |
 
-## Perf session 2: TEMP hooks (remove at the end)
-
-| File | Lines | What |
-|---|---|---|
-| `Strand/System/RefreshCoalescer.swift` (fork-only) | +1 | `perf repo.refresh.coalesced n= days=` line |
-| `StrandiOS/Health/HealthKitBridge.swift` | +9 | `healthSync.aggregates/.workouts/.upsert/.caffeineAndHourlySteps/.writeBack` spans |
-| `StrandiOS/App/StrandiOSApp.swift` | +2 | `healthSync.sync` and `healthSync.refresh` spans |
-
 ## Perf session 3: fix that stays
 
 | Fix | Upstream file | Lines touched | Reason |
 |---|---|---|---|
 | P5.1 | `StrandiOS/Resources/Info.plist` | +2/-0 | `CADisableMinimumFrameDurationOnPhone` carried in the committed plist (same key as `project.yml`), so restoring the plist after a local `xcodegen generate` no longer drops ProMotion |
-
-## Perf session 3: TEMP hooks (remove at the end)
-
-Fork-only (delete the whole file or the added blocks): `Strand/System/PerfTrace.swift` (publish counters, `perfCount`,
-link interval) and `StrandiOS/App/PerfDisplayKeeper.swift` (publish sinks, `perf display` line).
-
-| File | Lines | What |
-|---|---|---|
-| `Strand/System/DisplayPerformanceMonitor.swift` | +1 | `PerfTrace.noteLinkInterval(...)` in `onFrame` (feeds `refresh=` on `frameSummary`) |
-| `StrandiOS/App/RootTabView.swift` | +1 | `.perfCount("root.tabs")` |
-| `StrandiOS/App/StrandiOSApp.swift` | +0/-0 | `.perfDisplayKeeper(model:health:router:)` (same TEMP line, new arguments) |
-| `StrandiOS/Health/HealthKitBridge.swift` | +16 | `healthSync.wb.migrate/vitals/sleep/hr/workouts` spans, `healthSync.wb.counts` lines, `healthSync.writeBackAfterNewData` span |
 
 ## Perf session 4: fixes that stay
 
@@ -108,19 +85,6 @@ Fork-only helpers: `Strand/System/HealthWriteBackGate.swift` (tests: `StrandTest
 | B1 | `Strand/System/RescoreBackgroundScheduler.swift` | +4/-4 | `owed` and `owedAfterCompletedPass` use `setIfChanged` (token and timestamps stay `set`) |
 | B1 | `Strand/Data/IntelligenceEngine.swift` | +1/-1 | analyze watermark uses `setIfChanged` |
 
-## Perf session 4: TEMP hooks (remove at the end)
-
-| File | Lines | What |
-|---|---|---|
-| `Strand/System/PerfTrace.swift` (fork-only) | +61 | B0: per-key diff of `UserDefaults.standard` per notification (`defaultsKeys=`, `defaultsSame=`, `defaultsDiffMs=` on `frameSummary`), `runDefaultsProbe()` (writes `perf.probe` 20 times) |
-| `StrandiOS/App/PerfDisplayKeeper.swift` (fork-only) | +7/-1 | feeds `noteDefaultsNotification()` from the `didChangeNotification` sink, `resetDefaultsSnapshot()` on start |
-| `Strand/System/DisplayPerformanceMonitor.swift` | +4 | D: `preferredFrameRateRange` 60-120 Hz on the monitor's `CADisplayLink` (keeps the panel at up to 120 Hz while the monitor runs; read `refresh=` against 8.3 ms) |
-| `Strand/Screens/TestCentreView.swift` | +3 | "Defaults probe" button in `DisplayReadoutPanel` (`Text(verbatim:)`, no localized string) |
-| `StrandiOS/Health/HealthKitBridge.swift` | +2 | `perf healthSync.pending source=sync dropped=1` (busy `sync`) and `source=newData rerun=0\|1` (`finishHealthPass`) |
-
-The `perf probe defaults start/end` and `perf healthSync.pending` lines are emitted through `PerfTrace.emit`, so they
-disappear with the hooks above; the `perf.probe` defaults key is read by nothing and can be left to expire.
-
 ## Perf session 5: fix that stays
 
 Fork-only helper: `Strand/System/DefaultsKeys.swift` (tests: `StrandTests/DefaultsKeysTests.swift`).
@@ -132,16 +96,8 @@ snapshot compare; KVO is not usable because every key contains a dot).
 | C | `StrandiOS/App/StrandiOSApp.swift` | +14/-14 | the six root `@AppStorage`s (appearance, chart style, accent, custom hex, effort scale, unit system) and the three `iOSRootView` gate keys read through `DefaultsKeys`; an `@AppStorage` re-evaluated the app root on every defaults write (probe: 20 foreign writes gave root.app 7-9) |
 | C | `StrandiOS/App/RootTabView.swift` | +6/-4 | the four shell keys (Coach, bottom-bar auto-hide, More sections CSV, Liquid Today) read through `DefaultsKeys` (probe: root.tabs 9-10) |
 
-Not changed, pending the confirmation measurement: the 28 `@AppStorage`s of `TodayView` (today.classic 18-20 in the
-probe) and the 23 of `LiquidTodayView`.
-
-## Perf session 5: TEMP hooks (remove at the end)
-
-| File | Lines | What |
-|---|---|---|
-| `Strand/System/PerfTrace.swift` (fork-only) | rewritten block | `DefaultsWriteProbe`: classifies each defaults change notification as changed / equal (`defaultsEqual=`, `defaultsEqualBy=` caller frames) / system (`defaultsSys=`); replaces `defaultsSame=` |
-| `StrandiOS/App/PerfDisplayKeeper.swift` (fork-only) | +1/-2 | starts the probe instead of feeding the snapshot diff |
-| `StrandiOS/App/StrandiOSApp.swift` | +1 | `.perfCount("root.shell")` on the `iOSRootView` shell |
+Not changed, to be decided from a confirmation measurement on a device: the 28 `@AppStorage`s of `TodayView`
+(18-20 body passes in the pre-C probe) and the 23 of `LiquidTodayView`.
 
 ### Pre-existing, to evaluate later (not changed)
 
@@ -158,19 +114,3 @@ Not done (needs your decision, see the final report): A8 (Smart Wake diagnostics
 the list row identity in Workouts (`startTs|sport` is not guaranteed unique), `ProfileStore` duplication in
 the workout detail (a missing environment object would crash).
 
-## Perf session: TEMP hooks (remove at the end)
-
-| Upstream file | Lines | What |
-|---|---|---|
-| `Strand/System/DisplayPerformanceMonitor.swift` | +3/-3 | append page/layout/background context to `frameSummary` and `memoryHighWater` lines |
-| `Strand/Screens/TestCentreView.swift` | +3 | keep the Display monitor alive when the Test Centre is left; `.perfPage("testCentre")` |
-| `Strand/Screens/TodayView.swift` | +2 | `.perfPage("today.classic")` and a load span |
-| `Strand/Liquid/LiquidTodayView.swift` | +1 | `.perfPage("today.liquid")` (the `PerfTrace.measure` around `load()` and the `PerfTrace.emit` skip line are TEMP too) |
-| `Strand/Screens/TrendsView.swift` | +2 | `.perfPage("trends")`, series-load span |
-| `Strand/Screens/SleepView.swift` | +3 | `.perfPage("sleep")`, load span, `buildModel` timing |
-| `Strand/Screens/WorkoutsView.swift` | +2 | `.perfPage("workouts")`, load span |
-| `Strand/Screens/WorkoutDetailView.swift` | +2 | `.perfPage("workoutDetail")`, load span |
-| `Strand/Screens/CoachView.swift`, `LiveView.swift`, `SettingsView.swift`, `SmartAlarmView.swift` | +1 each | `.perfPage(...)` |
-| `StrandiOS/App/RootTabView.swift` | +1/-1 | span around the launch `repo.refresh()` |
-| `StrandiOS/App/StrandiOSApp.swift` | +3 | launch stamp, `.perfDisplayKeeper(model:)`, Health sync span |
-| `Strand/Screens/AutoWorkoutSuggestionHost.swift` (fork-only) | — | `PerfTrace.measure` / skip line inside the model |

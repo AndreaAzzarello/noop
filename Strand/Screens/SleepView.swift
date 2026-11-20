@@ -237,9 +237,7 @@ struct SleepView: View {
             // whose blocks live under the computed source. Re-runs whenever a sync/import bumps
             // refreshSeq; snaps back to the newest day and rebuilds the model so offset 0 reflects
             // the freshly-loaded blocks. (#170)
-            .perfPage("sleep") // fork-perf: TEMP
             .task(id: seqGate.value(repo.refreshSeq, selected: tabSelected)) {
-                let perfSpan = PerfTrace.span("sleep.load"); defer { perfSpan.end() } // fork-perf: TEMP
                 let refresh = repo.refreshSeq
                 // fork-perf: re-entering the tab restarts this task with the same refreshSeq; the sessions, motion and
                 // model below are already current, so only the snap back to the newest night is repeated.
@@ -263,7 +261,7 @@ struct SleepView: View {
                 navNight = nil
                 modelKey = dataKey
                 navDaysCache = SleepModel.navDays(navSessions: navSessions)
-                model = PerfTrace.measureSync("sleep.buildModel") { buildModel() } // fork-perf: TEMP
+                model = buildModel()
                 loadedSleepRefresh = refresh
                 observeResultChange()
             }

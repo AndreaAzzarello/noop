@@ -160,7 +160,6 @@ struct LiveView: View {
                 LiveLogCard()
             }
         }
-        .perfPage("live") // fork-perf: TEMP
         .onAppear { refreshLiveSession(); consumeActiveWorkoutRequest() }
         .onDisappear { model.stopRealtimeHR() }
         // A fresh bond/connection re-arms the BLE stream (Apple must re-send startRealtime on a new

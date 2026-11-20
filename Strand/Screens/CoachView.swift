@@ -132,7 +132,6 @@ struct CoachView: View {
         #endif
         // #2243: coach settings. `repo` rides along because the scaffold's environment is not
         // inherited by a sheet's own view tree.
-        .perfPage("coach") // fork-perf: TEMP
         .sheet(isPresented: $showSettings) {
             CoachSettingsView()
                 .environmentObject(coach)

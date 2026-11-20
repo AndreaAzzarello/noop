@@ -1543,9 +1543,8 @@ struct TodayView: View {
         }
         // Reload when the data refreshes OR the selected day changes, the HR trend and Rest score are
         // day-scoped, so navigating must re-fetch them for the newly selected window.
-        .perfPage("today.classic") // fork-perf: TEMP
         .task(id: TodayLoadKey(seq: seqGate.value(repo.refreshSeq, selected: tabSelected), offset: selectedDayOffset,
-                              dayCycleMode: dayCycleModeRaw)) { let perfSpan = PerfTrace.span("todayClassic.loadAll"); defer { perfSpan.end() }; await loadAll() } // fork-perf: TEMP
+                              dayCycleMode: dayCycleModeRaw)) { await loadAll() }
         // #989: hydration writes don't bump refreshSeq, so the card needs its own triggers, a logged /
         // edited / deleted drink (hydrationSeq) and the Settings feature toggle both re-read just the two
         // hydration fields. Cheap (one metricSeries row), never re-runs the heavy loads.

@@ -101,8 +101,7 @@ struct WorkoutDetailView: View {
                 Button("Done") { dismiss() }
             }
         }
-        .perfPage("workoutDetail") // fork-perf: TEMP
-        .task { let perfSpan = PerfTrace.span("workoutDetail.load"); defer { perfSpan.end() }; await load() } // fork-perf: TEMP
+        .task { await load() }
     }
 
     // MARK: - Load

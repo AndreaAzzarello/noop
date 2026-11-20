@@ -485,7 +485,6 @@ final class HealthKitBridge: ObservableObject {
         guard !syncing else {
             // Busy: the owner is a sync (which writes back) or a write-back. A read request owes no write,
             // so nothing is recorded; the observer anchor stays put and the next wake re-reads the window.
-            PerfTrace.emit("perf healthSync.pending source=sync dropped=1") // fork-perf: TEMP
             return false
         }
         syncing = true
@@ -517,7 +516,6 @@ final class HealthKitBridge: ObservableObject {
             if outcome == .failed { failedReads.append(label) }
         }
 
-        let perfAgg = PerfTrace.span("healthSync.aggregates") // fork-perf: TEMP
         // Quantity aggregates per day.
         let restingHeartRateRead = await collect(.restingHeartRate, unit: HKUnit.count().unitDivided(by: .minute()), start: start, end: end, op: .discreteAverage) { day, v in
             var a = agg(day); a.restingHr = v; byDay[day] = a
@@ -677,10 +675,7 @@ final class HealthKitBridge: ObservableObject {
         // imports these from a static Health export and Android reads them from Health Connect; iOS now
         // reads them live on-device too, so the platforms reach parity. ON-DEVICE ONLY: this is a plain
         // HealthKit read of workouts NOOP did NOT author, never any cloud/3rd-party API. (#835)
-        perfAgg.end() // fork-perf: TEMP
-        let perfWorkouts = PerfTrace.span("healthSync.workouts") // fork-perf: TEMP
         let workoutRows = await collectWorkouts(start: start, end: end)
-        perfWorkouts.end() // fork-perf: TEMP
 
         // Persist all the apple-health rows AND write back, advancing lastSync only when the WHOLE
         // round-trip succeeds. The three read-side upserts used to be swallowed by `try?`, so a failed
@@ -688,7 +683,6 @@ final class HealthKitBridge: ObservableObject {
         // lastSync — a false "success", and the next delta sync skipped the window. (Reimplemented
         // from @vulnix0x4's PR #375.)
         do {
-            let perfUpsert = PerfTrace.span("healthSync.upsert") // fork-perf: TEMP
             try await store.upsertAppleDaily(appleRows, deviceId: appleDeviceId)
             try await store.upsertDailyMetrics(dmRows, deviceId: appleDeviceId)
             try await store.upsertMetricSeries(points, deviceId: appleDeviceId)
@@ -720,8 +714,6 @@ final class HealthKitBridge: ObservableObject {
             // The caffeine card is manual-first and shows nothing until something is logged, so unlike
             // hydration there is no separate opt-in toggle to gate on: an empty Health cupboard still
             // leaves the card exactly as quiet as it is today.
-            perfUpsert.end() // fork-perf: TEMP
-            let perfExtras = PerfTrace.span("healthSync.caffeineAndHourlySteps") // fork-perf: TEMP
             if let caffeineStart = cal.date(byAdding: .hour,
                                             value: -Int(CaffeineLogStore.retentionHours), to: end) {
                 // nil means the READ failed; only an actual empty result is allowed to clear the set.
@@ -754,10 +746,7 @@ final class HealthKitBridge: ObservableObject {
                     UserDefaults.standard.set(true, forKey: Self.hourlyStepsBackfilledKey)
                 }
             }
-            perfExtras.end() // fork-perf: TEMP
-            let perfWriteBack = PerfTrace.span("healthSync.writeBack") // fork-perf: TEMP
             try await writeBack(whoopStore: store)
-            perfWriteBack.end() // fork-perf: TEMP
             lastSync = Date()
             // Record the window alongside the time: an observer wake may only stand down for a sync that
             // actually covered ITS days (see `observerCoalesceWindow`). Set on the success path only.
@@ -809,7 +798,6 @@ final class HealthKitBridge: ObservableObject {
         }
         syncing = true
         defer { finishHealthPass() }
-        let perfAfterNew = PerfTrace.span("healthSync.writeBackAfterNewData"); defer { perfAfterNew.end() } // fork-perf: TEMP
         guard let store = await repo.storeHandle() else { return false }
         do {
             try await writeBack(whoopStore: store)
@@ -827,7 +815,6 @@ final class HealthKitBridge: ObservableObject {
         syncing = false
         let decision = writeBackGate.finishPass()
         guard decision != .none else { return }
-        PerfTrace.emit("perf healthSync.pending source=newData rerun=\(decision == .rerun ? 1 : 0)") // fork-perf: TEMP
         guard decision == .rerun else { return }
         Task { await writeBackAfterNewData() }
     }
@@ -890,21 +877,11 @@ final class HealthKitBridge: ObservableObject {
         // records in the write-back window by `HKSource.default()` + date range (the same pattern
         // the HR path uses), then the normal writes re-add them under the new keys. Runs once,
         // gated by a UserDefaults flag, BEFORE the new-key writes so nothing is lost.
-        await PerfTrace.measure("healthSync.wb.migrate") { // fork-perf: TEMP
         await attempt { try await migrateStrandedHealthRecords(fromTs: fromTs, nowTs: nowTs) }
-        } // fork-perf: TEMP
-        await PerfTrace.measure("healthSync.wb.vitals") { // fork-perf: TEMP
         await attempt { try await writeVitals(whoopStore: whoopStore, days: days, sessions: sessions, holdingDays: openDays) }
-        } // fork-perf: TEMP
-        await PerfTrace.measure("healthSync.wb.sleep") { // fork-perf: TEMP
         await attempt { try await writeSleep(sessions: sessions) }
-        } // fork-perf: TEMP
-        await PerfTrace.measure("healthSync.wb.hr") { // fork-perf: TEMP
         await attempt { try await writeHeartRate(fromTs: fromTs, nowTs: nowTs) }
-        } // fork-perf: TEMP
-        await PerfTrace.measure("healthSync.wb.workouts") { // fork-perf: TEMP
         await attempt { try await writeWorkouts(whoopStore: whoopStore, fromTs: fromTs, toTs: nowTs) }
-        } // fork-perf: TEMP
         if let firstError { throw firstError }
     }
 
@@ -1084,7 +1061,6 @@ final class HealthKitBridge: ObservableObject {
             _ = try? await self.store.deleteObjects(of: type, predicate: pred)
         }
         guard !candidates.isEmpty else { return }
-        PerfTrace.emit("perf healthSync.wb.counts vitals=\(candidates.count)") // fork-perf: TEMP
         try await self.store.save(candidates.map { $0.sample })
     }
 
@@ -1143,7 +1119,6 @@ final class HealthKitBridge: ObservableObject {
             }
         }
         guard !samples.isEmpty else { return }
-        PerfTrace.emit("perf healthSync.wb.counts sleep=\(samples.count) nights=\(Set(keys).count)") // fork-perf: TEMP
         let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
             HKQuery.predicateForObjects(from: HKSource.default()),
             HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID, allowedValues: keys),
@@ -1175,7 +1150,6 @@ final class HealthKitBridge: ObservableObject {
         // banks HR under a registry id, so reading only `noopDeviceId` silently misses it.
         let buckets = await repo.hrBuckets(from: windowStart, to: nowTs, bucketSeconds: 60)
         guard !buckets.isEmpty else { return }
-        PerfTrace.emit("perf healthSync.wb.counts hr=\(buckets.count)") // fork-perf: TEMP
 
         let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
             HKQuery.predicateForObjects(from: HKSource.default()),
@@ -1331,7 +1305,6 @@ final class HealthKitBridge: ObservableObject {
         }
 
         guard !rows.isEmpty else { return }
-        PerfTrace.emit("perf healthSync.wb.counts workouts=\(rows.count)") // fork-perf: TEMP
         let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
             HKQuery.predicateForObjects(from: HKSource.default()),
             HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID,

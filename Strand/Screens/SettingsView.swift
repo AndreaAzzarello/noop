@@ -335,7 +335,6 @@ struct SettingsView: View {
         } message: {
             Text("A marker starts the selected phase and ends the previous one. This only timestamps the local capture file; it sends nothing to the strap.")
         }
-        .perfPage("settings") // fork-perf: TEMP
         .sheet(isPresented: $showWhatsNew) {
             WhatsNewView(onClose: { showWhatsNew = false })
         }

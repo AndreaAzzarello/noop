@@ -173,7 +173,6 @@ struct TestCentreView: View {
                 experimentalAlgorithmsCard.staggeredAppear(index: 3)
             }
         }
-        .perfPage("testCentre") // fork-perf: TEMP
         .id(refreshToken)
         .onAppear {
             refreshToken &+= 1
@@ -909,9 +908,9 @@ private struct TestModeRow: View {
     /// new capture days land.
     private func computeCapturedUnits() -> Int? { // fork-perf: was a computed property read from body
         guard on, case .guided = mode.capture else { return nil }
-        return PerfTrace.measureSync("testCentre.capturedUnits") { CaptureAccumulator.capturedDays(domain: mode.domain, // fork-perf: TEMP
+        return CaptureAccumulator.capturedDays(domain: mode.domain,
                                                reportText: live.exportableLogText(),
-                                               tzOffsetSeconds: TimeZone.current.secondsFromGMT()) } // fork-perf: TEMP
+                                               tzOffsetSeconds: TimeZone.current.secondsFromGMT())
     }
 
     var body: some View {
@@ -1004,7 +1003,7 @@ private struct TestModeRow: View {
             // away. The mode flag stays on (the user's test is still active); the monitor resumes on
             // .onAppear above. This keeps the perpetual-display-link contract: a link exists only while the
             // Test Centre is on screen with the mode on.
-            if mode.domain == .display, !PerfTrace.keepAlive { DisplayPerformanceMonitor.shared.stop() } // fork-perf: TEMP
+            if mode.domain == .display { DisplayPerformanceMonitor.shared.stop() }
         }
     }
 
@@ -1221,9 +1220,6 @@ private struct DisplayReadoutPanel: View {
         VStack(alignment: .leading, spacing: 4) {
             ReadoutRow(label: String(localized: "Device metrics"), value: metrics ?? String(localized: "reading…"))
             ReadoutRow(label: String(localized: "Frame summary"), value: frames ?? String(localized: "no window yet"))
-            // fork-perf: TEMP. Burst of 20 foreign defaults writes; see `PerfTrace.runDefaultsProbe`.
-            Button { PerfTrace.runDefaultsProbe() } label: { Text(verbatim: "Defaults probe") }
-                .buttonStyle(.plain).font(StrandFont.mono).foregroundStyle(StrandPalette.accent)
         }
         .padding(.top, 2)
     }

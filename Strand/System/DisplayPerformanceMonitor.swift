@@ -87,10 +87,6 @@ final class DisplayPerformanceMonitor {
 
         #if os(iOS)
         let link = CADisplayLink(target: self, selector: #selector(onFrame(_:)))
-        // fork-perf: TEMP. Without a range the link runs at the system default (60 Hz here), so `refresh=` in the
-        // frame lines described the monitor, not the panel. Asking for up to 120 Hz makes it a real probe of
-        // whether ProMotion is granted; read `refresh=` against 8.3 ms. Forces the display fast while it runs.
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
         link.add(to: .main, forMode: .common)
         displayLink = link
         #endif
@@ -131,14 +127,13 @@ final class DisplayPerformanceMonitor {
 
         // Flush whatever the last partial window holds, then the high-water mark.
         flushWindow()
-        emit?(PerfTrace.decorate(DisplayTrace.memoryHighWaterLine(peakMB: memoryPeakMB), withBodies: false)) // fork-perf: TEMP
+        emit?(DisplayTrace.memoryHighWaterLine(peakMB: memoryPeakMB))
     }
 
     // MARK: - Frame sampling
 
     #if os(iOS)
     @objc private func onFrame(_ link: CADisplayLink) {
-        PerfTrace.noteLinkInterval(link.targetTimestamp - link.timestamp) // fork-perf: TEMP
         foldFrame(timestamp: link.timestamp)
     }
     #endif
@@ -166,11 +161,11 @@ final class DisplayPerformanceMonitor {
     private func flushWindow() {
         guard !windowDurationsMs.isEmpty else { return }
         let stats = DisplayPerformanceMonitor.windowStats(durationsMs: windowDurationsMs)
-        emit?(PerfTrace.decorate(DisplayTrace.frameSummaryLine( // fork-perf: TEMP
+        emit?(DisplayTrace.frameSummaryLine(
             frames: windowDurationsMs.count,
             meanMs: stats.mean, p95Ms: stats.p95,
             hitches: windowHitches, worstMs: windowWorstMs,
-            hitchThresholdMs: Self.hitchThresholdMs)))
+            hitchThresholdMs: Self.hitchThresholdMs))
         resetWindow()
     }
 

@@ -472,16 +472,14 @@ struct LiquidTodayView: View {
         .liquidMediumHaptic(trigger: pullHaptic)
         // hydrationSeq joins the id so logging a drink re-reads the card immediately, the same trigger set
         // classic TodayView's reloadHydration() uses.
-        .perfPage("today.liquid") // fork-perf: TEMP
         .task(id: loadKey) {
             DashboardCardPrefs.migrateLegacyStepsAverage()
             let key = loadKey // fork-perf: skip an unchanged reload on tab re-entry
             guard dataLoaded, loadMemo.isFresh(for: key) else {
-                await PerfTrace.measure("liquidToday.load") { await load() } // fork-perf: TEMP
+                await load()
                 if !Task.isCancelled { loadMemo.finish(key: key) }
                 return
             }
-            PerfTrace.emit("perf liquidToday.load skipped") // fork-perf: TEMP
         }
         .sheet(item: $guideSection) { section in
             NavigationStack { ScoringGuideView(initialSection: section, onClose: { guideSection = nil }) }
