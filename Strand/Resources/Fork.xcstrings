@@ -892,6 +892,17 @@
         }
       }
     },
+    "The night window ends before the alarm: Smart Wake may not receive heart rate" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La fascia notturna finisce prima della sveglia: Smart Wake potrebbe non ricevere la frequenza cardiaca"
+          }
+        }
+      }
+    },
     "The wake-alarm above buzzes your wrist from the strap's own firmware. For a phone alarm, enable Smart Wake below and allow NOOP to schedule system alarms (iOS 26 or later). AlarmKit can alert through Silent mode and Focus, and its maximum-time alarm stays scheduled even when WHOOP heart-rate data is unavailable. Keep your built-in Clock alarm as a backup until you have tested Smart Wake on this iPhone." : {
       "comment" : "Footnote under 'The strap alarm is a silent buzz' on the Alarms screen.",
       "extractionState" : "manual",

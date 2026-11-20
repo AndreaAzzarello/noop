@@ -46,6 +46,7 @@ struct SmartWakeCardView: View, Equatable {
 
                 if behavior.smartWakeEnabled {
                     LiveActivitiesNotice()
+                    SmartWakeStreamNotice(overrides: overrides) // fork: informational only
                     Divider().overlay(StrandPalette.hairline)
                     HStack {
                         Text("Maximum wake", tableName: "Fork")
