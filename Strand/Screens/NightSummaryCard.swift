@@ -7,6 +7,9 @@ import StrandDesign
 /// settings) through `NightSummary`, which holds all the rules. Loading happens in `.task`, never in `body`,
 /// and only when `repo.refreshSeq` or an alarm setting changes.
 struct NightSummaryCard: View {
+    #if os(iOS) && canImport(AlarmKit)
+    @ObservedObject private var alarmStore = SmartWakeAlarmStore.shared   // fork: reload when the alarm list changes
+    #endif
 
     typealias Style = TodayFeatureStack.NightStyle
 
@@ -39,13 +42,23 @@ struct NightSummaryCard: View {
         let strapAlarm: Bool
         let minutes: Int
         let window: Int
+        /// Changes whenever the Smart Wake alarm list does (iOS; always 0 elsewhere).
+        let alarms: Int
         let need: Int
+    }
+
+    private var alarmListRevision: Int {
+        #if os(iOS) && canImport(AlarmKit)
+        return alarmStore.revision
+        #else
+        return 0
+        #endif
     }
 
     private var loadKey: LoadKey {
         LoadKey(refreshSeq: repo.refreshSeq, smartWake: behavior.smartWakeEnabled,
                 strapAlarm: behavior.smartAlarmEnabled, minutes: behavior.smartAlarmMinutes,
-                window: behavior.smartWakeWindowMinutes, need: WindDownNudge.sleepNeedMinutes)
+                window: behavior.smartWakeWindowMinutes, alarms: alarmListRevision, need: WindDownNudge.sleepNeedMinutes)
     }
 
     var body: some View {
@@ -269,7 +282,7 @@ enum NightAlarmResolver {
         if behavior.smartWakeEnabled {
             if let schedule = SmartWakeLiveWiring.makeSchedule(from: behavior),
                let latest = schedule.nextMaximumWakeTime(after: from, calendar: .current) {
-                let window = schedule.windowDuration
+                let window = schedule.windowDuration(for: latest, calendar: .current)   // fork: that alarm's own window
                 smartWake = NightSummary.NextAlarm(latest: latest,
                                                    windowStart: window > 0 ? latest.addingTimeInterval(-window) : nil)
             }

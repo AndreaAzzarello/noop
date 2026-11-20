@@ -34,6 +34,8 @@ final class SmartWakeAlarmStore: ObservableObject {
     static let shared = SmartWakeAlarmStore()
 
     @Published private(set) var book = SmartWakeAlarmBook()
+    /// Bumped on every change of the list, for views that only need to know "it changed".
+    @Published private(set) var revision = 0
     private weak var behavior: BehaviorStore?
     private weak var model: AppModel?
 
@@ -51,7 +53,7 @@ final class SmartWakeAlarmStore: ObservableObject {
         self.behavior = behavior
         self.model = model
         let loaded = Self.currentBook(for: behavior)
-        if loaded != book { book = loaded }
+        if loaded != book { book = loaded; revision += 1 }
     }
 
     /// The next alarm that rings, from the same schedule the detector and AlarmKit are armed from.
@@ -80,6 +82,7 @@ final class SmartWakeAlarmStore: ObservableObject {
         guard next != book else { return }
         SmartWakeAlarmBookStorage.save(next)
         book = next
+        revision += 1
         mirrorUpstream()
         model?.applySmartWakeSchedule()
     }

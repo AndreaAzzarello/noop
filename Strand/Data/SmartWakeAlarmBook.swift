@@ -373,3 +373,20 @@ enum SmartWakeAlarmBookMigrator {
         return (book, true)
     }
 }
+
+extension SmartWakeAlarmBook {
+    /// One line per alarm, then a warning for any weekday two active alarms claim. For the Smart Wake diagnostics.
+    func diagnosticLines() -> [String] {
+        func clock(_ minutes: Int) -> String { String(format: "%02d:%02d", minutes / 60, minutes % 60) }
+        var lines = ["Alarm list: \(alarms.count) alarm(s), \(enabledAlarms.count) on"]
+        for alarm in alarms {
+            let name = alarm.label.isEmpty ? "(no label)" : "\"\(alarm.label)\""
+            let days = alarm.weekdays.sorted().map(String.init).joined(separator: ",")
+            lines.append("  \(alarm.isEnabled ? "on " : "off") \(clock(alarm.wakeMinutes)) \(name) days \(days) window \(alarm.windowMinutes) min"
+                + (alarm.insistent ? " insistent" : "") + (alarm.dayOverrides.isEmpty ? "" : " \(alarm.dayOverrides.count) day override(s)"))
+        }
+        let twice = doubleBookedDays()
+        if !twice.isEmpty { lines.append("  WARNING: weekday(s) \(twice.sorted().map(String.init).joined(separator: ",")) claimed by more than one alarm; the oldest rings") }
+        return lines
+    }
+}

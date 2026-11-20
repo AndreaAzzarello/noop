@@ -80,6 +80,7 @@ struct SmartWakeDiagnosticsView: View {
         Task { await SmartWakeTestAlarm.shared.sweep() }
         report = SmartWakeDiagnostics.report(
             snapshot: SmartWakeAlarmScheduler.shared.diagnosticsSnapshot()
+                + "\n" + SmartWakeAlarmStore.shared.book.diagnosticLines().joined(separator: "\n")   // fork
                 + "\nLive Activities: " + (ActivityAuthorizationInfo().areActivitiesEnabled ? "enabled" : "disabled")
                 + "\n" + SmartWakeTestAlarm.shared.statusLine,
             windowStats: UserDefaults.standard.string(forKey: SmartWakeLiveController.windowSummaryStorageKey)

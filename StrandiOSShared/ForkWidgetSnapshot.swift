@@ -257,7 +257,7 @@ struct ForkWidgetSnapshot: Codable, Equatable {
         guard let smartWake else { return nil }
         let from = max(now, smartWakeSkipUntil ?? .distantPast)
         guard let latest = smartWake.nextMaximumWakeTime(after: from, calendar: calendar) else { return nil }
-        let window = smartWake.windowDuration
+        let window = smartWake.windowDuration(for: latest, calendar: calendar)   // the window of the alarm that rings
         return ForkNextWake(windowStart: window > 0 ? latest.addingTimeInterval(-window) : nil, latest: latest)
     }
 

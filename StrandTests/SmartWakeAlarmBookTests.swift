@@ -218,4 +218,17 @@ final class SmartWakeAlarmBookTests: XCTestCase {
         XCTAssertEqual(SmartWakeAlarmBookStorage.loadSnapshot(defaults: defaults), snapshot)
         XCTAssertEqual(snapshot.weekdays, [2, 4, 6])
     }
+
+    func testDiagnosticLinesListEveryAlarmAndWarnAboutADoubleBookedDay() {
+        let work = SmartWakeAlarm(label: "Work", wakeMinutes: 7 * 60, weekdays: [2, 3], windowMinutes: 30, insistent: true,
+                                  createdAt: Date(timeIntervalSince1970: 1_700_000_000))
+        let other = SmartWakeAlarm(label: "", wakeMinutes: 8 * 60, weekdays: [3], windowMinutes: 20,
+                                   createdAt: Date(timeIntervalSince1970: 1_700_000_100))
+        let lines = SmartWakeAlarmBook(alarms: [work, other]).diagnosticLines()
+        XCTAssertEqual(lines.first, "Alarm list: 2 alarm(s), 2 on")
+        XCTAssertTrue(lines.contains { $0.contains("07:00") && $0.contains("\"Work\"") && $0.contains("insistent") })
+        XCTAssertTrue(lines.contains { $0.contains("(no label)") && $0.contains("window 20 min") })
+        XCTAssertTrue(lines.contains { $0.contains("WARNING") && $0.contains("3") })
+        XCTAssertFalse(SmartWakeAlarmBook(alarms: [work]).diagnosticLines().contains { $0.contains("WARNING") })
+    }
 }
