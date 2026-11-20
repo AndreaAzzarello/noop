@@ -121,6 +121,28 @@ Fork-only helpers: `Strand/System/HealthWriteBackGate.swift` (tests: `StrandTest
 The `perf probe defaults start/end` and `perf healthSync.pending` lines are emitted through `PerfTrace.emit`, so they
 disappear with the hooks above; the `perf.probe` defaults key is read by nothing and can be left to expire.
 
+## Perf session 5: fix that stays
+
+Fork-only helper: `Strand/System/DefaultsKeys.swift` (tests: `StrandTests/DefaultsKeysTests.swift`).
+A per-view observer of a few `UserDefaults` keys that publishes only when one of them changes (notification plus
+snapshot compare; KVO is not usable because every key contains a dot).
+
+| Fix | Upstream file | Lines touched | Reason |
+|---|---|---|---|
+| C | `StrandiOS/App/StrandiOSApp.swift` | +14/-14 | the six root `@AppStorage`s (appearance, chart style, accent, custom hex, effort scale, unit system) and the three `iOSRootView` gate keys read through `DefaultsKeys`; an `@AppStorage` re-evaluated the app root on every defaults write (probe: 20 foreign writes gave root.app 7-9) |
+| C | `StrandiOS/App/RootTabView.swift` | +6/-4 | the four shell keys (Coach, bottom-bar auto-hide, More sections CSV, Liquid Today) read through `DefaultsKeys` (probe: root.tabs 9-10) |
+
+Not changed, pending the confirmation measurement: the 28 `@AppStorage`s of `TodayView` (today.classic 18-20 in the
+probe) and the 23 of `LiquidTodayView`.
+
+## Perf session 5: TEMP hooks (remove at the end)
+
+| File | Lines | What |
+|---|---|---|
+| `Strand/System/PerfTrace.swift` (fork-only) | rewritten block | `DefaultsWriteProbe`: classifies each defaults change notification as changed / equal (`defaultsEqual=`, `defaultsEqualBy=` caller frames) / system (`defaultsSys=`); replaces `defaultsSame=` |
+| `StrandiOS/App/PerfDisplayKeeper.swift` (fork-only) | +1/-2 | starts the probe instead of feeding the snapshot diff |
+| `StrandiOS/App/StrandiOSApp.swift` | +1 | `.perfCount("root.shell")` on the `iOSRootView` shell |
+
 ### Pre-existing, to evaluate later (not changed)
 
 `HealthKitBridge.writeHeartRate` deletes our previous samples in the window with `try? await store.deleteObjects(...)`
