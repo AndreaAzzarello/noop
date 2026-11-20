@@ -3414,6 +3414,11 @@ struct TodayView: View {
             GlowRing(fraction: gv / effortGaugeMax, value: gv,
                      format: { effortScale == .whoop ? String(format: "%.1f", locale: AppLanguage.activeLocale, $0) : "\(Int($0.rounded()))" },
                      color: StrandPalette.effortColor, diameter: diameter, lineWidth: diameter * 0.10)
+                .overlay { // fork: the day's optimal Effort band, outside the ring
+                    if let band = StrainTargetBand.resolve(recovery: d?.recovery, scale: effortScale) {
+                        StrainTargetArc(band: band, ringDiameter: diameter)
+                    }
+                }
         } else {
             emptyHeroRing(diameter: diameter) { ringNoData(diameter: diameter) }
         }

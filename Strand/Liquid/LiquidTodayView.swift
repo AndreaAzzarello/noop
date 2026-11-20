@@ -728,7 +728,8 @@ struct LiquidTodayView: View {
                           onGuide: { guideSection = .effort },
                           maxValue: effortScale == .whoop ? 21 : 100,
                           decimals: effortScale == .whoop ? 1 : 0,
-                          detailRoute: .metric(HeroRingMetric.effort))
+                          detailRoute: .metric(HeroRingMetric.effort),
+                          target: StrainTargetBand.resolve(recovery: displayDay?.recovery, scale: effortScale)) // fork
             HeroScoreCell(label: String(localized: "Rest"), score: restScore, tint: StrandPalette.restColor,
                           animated: dataLoaded, onGuide: { guideSection = .rest },
                           detailRoute: .metric(HeroRingMetric.rest))
@@ -2260,6 +2261,8 @@ private struct HeroScoreCell: View {
     /// the same score land on the identical dossier rather than diverging. The LABEL keeps its own job:
     /// it opens the scoring guide, which is this screen's only route to that explainer.
     var detailRoute: TabRoute? = nil
+    /// fork: the day's optimal Effort band, drawn as a faint arc outside the vessel. nil = no arc.
+    var target: StrainTargetBand? = nil
 
     /// The gauge, linked when there is somewhere to go.
     ///
@@ -2300,6 +2303,7 @@ private struct HeroScoreCell: View {
     var body: some View {
         VStack(spacing: 7) {
             gaugeView
+                .overlay { if let target { StrainTargetArc(band: target, ringDiameter: Self.vesselDiameter) } } // fork
             Button(action: onGuide) {
                 HStack(spacing: 3) {
                     // #74: one line, shrink-to-fit rather than wrap under large Dynamic Type (mirrors the

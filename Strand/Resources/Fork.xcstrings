@@ -145,6 +145,18 @@
         }
       }
     },
+    "Effort target %1$@–%2$@" : {
+      "comment" : "VoiceOver label of the optimal Effort band drawn on the Effort ring. Both values are on the user's Effort scale.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obiettivo di sforzo %1$@–%2$@"
+          }
+        }
+      }
+    },
     "Enable Smart Wake" : {
       "comment" : "Smart Wake card toggle.",
       "extractionState" : "manual",
