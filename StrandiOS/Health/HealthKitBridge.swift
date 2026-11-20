@@ -995,6 +995,7 @@ final class HealthKitBridge: ObservableObject {
 
         struct Candidate { let type: HKQuantityType; let key: String; let sample: HKQuantitySample }
         var candidates: [Candidate] = []
+        var ledgerDesired: [String: UInt64] = [:] // fork-perf: ledger, key → fingerprint of everything this pass would write
         func add(_ id: HKQuantityTypeIdentifier, _ unit: HKUnit, _ value: Double, _ day: String, _ at: Date) {
             guard let type = HKQuantityType.quantityType(forIdentifier: id),
                   store.authorizationStatus(for: type) == .sharingAuthorized else { return }
@@ -1010,6 +1011,7 @@ final class HealthKitBridge: ObservableObject {
                 metadata: [HKMetadataKeyExternalUUID: key]
             )
             candidates.append(Candidate(type: type, key: key, sample: sample))
+            ledgerDesired[key] = HealthWriteBackLedgerKeys.vital(value: value, at: at) // fork-perf: ledger
         }
         // Keys of OUR earlier samples to delete with no replacement: a value this build no longer writes
         // must not survive from a build that did.
@@ -1018,6 +1020,7 @@ final class HealthKitBridge: ObservableObject {
             guard let type = HKQuantityType.quantityType(forIdentifier: id),
                   store.authorizationStatus(for: type) == .sharingAuthorized else { return }
             retracted[type, default: []].append(HealthWriteback.appleHealthVitalKey(metricId: id.rawValue, day: day))
+            ledgerDesired[HealthWriteback.appleHealthVitalKey(metricId: id.rawValue, day: day)] = HealthWriteBackLedgerKeys.retracted // fork-perf: ledger
         }
 
         for row in rows {
@@ -1050,7 +1053,16 @@ final class HealthKitBridge: ObservableObject {
                 add(.respiratoryRate, HKUnit.count().unitDivided(by: .minute()), rr, row.day, at)
             }
         }
-        guard !candidates.isEmpty || !retracted.isEmpty else { return }
+        // fork-perf: ledger. Delete and save only the keys whose value or stamp changed since the last successful pass
+        // (full rewrite after 24 h, on a new build or strap, or with the Test Centre switch off).
+        let ledger = HealthWriteBackLedgerStore.shared
+        let ledgerPlan = ledger.plan(.vitals, desired: ledgerDesired, scope: noopDeviceId)
+        ForkLedgerTelemetry.note(ledgerPlan) // fork-perf: TEMP
+        candidates = candidates.filter { ledgerPlan.dirty.contains($0.key) }
+        for (type, keys) in retracted { retracted[type] = keys.filter { ledgerPlan.dirty.contains($0) } }
+        retracted = retracted.filter { !$0.value.isEmpty }
+        var ledgerDeleteFailed = false
+        guard !candidates.isEmpty || !retracted.isEmpty else { ledger.commit(ledgerPlan); return }
 
         // Delete any of OUR prior samples that carry the same metadata keys, then write the fresh
         // batch. Scoped to HKSource.default() so we never touch a sample written by another app
@@ -1064,10 +1076,19 @@ final class HealthKitBridge: ObservableObject {
             let byKey = HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID,
                                                     allowedValues: keys)
             let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [bySource, byKey])
-            _ = try? await self.store.deleteObjects(of: type, predicate: pred)
+            let deleted = await HealthWriteBackLedgerHK.delete(self.store, of: type, predicate: pred) // fork-perf: ledger (was try?)
+            if deleted == nil { ledgerDeleteFailed = true }
+            ForkEnergyCounters.shared.note(.hkVitalsDeleted, by: deleted ?? 0) // fork-perf: TEMP
+            if deleted == nil { ForkEnergyCounters.shared.note(.hkDeleteFailed) } // fork-perf: TEMP
         }
-        guard !candidates.isEmpty else { return }
-        try await self.store.save(candidates.map { $0.sample })
+        guard !candidates.isEmpty else { ledger.settle(ledgerPlan, deleteFailed: ledgerDeleteFailed); return } // fork-perf: ledger
+        do { try await self.store.save(candidates.map { $0.sample }) } catch { // fork-perf: ledger
+            ledger.invalidate(.vitals)
+            ForkEnergyCounters.shared.note(.hkSaveFailed) // fork-perf: TEMP
+            throw error
+        }
+        ForkEnergyCounters.shared.note(.hkVitalsWritten, by: candidates.count) // fork-perf: TEMP
+        ledger.settle(ledgerPlan, deleteFailed: ledgerDeleteFailed) // fork-perf: ledger
     }
 
     /// Write each BRIDGED NIGHT (#364) as one `.inBed` sample plus one category sample per stage
@@ -1100,7 +1121,15 @@ final class HealthKitBridge: ObservableObject {
             }
         var samples: [HKCategorySample] = []
         var keys: [String] = []
-        for entry in HealthWriteback.mergedSleepPlan(groups: groups) {
+        // fork-perf: ledger. Write only the nights whose span, stages or merged fragments changed.
+        let ledger = HealthWriteBackLedgerStore.shared
+        let allEntries = HealthWriteback.mergedSleepPlan(groups: groups)
+        let ledgerPlan = ledger.plan(.sleep, desired: Dictionary(
+            allEntries.map { (HealthWriteback.appleHealthSleepKey(startTs: $0.keyStartTs), HealthWriteBackLedgerKeys.sleep($0)) },
+            uniquingKeysWith: { _, last in last }), scope: noopDeviceId)
+        ForkLedgerTelemetry.note(ledgerPlan) // fork-perf: TEMP
+        let entriesToWrite = allEntries.filter { ledgerPlan.dirty.contains(HealthWriteback.appleHealthSleepKey(startTs: $0.keyStartTs)) }
+        for entry in entriesToWrite {
             let key = HealthWriteback.appleHealthSleepKey(startTs: entry.keyStartTs)
             let meta = [HKMetadataKeyExternalUUID: key]
             keys.append(contentsOf: entry.allKeyStartTs.map { HealthWriteback.appleHealthSleepKey(startTs: $0) })
@@ -1124,13 +1153,21 @@ final class HealthKitBridge: ObservableObject {
                     metadata: meta))
             }
         }
-        guard !samples.isEmpty else { return }
+        guard !samples.isEmpty else { ledger.commit(ledgerPlan); return } // fork-perf: ledger (nothing changed: only drop removed keys)
         let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
             HKQuery.predicateForObjects(from: HKSource.default()),
             HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID, allowedValues: keys),
         ])
-        _ = try? await store.deleteObjects(of: type, predicate: pred)
-        try await store.save(samples)
+        let deleted = await HealthWriteBackLedgerHK.delete(store, of: type, predicate: pred) // fork-perf: ledger (was try?)
+        ForkEnergyCounters.shared.note(.hkSleepDeleted, by: deleted ?? 0) // fork-perf: TEMP
+        if deleted == nil { ForkEnergyCounters.shared.note(.hkDeleteFailed) } // fork-perf: TEMP
+        do { try await store.save(samples) } catch { // fork-perf: ledger
+            ledger.invalidate(.sleep)
+            ForkEnergyCounters.shared.note(.hkSaveFailed) // fork-perf: TEMP
+            throw error
+        }
+        ForkEnergyCounters.shared.note(.hkSleepWritten, by: samples.count) // fork-perf: TEMP
+        ledger.settle(ledgerPlan, deleteFailed: deleted == nil) // fork-perf: ledger
     }
 
     /// UserDefaults key for the HR write cursor (the newest bucket ts we've written). Per-strap so a
@@ -1151,11 +1188,22 @@ final class HealthKitBridge: ObservableObject {
         guard let type = HKQuantityType.quantityType(forIdentifier: .heartRate),
               store.authorizationStatus(for: type) == .sharingAuthorized else { return }
         let cursor = UserDefaults.standard.integer(forKey: hrWriteCursorKey)
-        let windowStart = cursor > 0 ? max(fromTs, cursor - 48 * 3600) : fromTs
+        let unalignedStart = cursor > 0 ? max(fromTs, cursor - 48 * 3600) : fromTs
+        // fork-perf: ledger. The window starts on a clock-hour boundary so the first hour is read, and rewritten, whole.
+        let ledger = HealthWriteBackLedgerStore.shared
+        let ledgerOn = HealthWriteBackLedgerStore.isEnabled
+        let windowStart = HealthWriteBackLedgerHK.alignedHeartRateStart(unalignedStart, enabled: ledgerOn)
         // Use the same active/registered/canonical union as the charts (#2644). Re-pairing
         // banks HR under a registry id, so reading only `noopDeviceId` silently misses it.
         let buckets = await repo.hrBuckets(from: windowStart, to: nowTs, bucketSeconds: 60)
         guard !buckets.isEmpty else { return }
+        // fork-perf: ledger. Hour blocks: only hours whose minutes changed (normally the current one) are rewritten.
+        let hourFingerprints = HealthWriteBackLedgerKeys.hourBlocks(buckets.map { (ts: $0.ts, bpm: $0.bpm) })
+        let ledgerPlan = ledger.plan(.heartRate, desired: Dictionary(uniqueKeysWithValues: hourFingerprints.map {
+            (HealthWriteBackLedgerKeys.hourKey($0.key), $0.value) }), scope: noopDeviceId, enabled: ledgerOn)
+        ForkLedgerTelemetry.note(ledgerPlan) // fork-perf: TEMP
+        let hrHours = HealthWriteBackLedgerHK.heartRateHours(plan: ledgerPlan, windowStart: windowStart)
+        let writeBuckets = ledgerPlan.fullRewrite ? buckets : buckets.filter { hrHours.dirty.contains($0.ts / HealthWriteBackLedgerKeys.hourSeconds) }
 
         let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
             HKQuery.predicateForObjects(from: HKSource.default()),
@@ -1163,12 +1211,14 @@ final class HealthKitBridge: ObservableObject {
                                         end: Date(timeIntervalSince1970: TimeInterval(nowTs) + 60),
                                         options: []),
         ])
-        _ = try? await store.deleteObjects(of: type, predicate: pred)
+        let hrDelete = await HealthWriteBackLedgerHK.deleteHeartRate(store, type: type, plan: ledgerPlan, hours: hrHours, wholeWindow: pred) // fork-perf: ledger (was try?)
+        ForkEnergyCounters.shared.note(.hkHeartRateDeleted, by: hrDelete.deleted) // fork-perf: TEMP
+        if hrDelete.failed { ForkEnergyCounters.shared.note(.hkDeleteFailed) } // fork-perf: TEMP
 
         let unit = HKUnit.count().unitDivided(by: .minute())
         var samples: [HKQuantitySample] = []
-        samples.reserveCapacity(buckets.count)
-        for b in buckets {
+        samples.reserveCapacity(writeBuckets.count)
+        for b in writeBuckets { // fork-perf: ledger (was: every bucket)
             let start = Date(timeIntervalSince1970: TimeInterval(b.ts))
             // Span the bucket, clamped so a bucket at the window edge can't end in the future
             // (HealthKit rejects future-dated samples).
@@ -1181,19 +1231,25 @@ final class HealthKitBridge: ObservableObject {
         // transaction is oversized. Cursor only advances past what actually saved.
         var lastSaved = cursor
         var pending = samples[...]
-        var pendingTs = buckets.map(\.ts)[...]
+        var pendingTs = writeBuckets.map(\.ts)[...] // fork-perf: ledger (was: every bucket)
         while !pending.isEmpty {
             let chunk = Array(pending.prefix(5000))
             let chunkTs = Array(pendingTs.prefix(5000))
             pending = pending.dropFirst(chunk.count)
             pendingTs = pendingTs.dropFirst(chunk.count)
-            try await store.save(chunk)
+            do { try await store.save(chunk) } catch { // fork-perf: ledger
+                ledger.invalidate(.heartRate)
+                ForkEnergyCounters.shared.note(.hkSaveFailed) // fork-perf: TEMP
+                throw error
+            }
             lastSaved = max(lastSaved, chunkTs.last ?? lastSaved)
             // Per chunk on purpose: a first run writes ~20k samples in 5000-sample chunks and each chunk must
             // bank its progress, or a pass killed in the background restarts from day one every time. Only the
             // unchanged case is skipped (a writeBack with no new heart rate re-asserts the same cursor).
             UserDefaults.standard.setIfChanged(lastSaved, forKey: hrWriteCursorKey)
         }
+        ForkEnergyCounters.shared.note(.hkHeartRateWritten, by: samples.count) // fork-perf: TEMP
+        ledger.settle(ledgerPlan, deleteFailed: hrDelete.failed, enabled: ledgerOn) // fork-perf: ledger
     }
 
     /// Write strap-detected and manual workouts into Health via `HKWorkoutBuilder`, with an
@@ -1289,7 +1345,7 @@ final class HealthKitBridge: ObservableObject {
         for w in computed + mine where w.source != HealthKitBridge.appleWorkoutSource {
             byKey["\(w.startTs):\(w.sport)"] = w
         }
-        let rows = byKey.values.sorted { $0.startTs < $1.startTs }
+        let allRows = byKey.values.sorted { $0.startTs < $1.startTs } // fork-perf: ledger (was `rows`; the orphan sweep needs all of them)
 
         func key(_ row: WorkoutRow) -> String { HealthWriteback.appleHealthWorkoutKey(startTs: row.startTs) }
 
@@ -1307,16 +1363,28 @@ final class HealthKitBridge: ObservableObject {
         // case where every Health copy is an orphan, and returning early would leave all of them.
         if mineRead != nil, computedRead != nil,
            mine.count < Self.workoutReadLimit, computed.count < Self.workoutReadLimit {
-            await deleteOrphanedWorkouts(fromTs: fromTs, toTs: toTs, keeping: Set(rows.map(key)))
+            await deleteOrphanedWorkouts(fromTs: fromTs, toTs: toTs, keeping: Set(allRows.map(key))) // fork-perf: ledger (was rows)
         }
 
-        guard !rows.isEmpty else { return }
+        // fork-perf: ledger. Rewrite only the workouts whose written fields, or whose attachable route, changed.
+        let ledger = HealthWriteBackLedgerStore.shared
+        let ledgerPlan = ledger.plan(.workouts, desired: Dictionary(allRows.map { row in
+            (key(row), HealthWriteBackLedgerKeys.workout(
+                startTs: row.startTs, endTs: row.endTs, sport: row.sport, energyKcal: row.energyKcal,
+                distanceM: row.distanceM,
+                routeToken: RouteStore.load(startTs: row.startTs, sport: row.sport)?.polyline.count ?? 0))
+        }, uniquingKeysWith: { _, last in last }), scope: noopDeviceId)
+        ForkLedgerTelemetry.note(ledgerPlan) // fork-perf: TEMP
+        let rows = allRows.filter { ledgerPlan.dirty.contains(key($0)) }
+        guard !rows.isEmpty else { ledger.commit(ledgerPlan); return }
         let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
             HKQuery.predicateForObjects(from: HKSource.default()),
             HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID,
                                         allowedValues: rows.map(key)),
         ])
-        _ = try? await store.deleteObjects(of: .workoutType(), predicate: pred)
+        let deleted = await HealthWriteBackLedgerHK.delete(store, of: .workoutType(), predicate: pred) // fork-perf: ledger (was try?)
+        ForkEnergyCounters.shared.note(.hkWorkoutsDeleted, by: deleted ?? 0) // fork-perf: TEMP
+        if deleted == nil { ForkEnergyCounters.shared.note(.hkDeleteFailed) } // fork-perf: TEMP
 
         for row in rows {
             let start = Date(timeIntervalSince1970: TimeInterval(row.startTs))
@@ -1374,9 +1442,13 @@ final class HealthKitBridge: ObservableObject {
                 }
             } catch {
                 builder.discardWorkout()
+                ledger.invalidate(.workouts) // fork-perf: ledger
+                ForkEnergyCounters.shared.note(.hkSaveFailed) // fork-perf: TEMP
                 throw error
             }
         }
+        ForkEnergyCounters.shared.note(.hkWorkoutsWritten, by: rows.count) // fork-perf: TEMP
+        ledger.settle(ledgerPlan, deleteFailed: deleted == nil) // fork-perf: ledger
     }
 
     /// Reverse of `sportName`: NOOP's sport label → the `HKWorkoutActivityType` written to Health.

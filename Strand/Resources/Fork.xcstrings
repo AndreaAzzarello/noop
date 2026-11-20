@@ -133,6 +133,17 @@
         }
       }
     },
+    "Each pass rewrites only the vitals, nights, heart-rate hours and workouts that changed, and everything again once a day or after an update. Turn it off to rewrite all of it on every pass." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni passata riscrive solo parametri vitali, notti, ore di frequenza cardiaca e allenamenti cambiati, e tutto di nuovo una volta al giorno o dopo un aggiornamento. Disattivalo per riscrivere tutto a ogni passata."
+          }
+        }
+      }
+    },
     "Earlier wake in light sleep" : {
       "comment" : "Smart Wake card title.",
       "extractionState" : "manual",
@@ -237,6 +248,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "HIIT"
+          }
+        }
+      }
+    },
+    "Health write-back ledger" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registro delle scritture in Salute"
           }
         }
       }
@@ -939,6 +961,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Giorno della settimana"
+          }
+        }
+      }
+    },
+    "Write only what changed to Apple Health" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scrivi in Salute solo ciò che è cambiato"
           }
         }
       }

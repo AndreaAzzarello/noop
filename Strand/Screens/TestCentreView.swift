@@ -171,6 +171,7 @@ struct TestCentreView: View {
                 if ouraPaired { ouraCard.staggeredAppear(index: 2) }
                 exportCard.staggeredAppear(index: 2)
                 experimentalAlgorithmsCard.staggeredAppear(index: 3)
+                ForkHealthLedgerCard().staggeredAppear(index: 4)
                 ForkEnergyReportCard().staggeredAppear(index: 4) // fork-perf: TEMP
             }
         }
