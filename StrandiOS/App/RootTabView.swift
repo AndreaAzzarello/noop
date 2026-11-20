@@ -20,8 +20,10 @@ struct RootTabView: View {
     /// Not tab chrome: with this off the AI is off. The tab goes, the Today launcher card goes, and the
     /// daily brief is cancelled, because the brief calls a provider from the BACKGROUND with no UI
     /// attached and would otherwise keep posting AI notifications for a feature the wearer switched off.
-    @AppStorage("noop.coachEnabled") private var coachEnabled = true
-    @AppStorage("noop.bottomBarAutoHide") private var bottomBarAutoHide = false
+    // fork-perf: one observer for the shell's four keys; an `@AppStorage` re-ran this body on EVERY defaults write.
+    @StateObject private var prefs = DefaultsKeys(["noop.coachEnabled", "noop.bottomBarAutoHide", MoreSectionPrefs.storageKey, "noop.liquidTodayEnabled"])
+    private var coachEnabled: Bool { prefs.bool("noop.coachEnabled", default: true) }
+    private var bottomBarAutoHide: Bool { prefs.bool("noop.bottomBarAutoHide", default: false) }
 
     /// The live gym session, owned at the app root — see `LiftSessionController`.
     @EnvironmentObject private var liftSession: LiftSessionController
@@ -65,12 +67,12 @@ struct RootTabView: View {
     /// leaving and re-entering the More tab (and relaunch), not reset to the seed every visit. Backed by an
     /// `@AppStorage` CSV string (keyed identically to the Android `MoreSectionPrefs`), bridged to a
     /// `Set<String>` through `MoreSectionPrefs` so the section logic below is unchanged.
-    @AppStorage(MoreSectionPrefs.storageKey) private var expandedMoreSectionsCSV = MoreSectionPrefs.defaultCSV
+    private var expandedMoreSectionsCSV: String { get { prefs.string(MoreSectionPrefs.storageKey, default: MoreSectionPrefs.defaultCSV) } nonmutating set { prefs.set(newValue, forKey: MoreSectionPrefs.storageKey) } }
     private var expandedMoreSections: Set<String> { MoreSectionPrefs.decode(expandedMoreSectionsCSV) }
 
     /// V8 liquid redesign is the default Today; the Settings toggle lets a user fall back to the classic
     /// Today if they prefer it (keyed identically to the SettingsView toggle). Default ON.
-    @AppStorage("noop.liquidTodayEnabled") private var liquidTodayEnabled = true
+    private var liquidTodayEnabled: Bool { prefs.bool("noop.liquidTodayEnabled", default: true) }
 
     /// The Today tab root, honouring the liquid/classic preference.
     @ViewBuilder private var todayTabRoot: some View {
