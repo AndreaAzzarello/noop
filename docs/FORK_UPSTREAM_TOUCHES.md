@@ -95,6 +95,39 @@ link interval) and `StrandiOS/App/PerfDisplayKeeper.swift` (publish sinks, `perf
 | `StrandiOS/App/StrandiOSApp.swift` | +0/-0 | `.perfDisplayKeeper(model:health:router:)` (same TEMP line, new arguments) |
 | `StrandiOS/Health/HealthKitBridge.swift` | +16 | `healthSync.wb.migrate/vitals/sleep/hr/workouts` spans, `healthSync.wb.counts` lines, `healthSync.writeBackAfterNewData` span |
 
+## Perf session 4: fixes that stay
+
+Fork-only helpers: `Strand/System/HealthWriteBackGate.swift` (tests: `StrandTests/HealthWriteBackGateTests.swift`),
+`Strand/System/UserDefaultsSetIfChanged.swift` (tests: `StrandTests/UserDefaultsSetIfChangedTests.swift`).
+
+| Fix | Upstream file | Lines touched | Reason |
+|---|---|---|---|
+| A | `StrandiOS/Health/HealthKitBridge.swift` | +15/-7 | `writeBackPending` becomes `writeBackGate`: a `sync` that finds the bridge busy no longer queues a write-back (the observer wakes it answers are mostly our own write-back samples); fresh strap data reruns only when it arrived after the pass read its rows |
+| B1 | `StrandiOS/Health/HealthKitBridge.swift` | +5/-2 | `persistAnchor` and the HR write cursor use `setIfChanged` (cursor still advances per chunk so an interrupted first run keeps its progress) |
+| B1 | `Strand/System/BatteryNotifier.swift` | +5/-5 | the five alert latches use `setIfChanged` |
+| B1 | `Strand/System/RescoreBackgroundScheduler.swift` | +4/-4 | `owed` and `owedAfterCompletedPass` use `setIfChanged` (token and timestamps stay `set`) |
+| B1 | `Strand/Data/IntelligenceEngine.swift` | +1/-1 | analyze watermark uses `setIfChanged` |
+
+## Perf session 4: TEMP hooks (remove at the end)
+
+| File | Lines | What |
+|---|---|---|
+| `Strand/System/PerfTrace.swift` (fork-only) | +61 | B0: per-key diff of `UserDefaults.standard` per notification (`defaultsKeys=`, `defaultsSame=`, `defaultsDiffMs=` on `frameSummary`), `runDefaultsProbe()` (writes `perf.probe` 20 times) |
+| `StrandiOS/App/PerfDisplayKeeper.swift` (fork-only) | +7/-1 | feeds `noteDefaultsNotification()` from the `didChangeNotification` sink, `resetDefaultsSnapshot()` on start |
+| `Strand/System/DisplayPerformanceMonitor.swift` | +4 | D: `preferredFrameRateRange` 60-120 Hz on the monitor's `CADisplayLink` (keeps the panel at up to 120 Hz while the monitor runs; read `refresh=` against 8.3 ms) |
+| `Strand/Screens/TestCentreView.swift` | +3 | "Defaults probe" button in `DisplayReadoutPanel` (`Text(verbatim:)`, no localized string) |
+| `StrandiOS/Health/HealthKitBridge.swift` | +2 | `perf healthSync.pending source=sync dropped=1` (busy `sync`) and `source=newData rerun=0\|1` (`finishHealthPass`) |
+
+The `perf probe defaults start/end` and `perf healthSync.pending` lines are emitted through `PerfTrace.emit`, so they
+disappear with the hooks above; the `perf.probe` defaults key is read by nothing and can be left to expire.
+
+### Pre-existing, to evaluate later (not changed)
+
+`HealthKitBridge.writeHeartRate` deletes our previous samples in the window with `try? await store.deleteObjects(...)`
+before saving the fresh batch. If the delete fails, the error is swallowed and the save still runs, so the window
+holds the old and the new samples: duplicates in Apple Health. Candidate fix: skip the save (and keep the cursor) when
+the delete throws. Needs a decision on whether a repeatedly failing delete should surface in `lastError`.
+
 Proposed, not done: P4.2 (per-workout route/HR/steps fetch in a task group), B2 (bpm in a leaf-observed model),
 B8/C5 (single `LoadResult` for Today), `CADisableMinimumFrameDurationOnPhone` (`project.yml`, owner adds it).
 
