@@ -14,18 +14,22 @@ The iOS Smart Wake path is implemented on `feature/ios-smart-wake` as an opt-in 
 
 AlarmKit requires iOS 26 or later and the user's explicit alarm authorization. The app declares `NSAlarmKitUsageDescription`; if authorization is denied or unavailable, Smart Wake cannot be enabled. AlarmKit alerts can break through Silent mode and Focus when authorized, as documented by Apple.
 
-## Shared wake schedule
+## Alarm list and the schedule
 
-Smart Wake does not maintain a second maximum-wake-time setting. It reads the existing WHOOP alarm settings:
+Smart Wake has a list of alarms, like the Clock app: each has a switch, a latest wake time, repeat days, an optional label (up to 32 characters), an early window (15, 20, 30, 45 or 60 minutes) and its own "Insistent strap alarm" switch. **At most one active alarm per weekday**: switching on or saving an alarm that shares a day with another active one is refused with a message that names the other alarm and its days, and offers "Switch off X and turn this on". Nothing is ever switched off silently.
 
-- Base wake time: `BehaviorStore.smartAlarmMinutes`.
-- Active weekdays: `BehaviorStore.smartAlarmWeekdays` (empty means every day).
-- Per-weekday overrides: `WindDownNudge.perDayWakeOverrides`.
-- Early window: independent Smart Wake preference, selectable as 15, 20, 30, 45, or 60 minutes.
+While Smart Wake is on, the list is the source of the schedule:
 
-The WHOOP firmware alarm and phone Smart Wake have separate enable switches. Changing the shared time, weekday selection, or per-day override reconciles the AlarmKit schedule without sending an additional BLE command. The existing WHOOP alarm implementation is not replaced.
+- `SmartWakeAlarmBook` (`Strand/Data/SmartWakeAlarmBook.swift`) holds the list (`smartWake.alarms.v1`, JSON, versioned; an unreadable blob is kept in `smartWake.alarms.v1.corrupt` and the list is rebuilt from the upstream settings). `effectiveDays()` maps each weekday to the alarm that rings on it.
+- `SmartWakeSchedule.compiled(days:)` turns that map into the schedule the detector, AlarmKit, the widget and the Night card already read: the most frequent time and window are the schedule-wide ones, the other days carry overrides, labels and insistence are per weekday. No active alarm means no schedule: nothing is armed and the detector stays idle.
+- **First launch with the list:** the current configuration (`BehaviorStore.smartAlarmMinutes`, `smartAlarmWeekdays`, `WindDownNudge.perDayWakeOverrides`, the early window, the old insistent switch) becomes the first alarm. It compiles to the same schedule as before, so the sync plan is "nothing" and AlarmKit is not called. The upstream values are saved once in `smartWake.alarms.preMigrationUpstream`.
+- **Upstream mirror** (`SmartWakeUpstreamMirror`): the upstream alarm settings are kept equal to what the list resolves to (and only written when they differ), so `applySmartAlarm()`, the strap's firmware alarm, the backup notification, the "next buzz" line and the evening reminder see the next occurrence among all active alarms. `SmartWakeArmHold` makes one list change arm the strap once, on the complete settings, however many `onChange` echoes the writes cause. Overrides of days that are not active are kept (the evening reminder reads them).
+- With Smart Wake off nothing changes: the Alarms screen is the one it always was (plus a note when the mirrored values differ from the original ones). With the list in charge, the strap alarm's time, day and per-day editors are replaced by a line that points to the Smart Wake card.
+- The WHOOP firmware alarm and phone Smart Wake keep separate enable switches. The firmware alarm is disarmed when Smart Wake is on and no alarm is active.
 
-AlarmKit keeps a separate weekly fallback for each weekday so an early wake can replace only the current weekday's fallback. When the user dismisses the early alert, its `LiveActivityIntent` skips the current day's maximum-time occurrence and schedules the same weekday for the following week. After that one-shot fires, its stop intent restores the normal weekly recurrence. The other weekdays remain scheduled.
+AlarmKit keeps a separate weekly fallback for each weekday so an early wake can replace only the current weekday's fallback. The alarm ids (slot A/B per weekday) are unchanged. `SmartWakeSyncPlan` compares what each weekday actually asks of AlarmKit (time and label): a change of window or insistence only updates the saved schedule ("metadata updated, no alarm change"); a changed alarm reinstalls only its weekdays, through the idle slot as before. Several changes in a row (the time picker, a switch, a foreground) are merged into one sync after 1.5 s of quiet, or when the app goes to the background; the alarms already installed stay armed meanwhile.
+
+The detector uses the window of the weekday that rings (also across midnight), and sample retention uses the longest window of the active days. The strap's insistent repeat is decided per morning by the alarm that rings (with no list, by the old global switch). When the user dismisses the early alert, its `LiveActivityIntent` skips the current day's maximum-time occurrence and schedules the same weekday for the following week; after that one-shot fires, its stop intent restores the normal weekly recurrence.
 
 ## Data path
 
@@ -148,6 +152,8 @@ swiftc -O StrandiOSShared/SmartWakeEngine.swift StrandiOSShared/SmartWakeLiveCon
 
 It runs each night through the real controller as the app feeds it, with a simulated maximum wake time at the session end plus each offset, and reports how early the rule woke, the distribution of wake times inside the window, and the after-the-night V2 stage and the strap's own `sleep_state` at that moment, next to each stage's share of the window. If most wakes land in the first minutes of the window, or in V2 deep sleep, the rule is not tracking sleep depth. The exported files hold personal health data: write them outside the repository and delete them afterwards.
 
-**Not yet verified:** nothing has been tested on a strap or an iPhone after the move to the firmware alarm (the 2026-11-17 stuck vibration is what it replaces). Run the test button first.
+The alarm list is covered by tests for the model and its Codable form, the overlap rule, the migration (a grid of configurations compiles to the same schedule, with zero writes to the upstream keys and zero AlarmKit calls), the mirror, the arm hold, the sync plan, the debouncer, per-weekday windows and insistence, and the widget's next wake. The list UI, AlarmKit and the strap path are verified only on the phone.
+
+**Not yet verified:** the alarm list on a phone (migration of the current alarm, a second alarm, a refused overlap, two non-overlapping alarms active together, both test buttons, the widget and the Night card, a few real nights with a backup alarm in the Clock app). Nothing has been tested on a strap or an iPhone after the move to the firmware alarm (the 2026-11-17 stuck vibration is what it replaces). Run the test button first.
 
 Before that: nothing had been tested on a strap or an iPhone. The rule was calibrated offline on nine nights (see above). No GitHub Actions, TestFlight, signing, release, merge, or changes to `main` have been performed.

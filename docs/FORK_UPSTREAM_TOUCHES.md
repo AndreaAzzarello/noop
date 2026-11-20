@@ -176,3 +176,16 @@ TEMP instrumentation (remove after the 24 h measurement; find it with `grep -rn 
 
 Proposed, not done: W3 (workout timer cadence in always-on), B2 (low refresh), B3 (buffer `StrapLogArchive`),
 B4 (`logRevision` rate), MetricKit on watchOS (check the SDK first).
+
+## Multiple Smart Wake alarms
+
+The alarm list lives in fork-only files; the upstream files touched are two, both marked `// fork:`:
+
+| File | Lines (+/-) | What changed |
+|---|---|---|
+| `Strand/App/AppModel.swift` | +2/-1 | `applySmartAlarm` first asks `SmartWakeArmHold.shared.swallows()` (a list change arms the strap once), and the strap alarm is not armed when Smart Wake is on and no alarm is active (`SmartWakeScheduleOwner.allowsStrapAlarm`) |
+| `Strand/Screens/SmartAlarmView.swift` | +18/-2 | one computed property (`smartWakeListOwnsSchedule`), then plain `if`s: the strap alarm's time and day editors and "Different wake time per day" are replaced or hidden only while the list owns them; with Smart Wake off the screen is unchanged apart from one note |
+
+Fork files touched or added: `Strand/Data/SmartWakeAlarmBook.swift`, `SmartWakeUpstreamMirror.swift`, `SmartWakeCommitDebouncer.swift`, `Strand/Screens/SmartWakeAlarmListView.swift`, `SmartWakeManagedScheduleRow.swift`, `SmartWakeCardView.swift`, `SmartWakeDiagnosticsView.swift`, `NightSummaryCard.swift` (the window of the alarm that rings, reload on list change), `StrandiOS/System/SmartWakeAlarmStore.swift`, `AppModel+SmartWake.swift`, `SmartWakeLiveWiring.swift`, `SmartWakeAlarmScheduler.swift`, `SmartWakeStrapAlarm.swift`, `SmartWakeAlarmTitle.swift`, `StrandiOS/Widgets/ForkWidgetPublisher.swift`, `StrandiOSShared/SmartWakeLiveController.swift`, `ForkWidgetSnapshot.swift`, their tests, and strings in `Fork.xcstrings`.
+
+Not touched: `Strand/BLE/**` (including `armStrapAlarm`), `SmartWakeFirmwareSkip.swift`, `project.yml`, `.github`, `fastlane`, the entitlements, `NOOPWidget.swift`, `WidgetSnapshot.swift`, `Localizable.xcstrings`.
