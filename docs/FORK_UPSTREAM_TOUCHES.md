@@ -159,11 +159,12 @@ Fixes that stay (every hook is marked `// fork-perf:`; logic lives in fork-only 
 | Health | `StrandiOS/App/StrandiOSApp.swift` | +15/-1 | foreground sync goes through `HealthForegroundSyncState` (skip within 15 min, window = days since the last pass, full 30 days every 24 h); TEMP probe attach and flush |
 | Watch | `NOOPWatch/WatchScoreStore.swift` | +9/-1 | `apply` returns early for a snapshot equal to the one shown (no persist, no complication reload) |
 | Watch | `NOOPWatch/WatchLiveHR.swift` | +5/-2 | `bpm` and `denied` are assigned only when they change |
-| Smart Wake | `Strand/Screens/SmartWakeCardView.swift`, `SmartWakeDiagnosticsView.swift` | +1/-0 each | `SmartWakeStreamNotice`: informational line when "Night only" HRV capture ends before the maximum wake time; reads settings only |
+
+The Smart Wake night-window notice added earlier in this session was removed again: the detector reads the standard 0x2A37 heart rate, which the "Night only" gate does not stop (it only gates the realtime stream toggle).
 
 Fork-only files: `Strand/System/HealthWriteBackLedger.swift`, `HealthForegroundSyncPolicy.swift`,
-`SmartWakeStreamWindowCheck.swift`, `StrandiOS/Health/HealthWriteBackLedgerHK.swift`,
-`Strand/Screens/ForkHealthLedgerCard.swift`, `SmartWakeStreamNotice.swift`, their tests, and strings in `Fork.xcstrings`.
+`StrandiOS/Health/HealthWriteBackLedgerHK.swift`,
+`Strand/Screens/ForkHealthLedgerCard.swift`, their tests, and strings in `Fork.xcstrings`.
 
 TEMP instrumentation (remove after the 24 h measurement; find it with `grep -rn "fork-perf: TEMP"`):
 `Strand/System/ForkEnergyCounters.swift`, `ForkMetricKitDays.swift`, `ForkLedgerTelemetry.swift`,

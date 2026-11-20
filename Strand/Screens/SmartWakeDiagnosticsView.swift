@@ -18,7 +18,6 @@ struct SmartWakeDiagnosticsView: View {
     var body: some View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 10) {
-                SmartWakeStreamNotice(overrides: WindDownNudge.perDayWakeOverrides) // fork: informational only
                 Text(report)
                     .font(StrandFont.footnote)
                     .foregroundStyle(StrandPalette.textTertiary)
