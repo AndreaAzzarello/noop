@@ -15,8 +15,27 @@ enum SmartWakeLiveWiring {
     /// `LiveState.rrSeq` of the last RR packet handed to the controller, so each packet is passed on once.
     private static var lastRRSequence = -1
 
-    /// The single place a `SmartWakeSchedule` is built from the user's settings.
-    static func makeSchedule(from behavior: BehaviorStore) -> SmartWakeSchedule {
+    /// True while Smart Wake is on and the alarm list has no active alarm (nothing to arm). Read by the next commit to
+    /// tell "first alarm switched on again" (needs the enable path) from an ordinary sync.
+    private(set) static var hasNoActiveAlarm = false
+    private static var scheduleResolved = false
+
+    /// The single place a `SmartWakeSchedule` is built from the user's settings. With Smart Wake on, the alarm list is the
+    /// source (nil when it has no active alarm: nothing is armed and the detector stays idle); otherwise it is the
+    /// single schedule the Alarms screen holds, exactly as before the list existed.
+    static func makeSchedule(from behavior: BehaviorStore) -> SmartWakeSchedule? {
+        guard behavior.smartWakeEnabled else { return legacySchedule(from: behavior) }
+        return schedule(from: SmartWakeAlarmStore.currentBook(for: behavior))
+    }
+
+    /// The alarm list compiled into a schedule; nil without an active alarm.
+    static func schedule(from book: SmartWakeAlarmBook) -> SmartWakeSchedule? {
+        SmartWakeSchedule.compiled(days: book.effectiveDays().mapValues {
+            SmartWakeDaySpec(minutes: $0.minutes, windowMinutes: $0.windowMinutes, label: $0.label, insistent: $0.insistent)
+        })
+    }
+
+    private static func legacySchedule(from behavior: BehaviorStore) -> SmartWakeSchedule {
         SmartWakeSchedule(
             wakeMinutes: behavior.smartAlarmMinutes,
             weekdays: behavior.smartAlarmWeekdays,
@@ -27,9 +46,11 @@ enum SmartWakeLiveWiring {
 
     /// Rebuilds the cached schedule and returns it.
     @discardableResult
-    static func refreshSchedule(from behavior: BehaviorStore) -> SmartWakeSchedule {
+    static func refreshSchedule(from behavior: BehaviorStore) -> SmartWakeSchedule? {
         let schedule = makeSchedule(from: behavior)
         cachedSchedule = schedule
+        scheduleResolved = true
+        hasNoActiveAlarm = behavior.smartWakeEnabled && schedule == nil
         return schedule
     }
 
@@ -49,7 +70,7 @@ enum SmartWakeLiveWiring {
             Task { @MainActor in await SmartWakeTestAlarm.shared.sweep() }
         }
         #endif
-        let controller = SmartWakeLiveController(schedule: refreshSchedule(from: model.behavior))
+        let controller = SmartWakeLiveController(schedule: refreshSchedule(from: model.behavior) ?? .standard)
         let strapAlarm = SmartWakeStrapAlarm(model: model)
         // fork: with an alarm list, insistence is per alarm (the global switch is ignored); without one, it is the global switch.
         strapAlarm.insistentResolver = { maximumWakeTime in
@@ -92,7 +113,8 @@ enum SmartWakeLiveWiring {
 
         model.live.onSmartWakeHeartRateSample = { [weak controller, weak model] bpm, timestamp in
             guard let model, model.behavior.smartWakeEnabled else { return }
-            let schedule = cachedSchedule ?? refreshSchedule(from: model.behavior)
+            if !scheduleResolved { refreshSchedule(from: model.behavior) }
+            guard let schedule = cachedSchedule else { return }   // fork: no active alarm, nothing to detect
             controller?.updateSchedule(schedule)
             let decision = controller?.ingest(
                 bpm: bpm,

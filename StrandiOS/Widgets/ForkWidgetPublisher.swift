@@ -199,7 +199,7 @@ enum ForkWidgetPublisher {
     // MARK: Smart Wake
 
     /// Called when the Smart Wake schedule, toggle or recorded skip changes (fork-owned call sites only).
-    static func publishSmartWake(from model: AppModel, schedule: SmartWakeSchedule) {
+    static func publishSmartWake(from model: AppModel, schedule: SmartWakeSchedule?) {
         let now = Date()
         let enabled = model.behavior.smartWakeEnabled
         // The SAME resolver the strap alarm re-arm uses; it also drops a spent skip, as it does there.

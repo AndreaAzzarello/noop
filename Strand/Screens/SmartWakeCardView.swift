@@ -18,9 +18,8 @@ struct SmartWakeCardView: View, Equatable {
     @EnvironmentObject private var behavior: BehaviorStore
     @State private var smartWakeAuthorizationFailed = false
     @State private var smartWakeErrorMessage: String?
-    /// Off by default. Read by `SmartWakeStrapAlarm` when a wake-up starts; it changes nothing about the
-    /// WHOOP firmware alarm.
-    @AppStorage(SmartWakeStrapAlarm.insistentKey) private var insistentStrapAlarm = false
+    @ObservedObject private var alarms = SmartWakeAlarmStore.shared
+    @State private var showList = false
 
     static func == (lhs: SmartWakeCardView, rhs: SmartWakeCardView) -> Bool {
         lhs.model === rhs.model && lhs.overrides == rhs.overrides
@@ -47,47 +46,28 @@ struct SmartWakeCardView: View, Equatable {
                 if behavior.smartWakeEnabled {
                     LiveActivitiesNotice()
                     Divider().overlay(StrandPalette.hairline)
-                    HStack {
-                        Text("Maximum wake", tableName: "Fork")
-                            .font(StrandFont.body)
-                            .foregroundStyle(StrandPalette.textPrimary)
-                        Spacer()
-                        Text(maximumLabel)
+                    // fork: the alarm list owns the times, days, windows and insistence; this card only summarises it.
+                    Text(listSummary)
+                        .font(StrandFont.body)
+                        .foregroundStyle(StrandPalette.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let next = nextLine {
+                        Text(next)
                             .font(StrandFont.number(18))
                             .foregroundStyle(StrandPalette.accent)
                     }
-                    HStack {
-                        Text("Early window", tableName: "Fork")
-                            .font(StrandFont.body)
-                            .foregroundStyle(StrandPalette.textPrimary)
-                        Spacer()
-                        Picker(selection: $behavior.smartWakeWindowMinutes) {
-                            ForEach([15, 20, 30, 45, 60], id: \.self) { minutes in
-                                Text("\(minutes) min").tag(minutes)
-                            }
-                        } label: {
-                            Text("Early window", tableName: "Fork")
+                    Button { showList = true } label: {
+                        HStack {
+                            Text("Manage alarms", tableName: "Fork")
+                            Spacer()
+                            Image(systemName: "chevron.right").imageScale(.small)
                         }
-                        .labelsHidden()
-                        .accessibilityLabel(Text("Smart Wake early window", tableName: "Fork"))
+                        .font(StrandFont.body)
+                        .foregroundStyle(StrandPalette.accent)
+                        .contentShape(Rectangle())
                     }
-                    Text("Uses the same active weekdays and per-day wake times as the WHOOP alarm: \(SmartAlarmView.alarmWeekdaySummary(behavior.smartAlarmWeekdays)).", tableName: "Fork")
-                        .font(StrandFont.footnote)
-                        .foregroundStyle(StrandPalette.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if !overrides.isEmpty {
-                        Text("Custom times for individual days are included automatically.", tableName: "Fork")
-                            .font(StrandFont.footnote)
-                            .foregroundStyle(StrandPalette.textTertiary)
-                    }
-                    Divider().overlay(StrandPalette.hairline)
-                    Toggle(isOn: $insistentStrapAlarm) { Text("Insistent strap alarm", tableName: "Fork") }
-                        .toggleStyle(.switch)
-                        .tint(StrandPalette.accent)
-                    Text("If you don't double-tap the strap, it vibrates again every \(Self.insistentRepeatMinutes) minutes, up to \(Self.insistentRepeatCount) times. A double tap stops it and the iPhone alarm.", tableName: "Fork")
-                        .font(StrandFont.footnote)
-                        .foregroundStyle(StrandPalette.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    .buttonStyle(.plain)
+                    .accessibilityHint(Text("Opens the list of Smart Wake alarms", tableName: "Fork"))
                 }
                 if smartWakeAuthorizationFailed {
                     if #available(iOS 26.0, *) {
@@ -105,13 +85,23 @@ struct SmartWakeCardView: View, Equatable {
                 if #available(iOS 26.0, *) { SmartWakeDiagnosticsView() }
             }
         }
+        .sheet(isPresented: $showList) {
+            SmartWakeAlarmListView(model: model).environmentObject(behavior)
+        }
         .onChangeCompat(of: behavior.smartWakeEnabled) { enabled in
             if enabled {
+                alarms.attach(behavior: behavior, model: model)
+                alarms.mirrorUpstream()
                 if #available(iOS 26.0, *) {
+                    // fork: with no active alarm there is nothing to arm yet; the first alarm switched on goes through
+                    // the enable path (see `commitSmartWakeSchedule`).
+                    guard let schedule = SmartWakeLiveWiring.refreshSchedule(from: behavior) else {
+                        smartWakeAuthorizationFailed = false
+                        model.applySmartWakeSchedule()
+                        return
+                    }
                     Task {
-                        let outcome = await SmartWakeAlarmScheduler.shared.enable(
-                            schedule: SmartWakeLiveWiring.makeSchedule(from: behavior)
-                        )
+                        let outcome = await SmartWakeAlarmScheduler.shared.enable(schedule: schedule)
                         // Not authorized: toggle off. Authorized but AlarmKit refused part of it: stay on, show
                         // why, and let the next foreground sync retry (nothing already armed is removed).
                         smartWakeErrorMessage = outcome == .enabled ? nil : SmartWakeAlarmScheduler.shared.lastErrorDescription
@@ -130,11 +120,9 @@ struct SmartWakeCardView: View, Equatable {
                 smartWakeAuthorizationFailed = false
             }
         }
-        .onChangeCompat(of: behavior.smartWakeWindowMinutes) { _ in
-            model.applySmartWakeSchedule()
-        }
         .onAppear {
             guard behavior.smartWakeEnabled else { return }
+            alarms.attach(behavior: behavior, model: model)
             if #available(iOS 26.0, *) {
                 if SmartWakeAlarmScheduler.shared.isDenied {
                     smartWakeErrorMessage = SmartWakeAlarmScheduler.shared.lastErrorDescription
@@ -168,34 +156,31 @@ struct SmartWakeCardView: View, Equatable {
         }
     }
 
-    /// The shown repeat figures come from the schedule itself, so the text cannot drift from what the strap does.
-    private static var insistentRepeatMinutes: Int {
-        Int(InsistentWakeAlarm.Configuration.insistent.repeatInterval / 60)
+    private var listSummary: String {
+        let active = alarms.book.enabledAlarms.filter { !$0.weekdays.isEmpty }.count
+        if active == 0 { return String(localized: "No active alarms. Add or switch one on in the list.", table: "Fork") }
+        return String(localized: "\(active) active alarms", table: "Fork")
     }
-    private static var insistentRepeatCount: Int { InsistentWakeAlarm.Configuration.insistent.maximumRepeats }
 
-    private var maximumLabel: String {
-        guard let next = AppModel.nextSmartAlarmDate(
-            minutes: behavior.smartAlarmMinutes,
-            weekdays: behavior.smartAlarmWeekdays,
-            overrides: overrides
-        ) else { return String(localized: "No active wake days", table: "Fork") }
-        return Self.maximumFormatter().string(from: next)
+    private var nextLine: String? {
+        guard let next = alarms.next() else { return nil }
+        let when = Self.nextFormatter().string(from: next.date)
+        return next.label.isEmpty ? when : "\(when) · \(next.label)"
     }
 
     /// Building a template-based `DateFormatter` is expensive, so one is kept and rebuilt only when the
     /// app language changes (`AppLanguage.activeLocale` is an in-app setting).
-    private static var cachedMaximumFormatter: (localeID: String, formatter: DateFormatter)?
+    private static var cachedNextFormatter: (localeID: String, formatter: DateFormatter)?
 
-    private static func maximumFormatter() -> DateFormatter {
+    private static func nextFormatter() -> DateFormatter {
         let locale = AppLanguage.activeLocale
-        if let cached = cachedMaximumFormatter, cached.localeID == locale.identifier {
+        if let cached = cachedNextFormatter, cached.localeID == locale.identifier {
             return cached.formatter
         }
         let formatter = DateFormatter()
         formatter.locale = locale
         formatter.setLocalizedDateFormatFromTemplate("EEE jj:mm")
-        cachedMaximumFormatter = (locale.identifier, formatter)
+        cachedNextFormatter = (locale.identifier, formatter)
         return formatter
     }
 }

@@ -267,8 +267,8 @@ enum NightAlarmResolver {
         var smartWake: NightSummary.NextAlarm?
         #if os(iOS)
         if behavior.smartWakeEnabled {
-            let schedule = SmartWakeLiveWiring.makeSchedule(from: behavior)
-            if let latest = schedule.nextMaximumWakeTime(after: from, calendar: .current) {
+            if let schedule = SmartWakeLiveWiring.makeSchedule(from: behavior),
+               let latest = schedule.nextMaximumWakeTime(after: from, calendar: .current) {
                 let window = schedule.windowDuration
                 smartWake = NightSummary.NextAlarm(latest: latest,
                                                    windowStart: window > 0 ? latest.addingTimeInterval(-window) : nil)

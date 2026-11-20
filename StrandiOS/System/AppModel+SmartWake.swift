@@ -15,6 +15,7 @@ extension AppModel {
     /// The maximum time, weekdays and per-day overrides are read from the existing alarm settings.
     func commitSmartWakeSchedule() {
         // Also refreshes the schedule the live HR detector reads, so it and the alarms share one value.
+        let wasEmpty = SmartWakeLiveWiring.hasNoActiveAlarm
         let schedule = SmartWakeLiveWiring.refreshSchedule(from: behavior)
         // Fork NOOP+ widget: mirror toggle, schedule and any recorded skip (no-op when nothing changed).
         ForkWidgetPublisher.publishSmartWake(from: self, schedule: schedule)
@@ -30,6 +31,20 @@ extension AppModel {
             background = UIApplication.shared.beginBackgroundTask(withName: "smartWake.sync") { endBackgroundTask() }
             Task {
                 defer { endBackgroundTask() }
+                // fork: no active alarm in the list: nothing stays armed (the toggle itself is left as the user set it).
+                guard let schedule else {
+                    await SmartWakeAlarmScheduler.shared.disable()
+                    return
+                }
+                // fork: the first alarm switched on again after none was active goes through the enable path, which
+                // also asks for the Alarms permission if it was never asked.
+                if wasEmpty, behavior.smartWakeEnabled, !SmartWakeAlarmScheduler.shared.isConfigured {
+                    if await SmartWakeAlarmScheduler.shared.enable(schedule: schedule) == .notAuthorized {
+                        behavior.smartWakeEnabled = false
+                        ForkWidgetPublisher.publishSmartWake(from: self, schedule: nil)
+                    }
+                    return
+                }
                 // The scheduler serializes this behind any in-flight enable (the AlarmKit permission
                 // prompt re-activates the scene while enable is still waiting), and reads the toggle
                 // only once it runs.

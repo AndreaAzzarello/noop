@@ -1,6 +1,18 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ already rings on %@." : {
+      "comment" : "Overlap alert line: alarm name, days.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ suona già %2$@."
+          }
+        }
+      }
+    },
     "%@, under %lld beats per minute" : {
       "comment" : "VoiceOver label for the below-Zone-1 legend entry.",
       "extractionState" : "manual",
@@ -9,6 +21,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@, sotto %2$lld battiti al minuto"
+          }
+        }
+      }
+    },
+    "%lld active alarms" : {
+      "comment" : "Smart Wake card summary.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld sveglie attive"
+          }
+        }
+      }
+    },
+    "%lld min early" : {
+      "comment" : "Alarm row: early window length.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "anticipo %lld min"
           }
         }
       }
@@ -33,6 +69,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "< %lld bpm"
+          }
+        }
+      }
+    },
+    "Add alarm" : {
+      "comment" : "VoiceOver label of the + button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi sveglia"
           }
         }
       }
@@ -72,6 +120,18 @@
         }
       }
     },
+    "Cancel" : {
+      "comment" : "Alarm list and editor cancel.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Annulla"
+          }
+        }
+      }
+    },
     "Choose an activity" : {
       "comment" : "Title of the full activity browser opened from the sport chips.",
       "extractionState" : "manual",
@@ -80,6 +140,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scegli un'attività"
+          }
+        }
+      }
+    },
+    "Choose at least one day." : {
+      "comment" : "Editor note when no weekday is selected.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scegli almeno un giorno."
           }
         }
       }
@@ -108,18 +180,6 @@
         }
       }
     },
-    "Custom times for individual days are included automatically." : {
-      "comment" : "Footnote shown when per-day overrides exist.",
-      "extractionState" : "manual",
-      "localizations" : {
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gli orari personalizzati dei singoli giorni sono inclusi automaticamente."
-          }
-        }
-      }
-    },
     "Cycling" : {
       "comment" : "Sport name shown on chips and cards; the stored value stays English.",
       "extractionState" : "manual",
@@ -132,6 +192,18 @@
         }
       }
     },
+    "Days already taken" : {
+      "comment" : "Overlap alert title.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giorni già occupati"
+          }
+        }
+      }
+    },
     "Deep" : {
       "comment" : "Deep sleep legend in the Today Night card.",
       "extractionState" : "manual",
@@ -140,6 +212,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Profondo"
+          }
+        }
+      }
+    },
+    "Delete" : {
+      "comment" : "Swipe action and VoiceOver custom action.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elimina"
+          }
+        }
+      }
+    },
+    "Delete alarm" : {
+      "comment" : "Editor destructive button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elimina sveglia"
+          }
+        }
+      }
+    },
+    "Done" : {
+      "comment" : "Alarm list close button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fine"
+          }
+        }
+      }
+    },
+    "Each day can have only one Smart Wake alarm." : {
+      "comment" : "Overlap alert explanation.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni giorno può avere una sola sveglia Smart Wake."
           }
         }
       }
@@ -203,6 +323,30 @@
         }
       }
     },
+    "Edit" : {
+      "comment" : "VoiceOver custom action.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifica"
+          }
+        }
+      }
+    },
+    "Edit alarm" : {
+      "comment" : "Editor title.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifica sveglia"
+          }
+        }
+      }
+    },
     "Efficiency %lld%%" : {
       "comment" : "Sleep efficiency line in the Today Night card.",
       "extractionState" : "manual",
@@ -247,6 +391,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Stimato, aggiornato settimanalmente"
+          }
+        }
+      }
+    },
+    "Every day" : {
+      "comment" : "Alarm repeat summary.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni giorno"
           }
         }
       }
@@ -310,6 +466,18 @@
         }
       }
     },
+    "Label" : {
+      "comment" : "Editor label field placeholder.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etichetta"
+          }
+        }
+      }
+    },
     "Last night" : {
       "comment" : "Overline of the Today Night card.",
       "extractionState" : "manual",
@@ -318,6 +486,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Notte"
+          }
+        }
+      }
+    },
+    "Latest wake time" : {
+      "comment" : "Editor time picker label.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orario massimo di sveglia"
           }
         }
       }
@@ -334,14 +514,14 @@
         }
       }
     },
-    "Maximum wake" : {
-      "comment" : "Smart Wake card row label; the value is the next maximum wake time, e.g. 'Tue 7:00'. Keep short.",
+    "Manage alarms" : {
+      "comment" : "Smart Wake card link to the list.",
       "extractionState" : "manual",
       "localizations" : {
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sveglia al più tardi"
+            "value" : "Gestisci sveglie"
           }
         }
       }
@@ -406,6 +586,18 @@
         }
       }
     },
+    "New alarm" : {
+      "comment" : "Editor title.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nuova sveglia"
+          }
+        }
+      }
+    },
     "Next alarm" : {
       "comment" : "Row label: when the next alarm or Smart Wake window ends.",
       "extractionState" : "manual",
@@ -418,14 +610,14 @@
         }
       }
     },
-    "No active wake days" : {
-      "comment" : "Value of the 'Maximum wake' row when every weekday is off.",
+    "No active alarms. Add or switch one on in the list." : {
+      "comment" : "Smart Wake card summary.",
       "extractionState" : "manual",
       "localizations" : {
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun giorno di sveglia attivo"
+            "value" : "Nessuna sveglia attiva. Aggiungine una o attivala nell'elenco."
           }
         }
       }
@@ -438,6 +630,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nessuna sveglia attiva"
+          }
+        }
+      }
+    },
+    "No alarms yet. Tap + to add one." : {
+      "comment" : "Alarm list empty state.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessuna sveglia. Tocca + per aggiungerne una."
           }
         }
       }
@@ -598,6 +802,18 @@
         }
       }
     },
+    "Opens the list of Smart Wake alarms" : {
+      "comment" : "VoiceOver hint.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apre l'elenco delle sveglie Smart Wake"
+          }
+        }
+      }
+    },
     "REM" : {
       "comment" : "REM sleep legend in the Today Night card.",
       "extractionState" : "manual",
@@ -610,6 +826,18 @@
         }
       }
     },
+    "Repeat" : {
+      "comment" : "Editor weekday row title.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ripeti"
+          }
+        }
+      }
+    },
     "Restore Smart Wake fallback" : {
       "comment" : "AppIntent title (not discoverable).",
       "extractionState" : "manual",
@@ -618,6 +846,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ripristina la sveglia di riserva Smart Wake"
+          }
+        }
+      }
+    },
+    "Rings between %@ and %@." : {
+      "comment" : "Editor: start and end of the early window.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suona tra le %1$@ e le %2$@."
           }
         }
       }
@@ -642,6 +882,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SMART WAKE"
+          }
+        }
+      }
+    },
+    "Save" : {
+      "comment" : "Editor save button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salva"
           }
         }
       }
@@ -706,14 +958,14 @@
         }
       }
     },
-    "Smart Wake early window" : {
-      "comment" : "VoiceOver label of the early-window picker.",
+    "Smart Wake alarms" : {
+      "comment" : "Alarm list title.",
       "extractionState" : "manual",
       "localizations" : {
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Finestra di anticipo di Smart Wake"
+            "value" : "Sveglie Smart Wake"
           }
         }
       }
@@ -792,6 +1044,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scorri"
+          }
+        }
+      }
+    },
+    "Switch off %@ and turn this on" : {
+      "comment" : "Overlap alert button; %@ lists the other alarms.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disattiva %@ e attiva questa"
           }
         }
       }
@@ -892,6 +1156,30 @@
         }
       }
     },
+    "The strap alarm is off: only the iPhone rings." : {
+      "comment" : "Alarm list footer.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sveglia della fascia è spenta: suona solo l'iPhone."
+          }
+        }
+      }
+    },
+    "The strap vibrates too (strap alarm is on)." : {
+      "comment" : "Alarm list footer.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vibra anche la fascia (sveglia della fascia attiva)."
+          }
+        }
+      }
+    },
     "The wake-alarm above buzzes your wrist from the strap's own firmware. For a phone alarm, enable Smart Wake below and allow NOOP to schedule system alarms (iOS 26 or later). AlarmKit can alert through Silent mode and Focus, and its maximum-time alarm stays scheduled even when WHOOP heart-rate data is unavailable. Keep your built-in Clock alarm as a backup until you have tested Smart Wake on this iPhone." : {
       "comment" : "Footnote under 'The strap alarm is a silent buzz' on the Alarms screen.",
       "extractionState" : "manual",
@@ -900,6 +1188,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "La sveglia qui sopra fa vibrare il polso dal firmware della fascia. Per una sveglia sul telefono, attiva Smart Wake qui sotto e consenti a NOOP di programmare sveglie di sistema (iOS 26 o successivo). AlarmKit può suonare anche con il silenzioso e la modalità Focus, e la sveglia all'orario massimo resta programmata anche senza dati di frequenza cardiaca del WHOOP. Tieni la sveglia dell'app Orologio come riserva finché non hai provato Smart Wake su questo iPhone."
+          }
+        }
+      }
+    },
+    "This alarm keeps custom times for some days." : {
+      "comment" : "Editor note for migrated per-day times.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa sveglia mantiene orari diversi per alcuni giorni."
           }
         }
       }
@@ -952,14 +1252,14 @@
         }
       }
     },
-    "Uses the same active weekdays and per-day wake times as the WHOOP alarm: %@." : {
-      "comment" : "Footnote under the early window. %@ is a weekday summary such as 'Every day' or 'Mon, Tue'.",
+    "Use one time for every day" : {
+      "comment" : "Editor button that clears per-day times.",
       "extractionState" : "manual",
       "localizations" : {
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Usa gli stessi giorni attivi e gli stessi orari per giorno della sveglia WHOOP: %@."
+            "value" : "Usa un solo orario per tutti i giorni"
           }
         }
       }
@@ -972,6 +1272,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Giorno della settimana"
+          }
+        }
+      }
+    },
+    "Weekdays" : {
+      "comment" : "Alarm repeat summary.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giorni feriali"
+          }
+        }
+      }
+    },
+    "Weekends" : {
+      "comment" : "Alarm repeat summary.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fine settimana"
           }
         }
       }
@@ -1035,6 +1359,18 @@
         }
       }
     },
+    "insistent" : {
+      "comment" : "Alarm row: insistent strap alarm is on.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "insistente"
+          }
+        }
+      }
+    },
     "of 21" : {
       "comment" : "Caption under an Effort value on the WHOOP 0-21 scale.",
       "extractionState" : "manual",
@@ -1043,6 +1379,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "su 21"
+          }
+        }
+      }
+    },
+    "off" : {
+      "comment" : "VoiceOver: alarm state.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "disattiva"
+          }
+        }
+      }
+    },
+    "on" : {
+      "comment" : "VoiceOver: alarm state.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "attiva"
           }
         }
       }
