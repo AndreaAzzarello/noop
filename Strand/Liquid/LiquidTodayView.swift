@@ -18,7 +18,8 @@ import StrandAnalytics
 import WhoopProtocol
 
 struct LiquidTodayView: View {
-    @AppStorage(DayCycleMode.storageKey) private var dayCycleModeRaw = DayCycleMode.sleepOnset.rawValue
+    // fork-perf: every `@ScopedAppStorage` below wakes this view only for its own key (see ScopedAppStorage.swift).
+    @ScopedAppStorage(DayCycleMode.storageKey) private var dayCycleModeRaw = DayCycleMode.sleepOnset.rawValue
     private var dayCycleMode: DayCycleMode { DayCycleMode.persisted(dayCycleModeRaw) }
     @EnvironmentObject var repo: Repository
     @EnvironmentObject var router: NavRouter
@@ -36,17 +37,17 @@ struct LiquidTodayView: View {
     private var poseStill: Bool { motion.poseStill(reduceMotion) }
 
     /// Shared with the real Today's card-customise editor so the two stay in sync.
-    @AppStorage(DashboardCardPrefs.selectionKey) private var dashboardCardsRaw = ""
+    @ScopedAppStorage(DashboardCardPrefs.selectionKey) private var dashboardCardsRaw = ""
     /// #today-hosted-cards: the ordered Trends/Sleep cards the user has hosted in Today. Empty by default
     /// (opt-in); rendered by the `.addedCards` section. Shared @AppStorage key with Android.
-    @AppStorage(HostedCardPrefs.selectionKey) private var hostedCardsRaw = ""
+    @ScopedAppStorage(HostedCardPrefs.selectionKey) private var hostedCardsRaw = ""
     /// #989 parity with classic Today + Android: the hydration card is opt-in twice over — the feature
     /// toggle AND an explicit add in CUSTOMISE. Liquid filtered on neither, so a user who added the card
     /// and later switched the feature off kept a permanently-blank row.
     /// The Coach master switch (`noop.coachEnabled`, shared by name with Android). Default ON. Gates the
     /// Today launcher card here; the tab and the daily brief read the same key.
-    @AppStorage("noop.coachEnabled") private var coachEnabled = true
-    @AppStorage(HydrationStore.enabledKey) private var hydrationEnabled = false
+    @ScopedAppStorage("noop.coachEnabled") private var coachEnabled = true
+    @ScopedAppStorage(HydrationStore.enabledKey) private var hydrationEnabled = false
     /// Today's hydration total + goal (ml), resolved in `load()`. nil → the card shows "—".
     @State private var hydrationTotalML: Double?
     @State private var hydrationGoalML: Int?
@@ -101,23 +102,23 @@ struct LiquidTodayView: View {
 
     /// Live Sessions (silent guardian) beta gate — the SAME key the Settings toggle writes. Default ON
     /// (the entry is BETA-labelled in-UI); off removes the Start-session control entirely.
-    @AppStorage(LiveSessionPrefs.betaKey) private var liveSessionsBeta = true
+    @ScopedAppStorage(LiveSessionPrefs.betaKey) private var liveSessionsBeta = true
     // #today-layout (parity with Android): the user-chosen section order, persisted under the byte-identical
     // "today.sectionOrder" key the Android TodayLayoutPrefs uses. Reordered via the Arrange sheet (native
     // drag-to-reorder rows); every section always renders (decode inserts a missing one at its default spot).
-    @AppStorage(TodayLayoutPrefs.orderKey) private var sectionOrderRaw = ""
-    @AppStorage(TodayLayoutPrefs.hiddenKey) private var hiddenSectionsRaw = ""
+    @ScopedAppStorage(TodayLayoutPrefs.orderKey) private var sectionOrderRaw = ""
+    @ScopedAppStorage(TodayLayoutPrefs.hiddenKey) private var hiddenSectionsRaw = ""
     private var sectionOrder: [TodaySection] {
         TodayLayoutPrefs.visibleOrder(orderRaw: sectionOrderRaw, hiddenRaw: hiddenSectionsRaw)
     }
     // #430 parity: the Key-Metrics grid honours the SAME editor selection/order + Detailed-tiles switch as
     // Android (byte-identical @AppStorage keys). `kSparks` holds the trailing-30-day series the detailed
     // tiles graph (keyed by metric-catalog key), filled by the loader alongside everything else.
-    @AppStorage(KeyMetricPrefs.layoutKey) private var keyMetricsRaw = ""
-    @AppStorage("today.keyMetricsDetailed") private var keyMetricsDetailed = false
+    @ScopedAppStorage(KeyMetricPrefs.layoutKey) private var keyMetricsRaw = ""
+    @ScopedAppStorage("today.keyMetricsDetailed") private var keyMetricsDetailed = false
     /// The detailed graphs' trailing window — 1 week / 2 weeks / 1 month (shared key with Android). The
     /// loader banks a day-keyed 30-day superset; render filters down, so a window change applies instantly.
-    @AppStorage("today.keyMetricsWindowDays") private var keyMetricsWindowDays = 14
+    @ScopedAppStorage("today.keyMetricsWindowDays") private var keyMetricsWindowDays = 14
     @State private var kSparks: [String: [(String, Double)]] = [:]
     private var enabledKeyMetrics: [KeyMetric] { KeyMetricPrefs.decodeEnabled(keyMetricsRaw) }
     // fork: the tiles actually drawn: no ring score while the rings show, no Blood Oxygen tile with no value (its
@@ -191,15 +192,15 @@ struct LiquidTodayView: View {
     /// "Card transparency" (0–100, default 100): fades every liquid card surface here — the hero, the
     /// session-start row, the metric tiles and the `card` helper — in lockstep with the frosted cards.
     /// Content sits above the surface so it stays readable. Mirrors Kotlin `NoopPrefs.cardOpacityPercent`.
-    @AppStorage(CardAppearancePrefs.opacityKey) private var cardOpacityPercent = CardAppearancePrefs.defaultPercent
+    @ScopedAppStorage(CardAppearancePrefs.opacityKey) private var cardOpacityPercent = CardAppearancePrefs.defaultPercent
     private var cardOpacity: Double { max(0, min(1, Double(cardOpacityPercent) / 100)) }
     /// "Sky behind cards" (default ON): extend the day-cycle sky behind the WHOLE scroll so the
     /// Card-transparency slider reveals it under every card. User-toggleable. Mirrors Kotlin `NoopPrefs.skyBehindCards`.
-    @AppStorage(SkyBehindCardsPrefs.enabledKey) private var skyBehindCards = true
+    @ScopedAppStorage(SkyBehindCardsPrefs.enabledKey) private var skyBehindCards = true
     /// Day-cycle scene backdrop (#698). Default ON. When off, the liquid Today drops the sky for the plain
     /// dark canvas — parity with Android and the classic TodayView, which already honour this pref. Mirrors
     /// Kotlin `NoopPrefs.showDayCycleBackground`.
-    @AppStorage(SceneBackgroundPrefs.enabledKey) private var showDayCycleBackground = true
+    @ScopedAppStorage(SceneBackgroundPrefs.enabledKey) private var showDayCycleBackground = true
     /// Custom background image (#custom-background): when active it overrides the sky in the backdrop below.
     @ObservedObject private var backgroundStore = BackgroundImageStore.shared
 
@@ -2089,21 +2090,21 @@ struct LiquidTodayView: View {
     // HealthView): the explicit override when set, else derived from the unit system. Liquid Today was
     // the ONLY one of them missing it — which is why its Skin Temp card could not honour the preference
     // even once it had a value to show (#1627).
-    @AppStorage(UnitPrefs.systemKey) private var unitSystemRaw = UnitSystem.metric.rawValue
+    @ScopedAppStorage(UnitPrefs.systemKey) private var unitSystemRaw = UnitSystem.metric.rawValue
     private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
-    @AppStorage(UnitPrefs.distanceSystemKey) private var distanceSystemRaw = ""
+    @ScopedAppStorage(UnitPrefs.distanceSystemKey) private var distanceSystemRaw = ""
     private var distanceUnitSystem: UnitSystem {
         UnitPrefs.resolveDistance(system: unitSystem, override: distanceSystemRaw)
     }
-    @AppStorage(UnitPrefs.temperatureKey) private var temperatureRaw = ""
-    @AppStorage(UnitPrefs.skinTempDisplayKey) private var skinTempDisplayRaw = ""   // #1846
+    @ScopedAppStorage(UnitPrefs.temperatureKey) private var temperatureRaw = ""
+    @ScopedAppStorage(UnitPrefs.skinTempDisplayKey) private var skinTempDisplayRaw = ""   // #1846
     private var temperatureUnit: TemperatureUnit {
         UnitPrefs.resolveTemperature(system: unitSystem, override: temperatureRaw)
     }
 
     // The user's Effort display scale (#268), 0–100 by default or the WHOOP 0–21 axis if chosen — the SAME
     // preference the Workouts screen + Trends read, so a workout's Effort number is identical everywhere.
-    @AppStorage(UnitPrefs.effortScaleKey) private var effortScaleRaw = EffortScale.hundred.rawValue
+    @ScopedAppStorage(UnitPrefs.effortScaleKey) private var effortScaleRaw = EffortScale.hundred.rawValue
     private var effortScale: EffortScale { UnitPrefs.resolveEffortScale(effortScaleRaw) }
 
     /// The Effort this view should show: the live in-progress score when it beats the stored row, else the
