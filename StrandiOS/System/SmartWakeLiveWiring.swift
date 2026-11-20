@@ -103,6 +103,7 @@ enum SmartWakeLiveWiring {
                 // a backup that rings a few minutes later and is cancelled by a double tap. With no usable strap link
                 // the iPhone alarm rings straight away, and the weekday's maximum-time alarm stays until a stop.
                 let start = strapAlarm.beginEarly(reason: label, maximumWakeTime: maximumWakeTime, at: timestamp)
+                if start != .alreadyRan { SmartWakeEarlyWakeRecord.record(at: timestamp) } // Today Night card; write-only
                 #if canImport(AlarmKit)
                 if #available(iOS 26.0, *), start != .alreadyRan {
                     let viaStrap = start == .started

@@ -49,6 +49,18 @@
         }
       }
     },
+    "Bedtime tonight" : {
+      "comment" : "Row label: latest bedtime that still gives the sleep need.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A letto stasera entro"
+          }
+        }
+      }
+    },
     "Choose an activity" : {
       "comment" : "Title of the full activity browser opened from the sport chips.",
       "extractionState" : "manual",
@@ -109,6 +121,18 @@
         }
       }
     },
+    "Deep" : {
+      "comment" : "Deep sleep legend in the Today Night card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profondo"
+          }
+        }
+      }
+    },
     "Earlier wake in light sleep" : {
       "comment" : "Smart Wake card title.",
       "extractionState" : "manual",
@@ -117,6 +141,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sveglia anticipata nel sonno leggero"
+          }
+        }
+      }
+    },
+    "Early wake at %@" : {
+      "comment" : "Smart Wake early wake time in the Today Night card; %@ is a clock time.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sveglia anticipata alle %@"
           }
         }
       }
@@ -141,6 +177,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Finestra di anticipo"
+          }
+        }
+      }
+    },
+    "Efficiency %lld%%" : {
+      "comment" : "Sleep efficiency line in the Today Night card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Efficienza %lld%%"
           }
         }
       }
@@ -229,6 +277,30 @@
         }
       }
     },
+    "Last night" : {
+      "comment" : "Overline of the Today Night card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notte"
+          }
+        }
+      }
+    },
+    "Light" : {
+      "comment" : "Light sleep legend in the Today Night card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leggero"
+          }
+        }
+      }
+    },
     "Maximum wake" : {
       "comment" : "Smart Wake card row label; the value is the next maximum wake time, e.g. 'Tue 7:00'. Keep short.",
       "extractionState" : "manual",
@@ -301,6 +373,18 @@
         }
       }
     },
+    "Next alarm" : {
+      "comment" : "Row label: when the next alarm or Smart Wake window ends.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prossima sveglia"
+          }
+        }
+      }
+    },
     "No active wake days" : {
       "comment" : "Value of the 'Maximum wake' row when every weekday is off.",
       "extractionState" : "manual",
@@ -313,6 +397,18 @@
         }
       }
     },
+    "No alarm set" : {
+      "comment" : "Shown in the Night card when no alarm is on.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessuna sveglia attiva"
+          }
+        }
+      }
+    },
     "No results for “%@”" : {
       "comment" : "Shown in the More tab search when nothing matches; the placeholder is the typed text.",
       "extractionState" : "manual",
@@ -321,6 +417,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nessun risultato per «%@»"
+          }
+        }
+      }
+    },
+    "No sleep recorded last night" : {
+      "comment" : "Empty state of the Today Night card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessun sonno registrato stanotte"
           }
         }
       }
@@ -453,6 +561,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Apri Impostazioni"
+          }
+        }
+      }
+    },
+    "REM" : {
+      "comment" : "REM sleep legend in the Today Night card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "REM"
           }
         }
       }
@@ -751,6 +871,18 @@
         }
       }
     },
+    "Tonight in bed by %@" : {
+      "comment" : "Compact Night card text; %@ is a clock time.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stasera a letto entro %@"
+          }
+        }
+      }
+    },
     "Try another word, for example alarm or backup." : {
       "comment" : "Hint under the empty More tab search result.",
       "extractionState" : "manual",
@@ -771,6 +903,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Attiva le Attività in tempo reale per NOOP, altrimenti la sveglia dell'iPhone non suona"
+          }
+        }
+      }
+    },
+    "Turn on an alarm to get a bedtime" : {
+      "comment" : "Hint in the Night card when no alarm is on.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attiva una sveglia per l'ora consigliata per andare a letto"
           }
         }
       }
