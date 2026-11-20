@@ -96,8 +96,41 @@ snapshot compare; KVO is not usable because every key contains a dot).
 | C | `StrandiOS/App/StrandiOSApp.swift` | +14/-14 | the six root `@AppStorage`s (appearance, chart style, accent, custom hex, effort scale, unit system) and the three `iOSRootView` gate keys read through `DefaultsKeys`; an `@AppStorage` re-evaluated the app root on every defaults write (probe: 20 foreign writes gave root.app 7-9) |
 | C | `StrandiOS/App/RootTabView.swift` | +6/-4 | the four shell keys (Coach, bottom-bar auto-hide, More sections CSV, Liquid Today) read through `DefaultsKeys` (probe: root.tabs 9-10) |
 
-Not changed, to be decided from a confirmation measurement on a device: the 28 `@AppStorage`s of `TodayView`
-(18-20 body passes in the pre-C probe) and the 23 of `LiquidTodayView`.
+Not changed in this session: the 28 `@AppStorage`s of `TodayView` (18-20 body passes in the pre-C probe). The 19 of
+`LiquidTodayView` are handled in session 6 below.
+
+## Session 6: Today cards (Night, workout stack, Effort target, repeated facts)
+
+Fork-only files (no merge conflict possible), each with tests in `StrandTests/` unless noted:
+`Strand/Data/StrainTargetBand.swift`, `NightSummary.swift`, `SmartWakeEarlyWakeRecord.swift`, `TodayFeatureStack.swift`,
+`TodayDedup.swift`, `Strand/Screens/NightSummaryCard.swift` (preview), `StrainTargetArc.swift` (preview),
+`TodayFeatureStackView.swift`, `Strand/System/ScopedAppStorage.swift`. New strings live in `Fork.xcstrings`.
+Upstream hooks are marked `// fork` in source (`grep -rn "// fork" Strand`). Counts are `added/removed` by this session.
+
+| Fix | Upstream file | Lines touched | Reason |
+|---|---|---|---|
+| Texts | `Strand/Screens/DashboardCards.swift` | +2/-2 | "Estimated, updated weekly" and the fitness-age unit "yrs" read from the `Fork` table (the default catalog had no Italian entry for the first and the second was a literal) |
+| Effort target | `Strand/Liquid/LiquidTodayView.swift` | +5/-1 | `target:` on the private `HeroScoreCell` and the arc overlay on its gauge; the Effort cell passes `StrainTargetBand.resolve(...)` |
+| Effort target | `Strand/Screens/TodayView.swift` | +5/-0 | arc overlay on `effortRing` |
+| Stack | `Strand/Liquid/LiquidTodayView.swift` | +6/-6 | the fallback block and the `.hero` arm render `TodayFeatureStackView` (detected workout, today's workout, Night card) instead of `AutoWorkoutCard` + `TodayWorkoutSummaryCard` |
+| Stack | `Strand/Screens/TodayView.swift` | +2/-2 | the two `TodayWorkoutSummaryCard` sites render the stack (`includesDetection: false`; the classic keeps its own `AutoWorkoutCard`) |
+| Stack | `Strand/Screens/AutoWorkoutCard.swift` | +3/-1 | the card's visibility goes through `TodayFeatureStack.showsDetection`, the same rule the stack order uses |
+| Repeats | `Strand/Liquid/LiquidTodayView.swift` | +12/-2 | `shownKeyMetrics`, and `TodayDedup` gates on the Recovery Vitals and Last workouts sections |
+| Repeats | `Strand/Screens/TodayView.swift` | +5/-4 | `TodayDedup` gate on Recovery Vitals, today's workouts left out of the 14-day list, Charge/Effort chart labels only when the rings are hidden |
+| Perf | `Strand/Liquid/LiquidTodayView.swift` | +20/-19 | the 19 `@AppStorage` become `@ScopedAppStorage` (same declaration and `$` binding; wakes the view only for its own key) |
+| Smart Wake | `StrandiOS/System/SmartWakeLiveWiring.swift` (fork-only) | +1/-0 | `SmartWakeEarlyWakeRecord.record` once an early wake has actually started; write-only, never read by scheduling, stop or skip |
+
+Left out on purpose: SpO2 auto-hide on the classic Today (its carried value is resolved by a scan of the day rows,
+which would run several times per body), and `SmartWakeFirmwareSkip` (the Night card reads its key through
+`NightSkipPeek` so a display never deletes a spent value).
+
+### Hooks that were missing from the earlier tables
+
+Measured against `upstream/main` after session 6, minus what the tables above list: `TodayView.swift` has about
++8/-8 more, `LiquidTodayView.swift` about +17/-10 more (the workout summary card, `.autoWorkoutSuggestionHost()`,
+`LiquidFrameBox` and `ForkFormatters` call sites), `RootTabView.swift` about +5/-1 more (`MoreQueryScope`;
+`MoreDestination` changed from `private` to internal), and `AutoWorkoutCard.swift` carries the detected-workout review
+(+32/-25, in the first table). These are approximate residuals, not a per-hunk audit.
 
 ### Pre-existing, to evaluate later (not changed)
 
