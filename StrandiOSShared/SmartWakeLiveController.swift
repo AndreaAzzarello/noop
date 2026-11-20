@@ -158,6 +158,108 @@ struct SmartWakeSchedule: Equatable, Codable {
     }
 }
 
+// MARK: - fork: compiling the Smart Wake alarm list into a schedule
+
+/// What one weekday asks of Smart Wake once the alarm list is compiled (one alarm per weekday at most).
+struct SmartWakeDaySpec: Equatable {
+    let minutes: Int
+    let windowMinutes: Int
+    let label: String
+    let insistent: Bool
+
+    init(minutes: Int, windowMinutes: Int = 30, label: String = "", insistent: Bool = false) {
+        self.minutes = minutes
+        self.windowMinutes = windowMinutes
+        self.label = label
+        self.insistent = insistent
+    }
+}
+
+extension SmartWakeSchedule {
+    /// The schedule for a weekday -> alarm map, or nil when no weekday has an alarm (Smart Wake then has nothing to
+    /// arm; an empty `weekdays` here would mean "every day", the opposite).
+    ///
+    /// The schedule-wide time and window are the most frequent ones (ties go to the earlier time / shorter window);
+    /// only the weekdays that differ carry an override, and a label or insistence is recorded only where set. When all
+    /// seven weekdays ring, `weekdays` is the empty set, the form the single-schedule code always used for "every
+    /// day", so a configuration that has not changed compiles to a schedule with an unchanged projection.
+    static func compiled(days: [Int: SmartWakeDaySpec], baselineLookback: TimeInterval = 60 * 60) -> SmartWakeSchedule? {
+        let valid = days.filter { (1...7).contains($0.key) }
+        guard !valid.isEmpty else { return nil }
+        func mostFrequent(_ values: [Int]) -> Int {
+            let counts = Dictionary(values.map { ($0, 1) }, uniquingKeysWith: +)
+            return counts.max { ($0.value, -$0.key) < ($1.value, -$1.key) }!.key
+        }
+        let base = mostFrequent(valid.values.map(\.minutes))
+        let baseWindow = mostFrequent(valid.values.map(\.windowMinutes))
+        var overrides: [Int: Int] = [:]
+        var windowOverrides: [Int: TimeInterval] = [:]
+        var labels: [Int: String] = [:]
+        var insistent: Set<Int> = []
+        for (day, spec) in valid {
+            if spec.minutes != base { overrides[day] = spec.minutes }
+            if spec.windowMinutes != baseWindow { windowOverrides[day] = TimeInterval(spec.windowMinutes * 60) }
+            if !spec.label.isEmpty { labels[day] = spec.label }
+            if spec.insistent { insistent.insert(day) }
+        }
+        let active = Set(valid.keys)
+        return SmartWakeSchedule(
+            wakeMinutes: base, weekdays: active.count == 7 ? [] : active, overrides: overrides,
+            windowDuration: TimeInterval(baseWindow * 60), baselineLookback: baselineLookback,
+            windowOverrides: windowOverrides, labels: labels, insistentDays: insistent)
+    }
+
+    /// What actually goes into a system alarm for one weekday. Window and insistence are NOT here: they change what
+    /// the detector and the strap do, not the alarm AlarmKit holds.
+    struct AlarmSlot: Equatable {
+        let minutes: Int
+        let label: String?
+    }
+
+    /// weekday -> the alarm that must exist for it.
+    var alarmProjection: [Int: AlarmSlot] {
+        let days = weekdays.isEmpty ? Set(1...7) : weekdays
+        return Dictionary(uniqueKeysWithValues: days.map { ($0, AlarmSlot(minutes: wakeMinutes(onWeekday: $0), label: labels[$0])) })
+    }
+}
+
+/// What the scheduler has to do to get from the saved schedule to a new one. Pure: the scheduler executes exactly
+/// `installDays` and `removeDays`, so "no AlarmKit call" is `isEmpty` on both.
+enum SmartWakeSyncPlan: Equatable {
+    /// Same schedule as saved: nothing to do.
+    case nothing
+    /// The schedule differs from the saved one (a window, insistence, a different spelling of the same days) but every
+    /// system alarm is already right. The saved copy is replaced; AlarmKit is not called.
+    case metadataOnly
+    /// Install (through the idle slot) these weekdays' alarms, cancel these.
+    case alarms(install: Set<Int>, remove: Set<Int>)
+
+    var installDays: Set<Int> {
+        if case let .alarms(install, _) = self { return install }
+        return []
+    }
+
+    var removeDays: Set<Int> {
+        if case let .alarms(_, remove) = self { return remove }
+        return []
+    }
+
+    /// `previous` is the saved schedule (nil when none was saved), `osChanged` an iOS build that differs from the one
+    /// the alarms were installed under (every alarm is reinstalled, as before).
+    static func make(previous: SmartWakeSchedule?, next: SmartWakeSchedule, osChanged: Bool) -> SmartWakeSyncPlan {
+        let wanted = next.alarmProjection
+        let everyDay = Set(1...7)
+        guard let previous, !osChanged else {
+            return .alarms(install: Set(wanted.keys), remove: everyDay.subtracting(wanted.keys))
+        }
+        let saved = previous.alarmProjection
+        let install = Set(wanted.filter { saved[$0.key] != $0.value }.keys)
+        let remove = Set(saved.keys).subtracting(wanted.keys)
+        if install.isEmpty && remove.isEmpty { return previous == next ? .nothing : .metadataOnly }
+        return .alarms(install: install, remove: remove)
+    }
+}
+
 /// What the heart-rate stream actually delivered during one Smart Wake window: counts and times
 /// only, so a log can show whether 0x2A37 keeps arriving with the phone locked.
 struct SmartWakeWindowStats: Equatable, Codable {

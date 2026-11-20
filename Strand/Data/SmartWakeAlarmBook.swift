@@ -68,7 +68,7 @@ struct SmartWakeAlarm: Codable, Equatable, Identifiable {
     }
 
     // Overrides are written with string keys and weekdays sorted, so the same alarm always encodes to the same bytes
-    // (a plain `[Int: Int]` encodes as a flat array in dictionary order, which would defeat `setIfChanged`).
+    // (a `Set` encodes in hash order, which differs between instances; that would defeat `setIfChanged`).
     private enum CodingKeys: String, CodingKey {
         case id, label, isEnabled, wakeMinutes, dayOverrides, weekdays, windowMinutes, insistent, createdAt
     }
@@ -303,12 +303,22 @@ enum SmartWakeAlarmBookStorage {
         return SmartWakeAlarmBook(version: book.version, alarms: book.alarms.map { $0.sanitized() })
     }
 
-    static func load(defaults: UserDefaults = .standard) -> Loaded {
+    /// Reads the stored list and changes nothing, not even for a blob that cannot be read. For callers on a hot or
+    /// byte-for-byte-sensitive path (the strap alarm re-arm).
+    static func peek(defaults: UserDefaults = .standard) -> Loaded {
         guard let data = defaults.data(forKey: key) else { return .absent }
-        if let book = decode(data) { return .book(book) }
-        defaults.set(data, forKey: corruptKey)
-        defaults.removeObject(forKey: key)
-        return .unreadable
+        return decode(data).map(Loaded.book) ?? .unreadable
+    }
+
+    /// Like `peek`, but a blob that cannot be read is moved to `corruptKey` first, so it is kept and the key is free for
+    /// a fresh migration.
+    static func load(defaults: UserDefaults = .standard) -> Loaded {
+        let loaded = peek(defaults: defaults)
+        if loaded == .unreadable, let data = defaults.data(forKey: key) {
+            defaults.set(data, forKey: corruptKey)
+            defaults.removeObject(forKey: key)
+        }
+        return loaded
     }
 
     /// Writes only when the encoded bytes differ. Returns whether it wrote.
@@ -327,5 +337,39 @@ enum SmartWakeAlarmBookStorage {
 
     static func loadSnapshot(defaults: UserDefaults = .standard) -> SmartWakeAlarmMigration.UpstreamSnapshot? {
         defaults.data(forKey: preMigrationKey).flatMap { try? JSONDecoder().decode(SmartWakeAlarmMigration.UpstreamSnapshot.self, from: $0) }
+    }
+}
+
+/// First launch with the list: reads the stored list, or builds it from the current single schedule and stores it.
+enum SmartWakeAlarmBookMigrator {
+    /// The current single-schedule configuration the first alarm is made from.
+    struct Upstream {
+        var minutes: Int
+        var weekdays: Set<Int>
+        var overrides: [Int: Int]
+        var windowMinutes: Int
+        var insistent: Bool
+    }
+
+    /// The list to use, and whether this call created it. A list that already exists is returned without a single
+    /// write. When it is absent (or unreadable, in which case `load` has kept the old bytes aside) the first alarm is
+    /// made from `upstream`. The snapshot of the upstream values is written only if none exists: it must stay the one
+    /// taken at the FIRST migration, also when the list is rebuilt later after an unreadable blob (by then the upstream
+    /// settings may already be mirrored values, which would make the "did mirroring change them" test meaningless).
+    /// `upstream` is read only when a migration is needed.
+    static func loadOrMigrate(upstream: () -> Upstream, defaults: UserDefaults = .standard,
+                              id: UUID = UUID(), now: Date = Date()) -> (book: SmartWakeAlarmBook, migrated: Bool) {
+        if case let .book(book) = SmartWakeAlarmBookStorage.load(defaults: defaults) { return (book, false) }
+        let source = upstream()
+        let book = SmartWakeAlarmMigration.make(minutes: source.minutes, weekdays: source.weekdays, overrides: source.overrides,
+                                                windowMinutes: source.windowMinutes, insistent: source.insistent,
+                                                id: id, now: now)
+        if SmartWakeAlarmBookStorage.loadSnapshot(defaults: defaults) == nil {
+            SmartWakeAlarmBookStorage.saveSnapshot(
+                SmartWakeAlarmMigration.UpstreamSnapshot(minutes: source.minutes, weekdays: source.weekdays, overrides: source.overrides),
+                defaults: defaults)
+        }
+        SmartWakeAlarmBookStorage.save(book, defaults: defaults)
+        return (book, true)
     }
 }
