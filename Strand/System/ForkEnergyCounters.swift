@@ -27,6 +27,27 @@ final class ForkEnergyCounters: @unchecked Sendable {
         case watchContextReceived, watchContextDuplicate, watchComplicationReload
         case watchWorkoutStart, watchWorkoutEnd, watchWorkoutRecovered
         case watchHrQueryStart, watchHrQueryStop, watchAppLaunch
+        // Process CPU milliseconds (user + system) spent while a phase ran. Concurrent work of other phases is
+        // included, so a phase reads as an upper bound; cpuProcessMs is the sampled total, and what the phases do
+        // not add up to is the rest (BLE streaming, UI, system frameworks).
+        case cpuProcessMs, cpuOffloadMs, cpuRefreshMs, cpuRescoreMs, cpuWriteBackMs, cpuWidgetMs
+        // The Night card: its load task started, its load finished, its content appeared on screen.
+        case nightCardTask, nightCardLoaded, nightCardShown
+        // Offload widget publishes skipped because nothing new was banked.
+        case widgetPublishSkipped
+    }
+
+    /// Process CPU time so far, milliseconds (user + system), 0 when the system call fails.
+    static func cpuNowMillis() -> Int {
+        var usage = rusage()
+        guard getrusage(RUSAGE_SELF, &usage) == 0 else { return 0 }
+        func ms(_ t: timeval) -> Int { Int(t.tv_sec) * 1000 + Int(t.tv_usec) / 1000 }
+        return ms(usage.ru_utime) + ms(usage.ru_stime)
+    }
+
+    /// Add the CPU spent since `startMillis` to a phase counter.
+    func noteCPU(_ counter: Counter, since startMillis: Int, at now: Date = Date()) {
+        note(counter, by: max(0, Self.cpuNowMillis() - startMillis), at: now)
     }
 
     static let shared = ForkEnergyCounters(fileURL: ForkEnergyCounters.defaultFileURL())
@@ -43,6 +64,9 @@ final class ForkEnergyCounters: @unchecked Sendable {
     private var dirty = false
     private var lastFlush = Date.distantPast
     private var loaded = false
+    private var lastCPUSample = Date.distantPast
+    private var lastCPUMillis = 0
+    static let cpuSampleInterval: TimeInterval = 300
 
     init(fileURL: URL?, timeZone: TimeZone = .current) {
         self.fileURL = fileURL
@@ -71,6 +95,15 @@ final class ForkEnergyCounters: @unchecked Sendable {
         loadIfNeeded()
         let key = Self.bucket(for: now, timeZone: timeZone)
         hours[key, default: [:]][counter.rawValue, default: 0] += amount
+        // The process CPU total is sampled at most every 5 minutes and booked to the hour of the sample.
+        if now.timeIntervalSince(lastCPUSample) >= Self.cpuSampleInterval {
+            let cpu = Self.cpuNowMillis()
+            if lastCPUSample != .distantPast, cpu >= lastCPUMillis {
+                hours[key, default: [:]][Counter.cpuProcessMs.rawValue, default: 0] += cpu - lastCPUMillis
+            }
+            lastCPUMillis = cpu
+            lastCPUSample = now
+        }
         dirty = true
         let due = now.timeIntervalSince(lastFlush) >= Self.flushInterval
         if due { flushLocked(now: now) }

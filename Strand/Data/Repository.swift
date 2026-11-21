@@ -960,6 +960,8 @@ final class Repository: ObservableObject {
     private let refreshCoalescer = RefreshCoalescer()
 
     func refresh(days nDays: Int = 4000) async {
+        let forkCPU = ForkEnergyCounters.cpuNowMillis() // fork-perf: TEMP
+        defer { ForkEnergyCounters.shared.noteCPU(.cpuRefreshMs, since: forkCPU) } // fork-perf: TEMP
         await refreshCoalescer.run(days: nDays) { await self.refreshOnce(days: $0) }
     }
 

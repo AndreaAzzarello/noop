@@ -125,4 +125,19 @@ final class ForkEnergyCountersTests: XCTestCase {
         XCTAssertTrue(line.contains("exits[cpuLimit=1]"))
         XCTAssertTrue(line.contains("fg=?s"))
     }
+
+    func testCPUHelperIsMonotonicAndBooksToThePhaseCounter() {
+        let c = ForkEnergyCounters(fileURL: nil, timeZone: utc)
+        let start = ForkEnergyCounters.cpuNowMillis()
+        var x = 0.0
+        for i in 0..<2_000_000 { x += Double(i).squareRoot() }
+        XCTAssertGreaterThan(x, 0)
+        XCTAssertGreaterThanOrEqual(ForkEnergyCounters.cpuNowMillis(), start)
+        let now = date("2026-11-21T09:00:00Z")
+        c.noteCPU(.cpuRescoreMs, since: start, at: now)
+        c.note(.nightCardTask, at: now)
+        let hour = c.snapshot()["2026-11-21 09"]
+        XCTAssertNotNil(hour?["nightCardTask"])
+        XCTAssertTrue(ForkEnergyCounters.Counter.allCases.contains(.cpuProcessMs))
+    }
 }

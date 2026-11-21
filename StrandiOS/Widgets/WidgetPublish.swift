@@ -41,6 +41,8 @@ extension WidgetSnapshot {
     /// the rollover yet always describes today.
     @MainActor
     static func publish(from model: AppModel) async {
+        let forkCPU = ForkEnergyCounters.cpuNowMillis() // fork-perf: TEMP
+        defer { ForkEnergyCounters.shared.noteCPU(.cpuWidgetMs, since: forkCPU) } // fork-perf: TEMP
         await refreshWidgetPresence()
         let days = model.repo.days
         let now = Date()

@@ -869,7 +869,8 @@ final class HealthKitBridge: ObservableObject {
         // From here the pass reads the rows it writes: fresh data announced later is not inside it.
         writeBackGate.readsStarted()
         let forkWbStart = Date() // fork-perf: TEMP
-        defer { ForkEnergyCounters.shared.note(.writeBack, millis: .writeBackMs, since: forkWbStart) } // fork-perf: TEMP
+        let forkWbCPU = ForkEnergyCounters.cpuNowMillis() // fork-perf: TEMP
+        defer { ForkEnergyCounters.shared.note(.writeBack, millis: .writeBackMs, since: forkWbStart); ForkEnergyCounters.shared.noteCPU(.cpuWriteBackMs, since: forkWbCPU) } // fork-perf: TEMP
         let now = Date()
         guard let fromDate = Calendar.current.date(byAdding: .day, value: -days, to: now) else { return }
         let fromTs = Int(fromDate.timeIntervalSince1970)

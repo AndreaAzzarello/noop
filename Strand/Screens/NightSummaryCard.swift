@@ -67,19 +67,25 @@ struct NightSummaryCard: View {
     }
 
     var body: some View {
-        // fork: the root must exist before the first load. A `Group` whose only child is a false `if` has nothing
-        // for `.task` to attach to, so the load never started, `loaded` stayed false and the card never appeared
-        // (a Saturday with no alarm was only the first morning anybody looked). The zero-height anchor is always there.
+        // fork: the root exists before the first load, so `.task` never hangs off an empty `Group`. A hardening only:
+        // hosting the card on macOS starts the load with either root, so this is not the proven cause of a card that
+        // failed to show. The energy counters (`nightCard*`) tell on a device where it stops.
         ZStack {
             Color.clear.frame(height: 0).accessibilityHidden(true)
             if loaded, let summary {
-                switch style {
-                case .full: fullCard(summary)
-                case .compact: compactCard(summary)
+                Group {
+                    switch style {
+                    case .full: fullCard(summary)
+                    case .compact: compactCard(summary)
+                    }
                 }
+                .onAppear { ForkEnergyCounters.shared.note(.nightCardShown) } // fork-perf: TEMP
             }
         }
-        .task(id: loadKey) { if !frozen { await load() } }
+        .task(id: loadKey) {
+            ForkEnergyCounters.shared.note(.nightCardTask) // fork-perf: TEMP
+            if !frozen { await load() }
+        }
     }
 
     // MARK: Full
@@ -275,6 +281,7 @@ struct NightSummaryCard: View {
             sleepNeedMinutes: WindDownNudge.sleepNeedMinutes, now: now)
         summary = NightSummary.make(inputs)
         loaded = true
+        ForkEnergyCounters.shared.note(.nightCardLoaded) // fork-perf: TEMP
         onLoaded?()
     }
 }
