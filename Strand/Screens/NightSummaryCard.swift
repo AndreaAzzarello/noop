@@ -40,6 +40,8 @@ struct NightSummaryCard: View {
     @EnvironmentObject private var behavior: BehaviorStore
     @State private var summary: NightSummary?
     @State private var loaded = false
+    /// fork: the style actually drawn; `style` is only what the clock asks for (see `NightCardStyle`).
+    @State private var shownStyle: Style?
 
     private struct LoadKey: Equatable {
         let refreshSeq: Int
@@ -50,6 +52,8 @@ struct NightSummaryCard: View {
         /// Changes whenever the Smart Wake alarm list does (iOS; always 0 elsewhere).
         let alarms: Int
         let need: Int
+        /// The local day, so a card left open across midnight reloads for the new night.
+        let day: String
     }
 
     private var alarmListRevision: Int {
@@ -63,7 +67,8 @@ struct NightSummaryCard: View {
     private var loadKey: LoadKey {
         LoadKey(refreshSeq: repo.refreshSeq, smartWake: behavior.smartWakeEnabled,
                 strapAlarm: behavior.smartAlarmEnabled, minutes: behavior.smartAlarmMinutes,
-                window: behavior.smartWakeWindowMinutes, alarms: alarmListRevision, need: WindDownNudge.sleepNeedMinutes)
+                window: behavior.smartWakeWindowMinutes, alarms: alarmListRevision, need: WindDownNudge.sleepNeedMinutes,
+                day: Repository.dayString(Date()))
     }
 
     var body: some View {
@@ -74,7 +79,7 @@ struct NightSummaryCard: View {
             Color.clear.frame(height: 0).accessibilityHidden(true)
             if loaded, let summary {
                 Group {
-                    switch style {
+                    switch shownStyle ?? style {
                     case .full: fullCard(summary)
                     case .compact: compactCard(summary)
                     }
@@ -265,6 +270,21 @@ struct NightSummaryCard: View {
 
     // MARK: Load
 
+    private static let seenDayKey = "fork.nightCard.seenDay"
+    private static let seenAtKey = "fork.nightCard.seenAt"
+
+    private static func loadSeen() -> NightCardStyle.Seen? {
+        let d = UserDefaults.standard
+        guard let day = d.string(forKey: seenDayKey), d.object(forKey: seenAtKey) != nil else { return nil }
+        return NightCardStyle.Seen(nightDay: day, firstSeenAt: Date(timeIntervalSince1970: d.double(forKey: seenAtKey)))
+    }
+
+    private static func saveSeen(_ seen: NightCardStyle.Seen) {
+        let d = UserDefaults.standard
+        d.set(seen.nightDay, forKey: seenDayKey)
+        d.set(seen.firstSeenAt.timeIntervalSince1970, forKey: seenAtKey)
+    }
+
     private func load() async {
         let now = Date()
         let nowTs = Int(now.timeIntervalSince1970)
@@ -279,7 +299,15 @@ struct NightSummaryCard: View {
             earlyWakeAt: SmartWakeEarlyWakeRecord.firedAt(inNight: span?.start, wakeTs: span?.end),
             smartWake: alarms.smartWake, strapAlarm: alarms.strapAlarm,
             sleepNeedMinutes: WindDownNudge.sleepNeedMinutes, now: now)
-        summary = NightSummary.make(inputs)
+        // fork: a superseded load (the key changed while it awaited) must not overwrite the newer one with older data.
+        guard !Task.isCancelled else { return }
+        let made = NightSummary.make(inputs)
+        let nightDay = span.map { Repository.dayString(Date(timeIntervalSince1970: Double($0.end))) }
+        let resolution = NightCardStyle.resolve(requested: style, hasSleep: made.sleepMinutes != nil,
+                                                nightDay: nightDay, seen: Self.loadSeen(), now: now)
+        if let record = resolution.record { Self.saveSeen(record) }
+        shownStyle = resolution.style
+        summary = made
         loaded = true
         ForkEnergyCounters.shared.note(.nightCardLoaded) // fork-perf: TEMP
         onLoaded?()

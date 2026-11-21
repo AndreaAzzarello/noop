@@ -109,3 +109,40 @@ enum NightSkipPeek {
         return skipUntil
     }
 }
+
+/// fork: which Night card to show once the clock says "afternoon".
+///
+/// Before noon the card is full, after it compact (`TodayFeatureStack`). That clock rule alone hid a late arrival: when the
+/// night was only processed, or the app only opened, after noon, the first thing the wearer saw of it was the one-line
+/// version. A night the card sees for the first time gets the full card for `lateArrivalGrace`, then compact as before.
+/// Pure: the card passes in what it persisted and stores the `record` this returns.
+enum NightCardStyle {
+
+    /// How long a night that first reached the card after noon keeps the full card.
+    static let lateArrivalGrace: TimeInterval = 2 * 3600
+
+    /// The night (its wake day) and the moment the card first showed it with a sleep total.
+    struct Seen: Equatable {
+        var nightDay: String
+        var firstSeenAt: Date
+    }
+
+    struct Resolution: Equatable {
+        let style: TodayFeatureStack.NightStyle
+        /// Non-nil when this load is the first to see the night: persist it.
+        let record: Seen?
+    }
+
+    static func resolve(requested: TodayFeatureStack.NightStyle, hasSleep: Bool, nightDay: String?,
+                        seen: Seen?, now: Date) -> Resolution {
+        guard hasSleep, let nightDay else { return Resolution(style: requested, record: nil) }
+        guard let seen, seen.nightDay == nightDay else {
+            // First sight of this night: it is news, whatever the hour.
+            return Resolution(style: .full, record: Seen(nightDay: nightDay, firstSeenAt: now))
+        }
+        guard requested == .compact else { return Resolution(style: .full, record: nil) }
+        let age = now.timeIntervalSince(seen.firstSeenAt)
+        // `age >= 0` on purpose: a clock set back must not read as "just arrived" forever.
+        return Resolution(style: age >= 0 && age < lateArrivalGrace ? .full : .compact, record: nil)
+    }
+}
