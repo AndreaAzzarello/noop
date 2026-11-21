@@ -17,15 +17,20 @@ struct NightSummaryCard: View {
     /// Preview only: a fixed summary that is never reloaded.
     private let frozen: Bool
 
-    init(style: Style) {
+    init(style: Style, onLoaded: (() -> Void)? = nil) {
         self.style = style
         self.frozen = false
+        self.onLoaded = onLoaded
     }
+
+    /// fork: called after every completed load. Lets a test prove the load starts at all.
+    private let onLoaded: (() -> Void)?
 
     #if DEBUG
     init(style: Style, previewSummary: NightSummary) {
         self.style = style
         self.frozen = true
+        self.onLoaded = nil
         _summary = State(initialValue: previewSummary)
         _loaded = State(initialValue: true)
     }
@@ -62,7 +67,11 @@ struct NightSummaryCard: View {
     }
 
     var body: some View {
-        Group {
+        // fork: the root must exist before the first load. A `Group` whose only child is a false `if` has nothing
+        // for `.task` to attach to, so the load never started, `loaded` stayed false and the card never appeared
+        // (a Saturday with no alarm was only the first morning anybody looked). The zero-height anchor is always there.
+        ZStack {
+            Color.clear.frame(height: 0).accessibilityHidden(true)
             if loaded, let summary {
                 switch style {
                 case .full: fullCard(summary)
@@ -266,6 +275,7 @@ struct NightSummaryCard: View {
             sleepNeedMinutes: WindDownNudge.sleepNeedMinutes, now: now)
         summary = NightSummary.make(inputs)
         loaded = true
+        onLoaded?()
     }
 }
 
