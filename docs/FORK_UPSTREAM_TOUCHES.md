@@ -189,3 +189,26 @@ The alarm list lives in fork-only files; the upstream files touched are two, bot
 Fork files touched or added: `Strand/Data/SmartWakeAlarmBook.swift`, `SmartWakeUpstreamMirror.swift`, `SmartWakeCommitDebouncer.swift`, `Strand/Screens/SmartWakeAlarmListView.swift`, `SmartWakeManagedScheduleRow.swift`, `SmartWakeCardView.swift`, `SmartWakeDiagnosticsView.swift`, `NightSummaryCard.swift` (the window of the alarm that rings, reload on list change), `StrandiOS/System/SmartWakeAlarmStore.swift`, `AppModel+SmartWake.swift`, `SmartWakeLiveWiring.swift`, `SmartWakeAlarmScheduler.swift`, `SmartWakeStrapAlarm.swift`, `SmartWakeAlarmTitle.swift`, `StrandiOS/Widgets/ForkWidgetPublisher.swift`, `StrandiOSShared/SmartWakeLiveController.swift`, `ForkWidgetSnapshot.swift`, their tests, and strings in `Fork.xcstrings`.
 
 Not touched: `Strand/BLE/**` (including `armStrapAlarm`), `SmartWakeFirmwareSkip.swift`, `project.yml`, `.github`, `fastlane`, the entitlements, `NOOPWidget.swift`, `WidgetSnapshot.swift`, `Localizable.xcstrings`.
+
+## Session 8: battery follow-up, Effort band, Night card
+
+Edits to upstream files, each marked `// fork:` or `// fork-perf:` in source. Totals are the whole fork's `git diff upstream/main --numstat` for the file.
+
+| File | Total | What this session added |
+|---|---|---|
+| `StrandiOS/Health/HealthKitBridge.swift` | +181/-31 | locked-store deferral: `deferIfLocked`, the unlock debt and observer, the protected-data gate in `writeBackAfterNewData`, delete outcomes at the four delete sites; TEMP CPU hook around `writeBack` |
+| `Strand/App/AppModel.swift` | +20/-4 | `refreshAfterCompletedBackfill`: `hasUnscoredRawData` asked once, passed to the rescore as `nothingNewToScore`, widget publish behind `shouldPublishWidgetAfterOffload`; TEMP offload CPU counter |
+| `Strand/Data/IntelligenceEngine.swift` | +12/-1 | `hasUnscoredRawData()` (the post-offload fingerprint comparison, asked without a pass); TEMP rescore CPU hook |
+| `Strand/System/RescoreBackgroundScheduler.swift` | +15/-4 | `run(nothingNewToScore:)`: a deferral records no debt when nothing is new and none is already owed |
+| `Strand/Data/Repository.swift` | +82/-29 | TEMP CPU hook in `refresh(days:)` |
+| `StrandiOS/Widgets/WidgetPublish.swift` | +4/-0 | TEMP CPU hook in `publish(from:)` |
+| `Strand/Liquid/LiquidPrimitives.swift` | +9/-3 | `LiquidRender.vesselGeometry(frame:)`, the one place the vessel's radius and line width are computed, so the Effort band cannot drift from the ring |
+| `Strand/Liquid/LiquidTodayView.swift` | +75/-39 | the Effort band is drawn from the vessel's own geometry and hidden while Effort has no score |
+| `Strand/Screens/TodayView.swift` | +37/-42 | classic ring passes its real radius, line width and progress to the band |
+| `NOOPWatch/WatchIntervalView.swift`, `WatchBreatheView.swift`, `WatchWorkoutView.swift` | +11/-3, +37/-16, +66/-5 | timers stop off-screen (Intervals, Breathe); Always-On clock at one redraw a minute |
+
+Fork-only files added: `Strand/System/HealthWriteBackDeferral.swift`, `OffloadWidgetPublishGate.swift`, `Strand/Data/StrainTargetArcLayout.swift`, `StrandiOS/System/AppModel+WidgetGate.swift`, their tests, and `NightCardStyle` in `Strand/Data/NightSummary.swift`.
+
+TEMP (removed with the rest of the audit): the CPU counters and `nightCard*` counters in `ForkEnergyCounters`.
+
+Not touched: `Strand/BLE/**`, `project.yml`, `.github`, `fastlane`, `Localizable.xcstrings`, `NOOPWidget.swift`, `WidgetSnapshot.swift`, the entitlements, `SmartWake*`. No Android change: the iOS-only paths (HealthKit, WidgetKit, BGTask) have no twin, and the Effort-band formula (`optimalStrainRange`) is unchanged.
