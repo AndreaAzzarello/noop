@@ -3415,9 +3415,10 @@ struct TodayView: View {
             GlowRing(fraction: gv / effortGaugeMax, value: gv,
                      format: { effortScale == .whoop ? String(format: "%.1f", locale: AppLanguage.activeLocale, $0) : "\(Int($0.rounded()))" },
                      color: StrandPalette.effortColor, diameter: diameter, lineWidth: diameter * 0.10)
-                .overlay { // fork: the day's optimal Effort band, outside the ring
+                .overlay { // fork: the day's optimal Effort band, inside the ring's track
                     if let band = StrainTargetBand.resolve(recovery: d?.recovery, scale: effortScale) {
-                        StrainTargetArc(band: band, ringDiameter: diameter)
+                        StrainTargetArc(band: band, ringRadius: diameter / 2, ringLineWidth: diameter * 0.10,
+                                        progress: min(max(gv / effortGaugeMax, 0), 1))
                     }
                 }
         } else {

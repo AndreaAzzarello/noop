@@ -13,6 +13,13 @@ import StrandDesign   // NoopMotionState — the shared quiet-motion gate
 
 enum LiquidRender {
 
+    /// fork: the vessel ring's path radius and stroke width for a square frame of side `frame`. The one place both
+    /// values are computed, so the Effort target band drawn on the ring cannot drift from the ring.
+    static func vesselGeometry(frame: CGFloat) -> (radius: CGFloat, lineWidth: CGFloat) {
+        let diameter = max(2, frame - 3)
+        return (diameter * 0.39, max(5, diameter * 0.105))
+    }
+
     /// A softly sculpted circular progress ring. Geometry is fixed (`radius`, `lineWidth`, arc span);
     /// this pass only deepens the material — recessed track, frosted inner disc, semantic progress
     /// gradient — without neon bloom, tip dots, or layout changes.
@@ -21,8 +28,7 @@ enum LiquidRender {
         let rect = CGRect(x: (size.width - diameter) / 2, y: (size.height - diameter) / 2,
                           width: diameter, height: diameter)
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        let radius = diameter * 0.39
-        let lineWidth = max(5, diameter * 0.105)
+        let (radius, lineWidth) = vesselGeometry(frame: min(size.width, size.height)) // fork: shared with StrainTargetArc
         let cap = StrokeStyle(lineWidth: lineWidth, lineCap: .round)
         var ctx = base
 

@@ -2273,7 +2273,7 @@ private struct HeroScoreCell: View {
     /// the same score land on the identical dossier rather than diverging. The LABEL keeps its own job:
     /// it opens the scoring guide, which is this screen's only route to that explainer.
     var detailRoute: TabRoute? = nil
-    /// fork: the day's optimal Effort band, drawn as a faint arc outside the vessel. nil = no arc.
+    /// fork: the day's optimal Effort band, drawn inside the vessel's track. nil = no band.
     var target: StrainTargetBand? = nil
 
     /// The gauge, linked when there is somewhere to go.
@@ -2315,7 +2315,13 @@ private struct HeroScoreCell: View {
     var body: some View {
         VStack(spacing: 7) {
             gaugeView
-                .overlay { if let target { StrainTargetArc(band: target, ringDiameter: Self.vesselDiameter) } } // fork
+                .overlay { // fork: the band lives inside the vessel ring's own track, from the ring's own geometry
+                    if let target, let score {
+                        let g = LiquidRender.vesselGeometry(frame: Self.vesselDiameter)
+                        StrainTargetArc(band: target, ringRadius: g.radius, ringLineWidth: g.lineWidth,
+                                        progress: min(max(score / maxValue, 0), 1))
+                    }
+                }
             Button(action: onGuide) {
                 HStack(spacing: 3) {
                     // #74: one line, shrink-to-fit rather than wrap under large Dynamic Type (mirrors the
