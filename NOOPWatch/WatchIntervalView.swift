@@ -117,6 +117,7 @@ struct WatchIntervalView: View {
                 : nil
         }
         .onAppear { if remaining == 0 { resetToStart() } }
+        .onDisappear { running = false; ticker?.cancel(); ticker = nil } // fork: no 1 Hz timer or haptics off-screen
     }
 
     // MARK: Header — phase chip + round chip

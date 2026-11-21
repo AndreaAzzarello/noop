@@ -45,6 +45,7 @@ struct WatchBreatheView: View {
     private enum Phase { case inhale, hold, exhale, textOnly }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase // fork: stop the 10 Hz ticker when the wrist drops
 
     @State private var protocolId: String = "coherence_5_5"
     @State private var sessionLength: SessionLength = .ten
@@ -120,6 +121,7 @@ struct WatchBreatheView: View {
             }
         }
         .onDisappear { stop() }
+        .onChange(of: scenePhase) { phase in if phase != .active, running { stop() } } // fork
     }
 
     // MARK: - Ring

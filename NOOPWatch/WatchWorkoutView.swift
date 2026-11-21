@@ -22,6 +22,7 @@ import HealthKit
 // the start / pause / resume / end landings so the wrist confirms each state change without looking.
 struct WatchWorkoutView: View {
     @StateObject private var workout = WatchWorkoutSession()
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced // fork
 
     var body: some View {
         // One screen, no scrolling. A GeometryReader hands each state the real space it has to live in so
@@ -154,8 +155,9 @@ struct WatchWorkoutView: View {
                 .monospacedDigit()
                 .foregroundStyle(StrandPalette.textPrimary)
         } else {
-            TimelineView(.periodic(from: .now, by: 1)) { _ in
-                Text(Self.clock(workout.liveElapsed()))
+            // fork: Always-On redraws once a minute, and shows whole minutes so no stale seconds are displayed.
+            TimelineView(.periodic(from: .now, by: isLuminanceReduced ? 60 : 1)) { _ in
+                Text(Self.clock(isLuminanceReduced ? (workout.liveElapsed() / 60).rounded(.down) * 60 : workout.liveElapsed()))
                     .font(StrandFont.rounded(18, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(StrandPalette.textPrimary)
