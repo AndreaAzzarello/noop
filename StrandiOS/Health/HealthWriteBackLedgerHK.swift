@@ -5,12 +5,22 @@ import HealthKit
 /// HealthKit-facing helpers for the write-back ledger, kept out of `HealthKitBridge` so the bridge only carries hooks.
 enum HealthWriteBackLedgerHK {
 
-    /// Delete our samples matching `predicate`. Returns how many went, or nil when the delete THREW.
+    /// Delete our samples matching `predicate`.
     ///
     /// The bridge used `try?` here, so a failed delete was indistinguishable from "nothing to delete" and the save
-    /// that followed could leave the old and the new samples side by side. A failure is now visible to the caller.
-    static func delete(_ store: HKHealthStore, of type: HKObjectType, predicate: NSPredicate) async -> Int? {
-        do { return try await store.deleteObjects(of: type, predicate: predicate) } catch { return nil }
+    /// that followed could leave the old and the new samples side by side. A failure is now visible to the caller,
+    /// and a LOCKED store (`errorDatabaseInaccessible`) is told apart from a refusal: it defers the pass instead of
+    /// invalidating the ledger.
+    static func delete(_ store: HKHealthStore, of type: HKObjectType, predicate: NSPredicate) async -> HealthDeleteOutcome {
+        do {
+            let n = try await store.deleteObjects(of: type, predicate: predicate)
+            return HealthWriteBackDeferral.classify(deleted: n, isDatabaseInaccessible: false, isNoData: false)
+        } catch {
+            let code = (error as? HKError)?.code
+            return HealthWriteBackDeferral.classify(deleted: nil,
+                                                    isDatabaseInaccessible: code == .errorDatabaseInaccessible,
+                                                    isNoData: code == .errorNoData)
+        }
     }
 
     /// Start of the heart-rate window, moved back to a clock-hour boundary when the ledger is on: an hour is the unit
@@ -35,22 +45,25 @@ enum HealthWriteBackLedgerHK {
     /// per run of consecutive dirty (or emptied) hours, so only the hours an offload touched are churned.
     static func deleteHeartRate(_ store: HKHealthStore, type: HKObjectType, plan: HealthWriteBackLedger.Plan,
                                 hours: (dirty: Set<Int>, deleteOnly: Set<Int>),
-                                wholeWindow: NSPredicate) async -> (deleted: Int, failed: Bool) {
+                                wholeWindow: NSPredicate) async -> (deleted: Int, outcome: HealthDeleteOutcome) {
         if plan.fullRewrite {
-            let n = await delete(store, of: type, predicate: wholeWindow)
-            return (n ?? 0, n == nil)
+            let outcome = await delete(store, of: type, predicate: wholeWindow)
+            if case .deleted(let n) = outcome { return (n, outcome) }
+            return (0, outcome)
         }
         var total = 0
-        var failed = false
+        var worst: HealthDeleteOutcome = .deleted(0)
         for run in HealthWriteBackLedgerKeys.runs(of: Array(hours.dirty.union(hours.deleteOnly))) {
             let range = HealthWriteBackLedgerKeys.deleteRange(for: run)
-            if let n = await delete(store, of: type, predicate: ownHeartRatePredicate(start: range.start, end: range.end)) {
-                total += n
-            } else {
-                failed = true
+            let outcome = await delete(store, of: type, predicate: ownHeartRatePredicate(start: range.start, end: range.end))
+            switch outcome {
+            case .deleted(let n): total += n
+            case .inaccessible: return (total, .inaccessible) // the store locked mid-pass: stop here
+            case .failed: worst = .failed
             }
         }
-        return (total, failed)
+        if case .failed = worst { return (total, .failed) }
+        return (total, .deleted(total))
     }
 
     /// The predicate that matches our own heart-rate samples starting inside `[start, end]`.

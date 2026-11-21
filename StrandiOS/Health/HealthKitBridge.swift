@@ -39,6 +39,11 @@ final class HealthKitBridge: ObservableObject {
     /// flight (`HealthWriteBackGate`). A read-side `sync` that finds the bridge busy records nothing: the
     /// observer wakes that cause those are mostly this app's own write-back samples.
     private var writeBackGate = HealthWriteBackGate()
+    /// fork-perf: a write-back requested (or cut short) while the phone was locked is owed ONCE at the next unlock.
+    /// The store cannot be read or deleted from while protected data is unavailable, so trying only failed and made
+    /// the ledger rewrite everything on the next pass.
+    private var unlockDebt = HealthWriteBackDeferral.UnlockDebt()
+    private var unlockObserver: NSObjectProtocol?
     /// How many days the last COMPLETED sync covered, so an observer wake can tell whether a sync that
     /// just ran already read its window. Paired with `lastSync` (the time). Reset to 0 by a failed sync,
     /// so a failure never lets a later wake be skipped on the strength of it.
@@ -91,6 +96,19 @@ final class HealthKitBridge: ObservableObject {
         } else if !HealthKitBridge.hasHealthKitEntitlement {
             auth = .entitlementMissing
         }
+        // fork-perf: one deferred pass when the phone unlocks. `UnlockDebt` makes any number of locked requests one pass.
+        unlockObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.unlockDebt.takeAtUnlock() else { return }
+                await self.writeBackAfterNewData()
+            }
+        }
+    }
+
+    deinit {
+        if let unlockObserver { NotificationCenter.default.removeObserver(unlockObserver) }
     }
 
     // MARK: - Types
@@ -796,6 +814,12 @@ final class HealthKitBridge: ObservableObject {
         // No authorization is a successful no-op for a background task. The scheduler is cancelled by
         // its app-owned operation after observing this state, so it does not keep waking unnecessarily.
         guard auth == .authorized else { return true }
+        // fork-perf: locked phone, so the store is unreadable. Owe one pass at unlock and report success so the
+        // background task is not marked failed. No SQLite read, no HealthKit call.
+        if HealthWriteBackDeferral.shouldDeferNow(isProtectedDataAvailable: UIApplication.shared.isProtectedDataAvailable) {
+            unlockDebt.note()
+            return true
+        }
         guard !syncing else {
             writeBackGate.noteNewData()
             return true
@@ -873,8 +897,10 @@ final class HealthKitBridge: ObservableObject {
             .map { HealthKitBridge.dayString(Date(timeIntervalSince1970: TimeInterval($0.endTs))) })
 
         var firstError: Error?
+        var deferredUntilUnlock = false // fork-perf: the store locked mid-pass, so the remaining sections wait
         func attempt(_ op: () async throws -> Void) async {
-            do { try await op() } catch { if firstError == nil { firstError = error } }
+            guard !deferredUntilUnlock else { return }
+            do { try await op() } catch is DeferredUntilUnlock { deferredUntilUnlock = true } catch { if firstError == nil { firstError = error } }
         }
         // #1503: one-off sweep to clear records stranded under the OLD device-id-keyed scheme.
         // The old keys embedded the active strap id (`noop:<deviceId>:<kind>:<identity>`), which
@@ -888,7 +914,18 @@ final class HealthKitBridge: ObservableObject {
         await attempt { try await writeSleep(sessions: sessions) }
         await attempt { try await writeHeartRate(fromTs: fromTs, nowTs: nowTs) }
         await attempt { try await writeWorkouts(whoopStore: whoopStore, fromTs: fromTs, toTs: nowTs) }
+        if deferredUntilUnlock { unlockDebt.note() } // fork-perf: not an error; one pass at unlock
         if let firstError { throw firstError }
+    }
+
+    /// fork-perf: stop the pass when a delete found the store locked. Nothing is counted as a failure; the section is
+    /// invalidated only when part of it was already deleted, so the ledger would no longer match Health.
+    private func deferIfLocked(_ outcome: HealthDeleteOutcome, ledger: HealthWriteBackLedgerStore,
+                               section: HealthWriteBackLedger.Section, deletedSoFar: Int) throws {
+        guard case .deferUntilUnlock(let invalidate) = HealthWriteBackDeferral.action(for: outcome, deletedSoFar: deletedSoFar)
+        else { return }
+        if invalidate { ledger.invalidate(section) }
+        throw DeferredUntilUnlock()
     }
 
     /// UserDefaults key for the #1503 stranded-records sweep completion set. Stores the set of
@@ -1070,6 +1107,7 @@ final class HealthKitBridge: ObservableObject {
         // that happens to use the same external UUID. Delete failures are non-fatal (e.g., nothing
         // to delete on first run) — only the save throws.
         let bySource = HKQuery.predicateForObjects(from: HKSource.default())
+        var vitalsDeletedSoFar = 0 // fork-perf: ledger
         var keysByType = Dictionary(grouping: candidates, by: { $0.type }).mapValues { $0.map { $0.key } }
         for (type, keys) in retracted { keysByType[type, default: []] += keys }
         for (type, allKeys) in keysByType {
@@ -1077,7 +1115,11 @@ final class HealthKitBridge: ObservableObject {
             let byKey = HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID,
                                                     allowedValues: keys)
             let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [bySource, byKey])
-            let deleted = await HealthWriteBackLedgerHK.delete(self.store, of: type, predicate: pred) // fork-perf: ledger (was try?)
+            let outcome = await HealthWriteBackLedgerHK.delete(self.store, of: type, predicate: pred) // fork-perf: ledger (was try?)
+            // fork-perf: a locked store defers the pass; it is not a refusal and must not invalidate the ledger.
+            try deferIfLocked(outcome, ledger: ledger, section: .vitals, deletedSoFar: vitalsDeletedSoFar)
+            var deleted: Int?
+            if case .deleted(let n) = outcome { deleted = n; vitalsDeletedSoFar += n }
             if deleted == nil { ledgerDeleteFailed = true; failedDeleteTypes.insert(type) }
             ForkEnergyCounters.shared.note(.hkVitalsDeleted, by: deleted ?? 0) // fork-perf: TEMP
             if deleted == nil { ForkEnergyCounters.shared.note(.hkDeleteFailed) } // fork-perf: TEMP
@@ -1163,7 +1205,10 @@ final class HealthKitBridge: ObservableObject {
             HKQuery.predicateForObjects(from: HKSource.default()),
             HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID, allowedValues: keys),
         ])
-        let deleted = await HealthWriteBackLedgerHK.delete(store, of: type, predicate: pred) // fork-perf: ledger (was try?)
+        let outcome = await HealthWriteBackLedgerHK.delete(store, of: type, predicate: pred) // fork-perf: ledger (was try?)
+        try deferIfLocked(outcome, ledger: ledger, section: .sleep, deletedSoFar: 0) // fork-perf: locked store defers the pass
+        var deleted: Int?
+        if case .deleted(let n) = outcome { deleted = n }
         ForkEnergyCounters.shared.note(.hkSleepDeleted, by: deleted ?? 0) // fork-perf: TEMP
         if deleted == nil { ForkEnergyCounters.shared.note(.hkDeleteFailed) } // fork-perf: TEMP
         // fork-perf: delete threw: no save (the old night may still be there and a save would duplicate it); retry next pass.
@@ -1219,11 +1264,13 @@ final class HealthKitBridge: ObservableObject {
                                         options: []),
         ])
         let hrDelete = await HealthWriteBackLedgerHK.deleteHeartRate(store, type: type, plan: ledgerPlan, hours: hrHours, wholeWindow: pred) // fork-perf: ledger (was try?)
+        try deferIfLocked(hrDelete.outcome, ledger: ledger, section: .heartRate, deletedSoFar: hrDelete.deleted) // fork-perf: locked store defers the pass
+        let hrDeleteFailed = hrDelete.outcome == .failed
         ForkEnergyCounters.shared.note(.hkHeartRateDeleted, by: hrDelete.deleted) // fork-perf: TEMP
-        if hrDelete.failed { ForkEnergyCounters.shared.note(.hkDeleteFailed) } // fork-perf: TEMP
+        if hrDeleteFailed { ForkEnergyCounters.shared.note(.hkDeleteFailed) } // fork-perf: TEMP
         // fork-perf: a delete that threw (it was a swallowed try?) means no save and no cursor move: the window may still
         // hold the old samples, so saving would duplicate them. The ledger is invalidated; the next pass rewrites it.
-        if hrDelete.failed { try ledger.settleOrFail(ledgerPlan, deleteFailed: true, enabled: ledgerOn); return }
+        if hrDeleteFailed { try ledger.settleOrFail(ledgerPlan, deleteFailed: true, enabled: ledgerOn); return }
 
         let unit = HKUnit.count().unitDivided(by: .minute())
         var samples: [HKQuantitySample] = []
@@ -1392,7 +1439,10 @@ final class HealthKitBridge: ObservableObject {
             HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID,
                                         allowedValues: rows.map(key)),
         ])
-        let deleted = await HealthWriteBackLedgerHK.delete(store, of: .workoutType(), predicate: pred) // fork-perf: ledger (was try?)
+        let outcome = await HealthWriteBackLedgerHK.delete(store, of: .workoutType(), predicate: pred) // fork-perf: ledger (was try?)
+        try deferIfLocked(outcome, ledger: ledger, section: .workouts, deletedSoFar: 0) // fork-perf: locked store defers the pass
+        var deleted: Int?
+        if case .deleted(let n) = outcome { deleted = n }
         ForkEnergyCounters.shared.note(.hkWorkoutsDeleted, by: deleted ?? 0) // fork-perf: TEMP
         if deleted == nil { ForkEnergyCounters.shared.note(.hkDeleteFailed) } // fork-perf: TEMP
         // fork-perf: delete threw: write no workout (the old ones may still be there and a builder would duplicate them).
