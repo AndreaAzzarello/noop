@@ -179,10 +179,13 @@ enum RescoreBackgroundScheduler {
     ///   would conjure a forced full pass for a processing task to run when very likely nothing changed,
     ///   which is the churn #1146 exists to avoid. A debt an earlier real pass already recorded is
     ///   untouched either way.
+    /// - Parameter nothingNewToScore: the caller checked the raw-data fingerprint against the last completed
+    ///   analysis and they match. A deferral then records no debt (unless one is already owed).
     /// - Parameter passInProgress: a pass is already running in this process; see
     ///   `RescoreBackgroundPolicy.decide`.
     static func run(isBackground: Bool? = nil,
                     owesOnDefer: Bool = true,
+                    nothingNewToScore: Bool = false,
                     passInProgress: Bool = false,
                     log: @escaping (String) -> Void,
                     work: () async -> Void) async {
@@ -200,6 +203,13 @@ enum RescoreBackgroundScheduler {
                 // plainly in the log, because "deferred" would promise a background task that is not
                 // coming.
                 log("re-score: backstop tick skipped while backgrounded — \(reason)")
+                return
+            }
+            // fork-perf: an offload that banked nothing new owes nothing. Recording a debt for it made the resume run
+            // FORCED (`markRescoreOwed` clears `owedAfterCompletedPass`), a full pass over data that had not changed.
+            // A debt an earlier real pass already left is untouched, so no work is ever dropped.
+            if nothingNewToScore, !isRescoreOwed {
+                log("re-score: offload banked nothing new, no debt recorded — \(reason)")
                 return
             }
             // Record the debt BEFORE scheduling. Without this the background task wakes, finds nothing

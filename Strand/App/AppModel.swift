@@ -747,7 +747,11 @@ final class AppModel: ObservableObject {
     private func refreshAfterCompletedBackfill() async {
         live.append(log: "Backfill: refreshing dashboard cache from completed sync")
         ForkEnergyCounters.shared.note(.offloadCompleted) // fork-perf: TEMP
+        let forkOffloadCPU = ForkEnergyCounters.cpuNowMillis() // fork-perf: TEMP
+        defer { ForkEnergyCounters.shared.noteCPU(.cpuOffloadMs, since: forkOffloadCPU) } // fork-perf: TEMP
         await repo.refresh(days: 120)
+        // fork-perf: asked once, BEFORE the re-score below advances the watermark: did this offload bank anything new?
+        let bankedNewData = await intelligence.hasUnscoredRawData()
         // Score the freshly-offloaded raw data RIGHT NOW rather than waiting for the next 15-minute
         // analyzeRecent tick , otherwise a just-synced night's Charge / Effort / Rest can take up to
         // 15 minutes to appear on a strap-only (no-import) dashboard. analyzeRecent no-ops if a tick is
@@ -764,7 +768,8 @@ final class AppModel: ObservableObject {
         // the #1538 report while never producing a score. Decide first whether this pass can finish here,
         // and hand it to a background-processing task when it cannot. A no-op on macOS, and on iOS a
         // foreground pass is never deferred.
-        await RescoreBackgroundScheduler.run(passInProgress: intelligence.computing,
+        await RescoreBackgroundScheduler.run(nothingNewToScore: !bankedNewData, // fork-perf: no debt for an empty offload
+                                             passInProgress: intelligence.computing,
                                              log: { [live] line in live.append(log: line) }) {
             await intelligence.analyzeRecent(skipIfUnchanged: true)
         }
@@ -776,7 +781,11 @@ final class AppModel: ObservableObject {
         // never rewrite the shared App-Group snapshot or call WidgetCenter.reloadAllTimelines — the
         // widget kept showing yesterday's numbers. Publishing here, on the real "new data landed"
         // signal, pushes the fresh snapshot to the home-screen widget without needing a foreground.
-        await WidgetSnapshot.publish(from: self)
+        // fork-perf: an offload that banked nothing new publishes only if the alarm list, the next alarm or a low strap
+        // battery changed (`OffloadWidgetPublishGate`); everything else still publishes as before.
+        if shouldPublishWidgetAfterOffload(newDataBanked: bankedNewData) {
+            await WidgetSnapshot.publish(from: self)
+        }
         // #1021: same reasoning as the widget publish above, for Apple Health. The only automatic
         // write-back ran on scenePhase == .active, in the same block that KICKS this offload - so it
         // raced the data it was meant to publish and last night's sleep reached Health an app-open late.

@@ -140,6 +140,31 @@ final class RescoreBackgroundSchedulerTests: XCTestCase {
         XCTAssertTrue(line.contains("at most every 30 min"), line)
     }
 
+    /// fork-perf: a spaced offload that banked nothing new records no debt, so the resume is not forced over
+    /// unchanged data. The same call without the flag still owes the work.
+    func testASpacedOffloadWithNothingNewOwesNothing() async {
+        let finished = RescoreBackgroundScheduler.markRescoreOwed(passStarting: true)
+        RescoreBackgroundScheduler.markRescoreCompleted(seconds: 8, owedToken: finished)
+        XCTAssertFalse(RescoreBackgroundScheduler.isRescoreOwed)
+
+        var ran = false
+        var logged: [String] = []
+        await RescoreBackgroundScheduler.run(isBackground: true, nothingNewToScore: true, log: { logged.append($0) }) { ran = true }
+
+        XCTAssertFalse(ran)
+        XCTAssertFalse(RescoreBackgroundScheduler.isRescoreOwed, "nothing new, so nothing owed")
+        XCTAssertTrue((logged.first ?? "").contains("banked nothing new"), logged.first ?? "")
+    }
+
+    /// An earlier, real debt is never dropped by a later offload that found nothing new.
+    func testAnExistingDebtSurvivesAnOffloadWithNothingNew() async {
+        RescoreBackgroundScheduler.markRescoreOwed(passStarting: true)
+        var ran = false
+        await RescoreBackgroundScheduler.run(isBackground: true, nothingNewToScore: true, log: { _ in }) { ran = true }
+        XCTAssertFalse(ran)
+        XCTAssertTrue(RescoreBackgroundScheduler.isRescoreOwed)
+    }
+
     /// Once work is owed, a further background trigger defers instead of starting a duplicate pass. This
     /// is the livelock fix: #1538 paid for a full eight-minute pass on every offload because nothing
     /// remembered that the previous one had not finished.

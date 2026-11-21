@@ -783,7 +783,9 @@ final class IntelligenceEngine: ObservableObject {
         computing = true
         runningPassStart = DispatchTime.now().uptimeNanoseconds
         runningPassDays = maxDays
+        let forkCPU = ForkEnergyCounters.cpuNowMillis() // fork-perf: TEMP
         defer {
+            ForkEnergyCounters.shared.noteCPU(.cpuRescoreMs, since: forkCPU) // fork-perf: TEMP
             computing = false
             runningPassStart = nil
             if pendingForcedRescore {
@@ -3059,6 +3061,15 @@ final class IntelligenceEngine: ObservableObject {
     /// `analyzeRecent` scored against. A non-forced tick whose current fingerprint equals this skips the
     /// 21-day rescore; cleared implicitly by any scoring-stream insert (the fingerprint moves), so it self-heals.
     private static let analyzeWatermarkKey = "noop.analyzeWatermark"
+
+    /// fork-perf: has any raw data been banked since the last COMPLETED analysis? The same comparison the post-offload
+    /// gate in `analyzeRecent` makes (fingerprint against the stored watermark), asked without running a pass. True
+    /// when either side is unknown, so an unreadable store never reads as "nothing new".
+    func hasUnscoredRawData() async -> Bool {
+        guard let store = await repo.storeHandle() else { return true }
+        let fingerprint = (try? await store.analysisFingerprint()) ?? ""
+        return fingerprint.isEmpty || UserDefaults.standard.string(forKey: Self.analyzeWatermarkKey) != fingerprint
+    }
 
     /// CAPTURE-B (#814/#799): build the universal `dayOwner …` self-diagnostic line VERBATIM (the Test
     /// Centre export parser depends on this exact shape). `readId` is the owner this day was read+scored
