@@ -214,8 +214,11 @@ struct SmartWakeLightSleepDetector {
         /// before the run began must have been REM or deep. Without motion, light is close to the model's prior and
         /// P(light) is often already high when the window opens, so staying in light proves nothing (on recorded
         /// nights 58% of wakes landed in the first 3 minutes without this). 0 disables the condition. Epochs before
-        /// the window do not count, so nothing can fire until the window itself has shown a non-light epoch.
+        /// the window do not count, with one exception (fork): a run that OPENS the window also counts when at least
+        /// `preWindowMinimum` of the contiguous epochs just before the window (within this same lookback) were REM or
+        /// deep, i.e. the sleeper was already coming out of REM when the window opened. Older or gapped epochs never count.
         var transitionLookbackEpochs = 10
+        var preWindowMinimum = 2
         /// Trailing windows of the two HR spread features (V2: 5 and 11 minutes, centred).
         var variabilityEpochs = 10
         var variabilityMinimumEpochs = 5
@@ -288,6 +291,13 @@ struct SmartWakeLightSleepDetector {
     private var streak = 0
     /// Most likely stage of every epoch closed inside the window, in order; nil for an unusable epoch.
     private var windowStages: [Stage?] = []
+    /// fork: most likely stage of the contiguous epochs that closed right before the window, at most
+    /// `transitionLookbackEpochs` of them, newest last. Cleared by any hole in the stream and when the window ends.
+    private var preWindowStages: [Stage?] = []
+    private var preWindowLastIndex: Int?
+    private var firstWindowIndex: Int?
+    /// fork: compact stage letters of the window epochs (D deep, R REM, L light, A awake, . unusable) for the summary.
+    private var windowTrace = ""
     private var lastClosedIndex: Int?
     private var lastSampleTime: Double?
     private var hasFired = false
@@ -331,6 +341,7 @@ struct SmartWakeLightSleepDetector {
         let stages = Stage.allCases.map { "\($0.label)=\(diagnostics.stageCounts[$0.rawValue])" }.joined(separator: " ")
         var text = "reference=\(diagnostics.referenceEpochs) windowEpochs=\(diagnostics.windowEpochs) "
             + "invalid=\(diagnostics.invalidEpochs) maxLight=\(String(format: "%.2f", diagnostics.maximumLightProbability)) \(stages)"
+        if !windowTrace.isEmpty { text += " epochs=\(windowTrace)" }   // fork
         if let firedAt = diagnostics.firedAt, let probability = diagnostics.firedProbability {
             text += " fired=\(firedAt.formatted(date: .omitted, time: .standard)) P=\(String(format: "%.2f", probability))"
         } else if diagnostics.referenceEpochs < configuration.minimumReferenceEpochs {
@@ -356,6 +367,7 @@ struct SmartWakeLightSleepDetector {
         let isInWindow = Date(timeIntervalSince1970: epochStart) >= windowStart && now < maximumWakeTime
         let isContiguous = lastClosedIndex == epoch.index - 1
         lastClosedIndex = epoch.index
+        if !isContiguous { clearPreWindow() }   // fork: a hole in the stream
 
         guard epoch.count >= configuration.minimumSamplesPerEpoch,
               epoch.maximumGap <= configuration.maximumGapSeconds
@@ -363,9 +375,12 @@ struct SmartWakeLightSleepDetector {
             history.append(ClosedEpoch(index: epoch.index))
             trimHistory()
             streak = 0
+            clearPreWindowIfBefore(epochStart)   // fork: an unusable epoch is a hole
             if isInWindow {
                 diagnostics.invalidEpochs += 1
+                if firstWindowIndex == nil { firstWindowIndex = epoch.index }
                 windowStages.append(nil)
+                windowTrace.append(".")
             }
             return false
         }
@@ -394,6 +409,14 @@ struct SmartWakeLightSleepDetector {
         let probabilities = advanceFilter(with: latest, epochStart: epochStart)
         guard isInWindow else {
             streak = 0
+            if epochStart < windowStart.timeIntervalSince1970 {   // fork: before the window, not after it
+                let before = probabilities.indices.max(by: { probabilities[$0] < probabilities[$1] })
+                preWindowStages.append(before.flatMap(Stage.init(rawValue:)))
+                preWindowLastIndex = epoch.index
+                if preWindowStages.count > configuration.transitionLookbackEpochs { preWindowStages.removeFirst() }
+            } else {
+                clearPreWindow()   // fork: the window is over
+            }
             return false
         }
 
@@ -402,7 +425,9 @@ struct SmartWakeLightSleepDetector {
         diagnostics.maximumLightProbability = max(diagnostics.maximumLightProbability, light)
         let best = probabilities.indices.max(by: { probabilities[$0] < probabilities[$1] })
         if let best { diagnostics.stageCounts[best] += 1 }
+        if firstWindowIndex == nil { firstWindowIndex = epoch.index }   // fork
         windowStages.append(best.flatMap(Stage.init(rawValue:)))
+        windowTrace.append(best.flatMap(Stage.init(rawValue:)).map(Self.traceLetter) ?? ".")   // fork
         if hasFired { return false }
         streak = light >= configuration.lightProbabilityThreshold ? streak + 1 : 0
         guard streak >= configuration.requiredConsecutiveEpochs else { return false }
@@ -419,16 +444,46 @@ struct SmartWakeLightSleepDetector {
     /// True when a REM or deep epoch precedes the current run of light epochs within `transitionLookbackEpochs`
     /// window epochs (always true when the condition is disabled).
     private func enteredLightSleep() -> Bool {
-        Self.enteredLight(stages: windowStages, run: streak, lookback: configuration.transitionLookbackEpochs)
+        // fork: the epochs before the window only count when they touch the first window epoch without a hole
+        let adjacent = preWindowLastIndex.map { $0 + 1 == firstWindowIndex } ?? false
+        return Self.enteredLight(stages: windowStages, run: streak, lookback: configuration.transitionLookbackEpochs,
+                                 before: adjacent ? preWindowStages : [], beforeMinimum: configuration.preWindowMinimum)
+    }
+
+    private mutating func clearPreWindow() {
+        preWindowStages.removeAll()
+        preWindowLastIndex = nil
+    }
+
+    private mutating func clearPreWindowIfBefore(_ epochStart: Double) {
+        if epochStart < windowStart.timeIntervalSince1970 { clearPreWindow() }
+    }
+
+    private static func traceLetter(_ stage: Stage) -> String {
+        switch stage {
+        case .deep: return "D"
+        case .rem: return "R"
+        case .light: return "L"
+        case .awake: return "A"
+        }
     }
 
     /// `stages` is the most likely stage of each window epoch so far (nil: unusable epoch), the last `run` of which
     /// are the light run being judged. True when a REM or deep epoch sits within `lookback` epochs before that run.
-    static func enteredLight(stages: [Stage?], run: Int, lookback: Int) -> Bool {
+    ///
+    /// fork: `before` is the contiguous stage list that ends right where `stages` begins (empty when unknown or gapped).
+    /// A run that starts inside `lookback` of the window start also counts when at least `beforeMinimum` of the
+    /// `lookback - runStart` newest `before` epochs were REM or deep.
+    static func enteredLight(stages: [Stage?], run: Int, lookback: Int, before: [Stage?] = [],
+                             beforeMinimum: Int = 2) -> Bool {
         guard lookback > 0 else { return true }
         let runStart = stages.count - run
-        guard runStart > 0 else { return false }
-        return stages[max(0, runStart - lookback)..<runStart].contains { $0 == .deep || $0 == .rem }
+        if runStart > 0, stages[max(0, runStart - lookback)..<runStart].contains(where: { $0 == .deep || $0 == .rem }) {
+            return true
+        }
+        let reach = lookback - runStart
+        guard reach > 0 else { return false }
+        return before.suffix(reach).filter { $0 == .deep || $0 == .rem }.count >= beforeMinimum
     }
 
     private mutating func trimHistory() {

@@ -114,12 +114,62 @@ final class SmartWakeLightSleepTests: XCTestCase {
     }
 
     func testALightRunFromTheStartOfTheWindowIsNotAnEntry() {
-        // The synthetic signal is scored REM throughout and the run starts with the first window epoch, so there is
-        // no earlier window epoch to have been REM or deep: the transition requirement keeps the rule silent.
+        // fork: the run opens the window with nothing contiguous before it (a hole of 90 s), so there is no earlier
+        // epoch to have been REM or deep: the transition requirement keeps the rule silent.
         var detector = makeDetector(requiredEpochs: 4, transitionLookback: 10)
-        XCTAssertNil(feed(&detector, -600..<3_500))
+        XCTAssertNil(feed(&detector, -600..<3_500, skip: { $0 >= 1_710 && $0 < 1_800 }))
         XCTAssertGreaterThan(detector.diagnostics.blockedWithoutTransition, 0)
         XCTAssertTrue(detector.summary.contains("fired=none (no transition into light)"), detector.summary)
+    }
+
+    // fork: epochs just before the window count toward an entry, only when contiguous and recent.
+
+    func testRemRightBeforeTheWindowCountsAsAnEntryForARunThatOpensIt() {
+        // The synthetic signal is scored REM, so the epochs just before the window are REM: the run that opens the
+        // window follows REM and the rule may fire.
+        var detector = makeDetector(requiredEpochs: 4, transitionLookback: 10)
+        XCTAssertNotNil(feed(&detector, -600..<2_100))
+        XCTAssertEqual(detector.diagnostics.blockedWithoutTransition, 0)
+        XCTAssertTrue(detector.summary.contains("epochs="), detector.summary)
+    }
+
+    func testAHoleBeforeTheWindowLeavesNoEntry() {
+        // 90 s without samples right before the window: no epoch touches the window start, so the earlier REM is
+        // too old to count and nothing may fire from a run that opens the window.
+        var detector = makeDetector(requiredEpochs: 4, transitionLookback: 10)
+        XCTAssertNil(feed(&detector, -600..<1_800, skip: { $0 >= 1_710 }))
+        XCTAssertNil(feed(&detector, 1_800..<3_500))
+        XCTAssertGreaterThan(detector.diagnostics.blockedWithoutTransition, 0)
+    }
+
+    func testAnUnusableEpochBeforeTheWindowLeavesNoEntry() {
+        // Sparse samples in the last 4 epochs before the window: they are unusable, so no evidence is kept.
+        var detector = makeDetector(requiredEpochs: 4, transitionLookback: 10)
+        XCTAssertNil(feed(&detector, -600..<1_800, skip: { $0 >= 1_680 && $0 % 2 == 1 }))
+        XCTAssertNil(feed(&detector, 1_800..<3_500))
+        XCTAssertGreaterThan(detector.diagnostics.blockedWithoutTransition, 0)
+    }
+
+    func testPreWindowStagesNeedTwoRemOrDeepEpochs() {
+        typealias Stage = SmartWakeLightSleepDetector.Stage
+        let run: [Stage?] = [.light, .light, .light, .light]
+        XCTAssertTrue(SmartWakeLightSleepDetector.enteredLight(stages: run, run: 4, lookback: 10, before: [.light, .rem, .rem]))
+        XCTAssertFalse(SmartWakeLightSleepDetector.enteredLight(stages: run, run: 4, lookback: 10, before: [.light, .light, .rem]))
+        XCTAssertFalse(SmartWakeLightSleepDetector.enteredLight(stages: run, run: 4, lookback: 10, before: []))
+        // Only the epochs the lookback still reaches count: the run starts at 0, lookback 3 reaches 3 epochs back.
+        XCTAssertFalse(SmartWakeLightSleepDetector.enteredLight(
+            stages: run, run: 4, lookback: 3, before: [.rem, .rem, .light, .light, .light]))
+        // A run that starts later in the window is judged by the window alone, as before.
+        XCTAssertTrue(SmartWakeLightSleepDetector.enteredLight(
+            stages: [.rem, .light, .light, .light, .light], run: 4, lookback: 10, before: []))
+    }
+
+    func testLightRunsAtTheStartWithoutRemStayBlocked() {
+        typealias Stage = SmartWakeLightSleepDetector.Stage
+        let stages: [Stage?] = Array(repeating: .light, count: 17) + Array(repeating: .rem, count: 42)
+        XCTAssertFalse(SmartWakeLightSleepDetector.enteredLight(stages: Array(stages.prefix(17)), run: 17, lookback: 10))
+        XCTAssertFalse(SmartWakeLightSleepDetector.enteredLight(
+            stages: Array(stages.prefix(17)), run: 17, lookback: 10, before: [.light, .light]))
     }
 
     func testDisablingTheTransitionRestoresThePlainRule() {
