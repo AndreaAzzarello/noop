@@ -108,6 +108,18 @@
         }
       }
     },
+    "Awake" : {
+      "comment" : "Awake sleep legend in the Today Night card: time in bed not asleep.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sveglio"
+          }
+        }
+      }
+    },
     "Bedtime tonight" : {
       "comment" : "Row label: latest bedtime that still gives the sleep need.",
       "extractionState" : "manual",
@@ -431,6 +443,18 @@
         }
       }
     },
+    "HRV %lld ms" : {
+      "comment" : "Heart rate variability of the night in the Today Night card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HRV %lld ms"
+          }
+        }
+      }
+    },
     "Health write-back ledger" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -526,6 +550,18 @@
         }
       }
     },
+    "Lowest HR %lld bpm" : {
+      "comment" : "Lowest heart rate of the night in the Today Night card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FC minima %lld bpm"
+          }
+        }
+      }
+    },
     "Manage alarms" : {
       "comment" : "Smart Wake card link to the list.",
       "extractionState" : "manual",
@@ -594,6 +630,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "NOOP stima il sonno leggero dalla frequenza cardiaca e dagli intervalli tra i battiti del WHOOP e ti sveglia prima, dentro la finestra, con la fascia e l'iPhone. È una stima, non una fase del sonno misurata. Se i campioni mancano o non bastano, resta programmata la sveglia AlarmKit all'orario massimo."
+          }
+        }
+      }
+    },
+    "Need %@ · %@ over" : {
+      "comment" : "Sleep need and the surplus in the Today Night card; the first %@ is the need, the second %@ the surplus, both durations.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fabbisogno %@ · %@ in più"
+          }
+        }
+      }
+    },
+    "Need %@ · %@ short" : {
+      "comment" : "Sleep need and the shortfall in the Today Night card; the first %@ is the need, the second %@ the shortfall, both durations.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fabbisogno %@ · mancano %@"
+          }
+        }
+      }
+    },
+    "Need %@ · met" : {
+      "comment" : "Sleep need met in the Today Night card; %@ is a duration.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fabbisogno %@ · raggiunto"
           }
         }
       }
@@ -1312,6 +1384,18 @@
         }
       }
     },
+    "Wake-ups: %lld" : {
+      "comment" : "Number of wake-ups in the Today Night card.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Risvegli: %lld"
+          }
+        }
+      }
+    },
     "Weekday" : {
       "comment" : "AppIntent parameter title (not discoverable).",
       "extractionState" : "manual",
@@ -1344,6 +1428,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fine settimana"
+          }
+        }
+      }
+    },
+    "Woke at %@, %lld min early" : {
+      "comment" : "Smart Wake outcome in the Today Night card: the first %@ is the clock time, %lld the minutes before the maximum time.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Svegliato alle %@, %lld min prima"
+          }
+        }
+      }
+    },
+    "Woke at the maximum time, %@" : {
+      "comment" : "Smart Wake outcome in the Today Night card: no early wake, the alarm went off at the maximum time %@.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Svegliato all'orario massimo, %@"
           }
         }
       }

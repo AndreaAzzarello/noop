@@ -24,7 +24,7 @@ struct NightSummary: Equatable {
     /// Raw figures, as stored.
     struct Inputs {
         var totalSleepMin: Double?
-        var efficiency: Double?          // 0...100, as `DailyMetric.efficiency`
+        var efficiency: Double?          // 0...100 or 0...1: the strap writes a fraction, imports a percentage
         var deepMin: Double?
         var remMin: Double?
         var lightMin: Double?
@@ -35,6 +35,21 @@ struct NightSummary: Equatable {
         var strapAlarm: Date?            // nil when the strap alarm is off
         var sleepNeedMinutes: Int        // `WindDownNudge.sleepNeedMinutes` (already clamped 300...660)
         var now: Date
+        // fork: figures of the fuller card; each is nil when the app does not know it.
+        var disturbances: Int? = nil     // `DailyMetric.disturbances`: wake-ups during the night
+        var restingHr: Int? = nil        // `DailyMetric.restingHr`: the night's lowest heart rate
+        var avgHrv: Double? = nil        // `DailyMetric.avgHrv`, ms
+        /// The maximum time of the alarm that woke the wearer early (nil: not recorded, so no "N min early").
+        var earlyWakeMaximum: Date? = nil
+        /// A wake-up that reached the maximum time with no early wake (nil: not recorded).
+        var maximumTimeAt: Date? = nil
+    }
+
+    /// How the last Smart Wake ended.
+    enum WakeOutcome: Equatable {
+        /// `minutesBefore` is nil when the maximum time of that night was not recorded.
+        case early(at: Date, minutesBefore: Int?)
+        case maximum(at: Date)
     }
 
     let sleepMinutes: Int?
@@ -43,11 +58,22 @@ struct NightSummary: Equatable {
     let stages: Stages?
     let efficiencyPct: Int?
     let earlyWakeAt: Date?
+    /// Time in bed not asleep, in minutes; nil under a minute or when the span is unknown.
+    let awakeMinutes: Int?
+    /// Wake-ups; nil when none were counted.
+    let wakings: Int?
+    let sleepNeedMinutes: Int
+    let restingHr: Int?
+    let hrvMs: Int?
+    let outcome: WakeOutcome?
     let nextAlarm: NextAlarm?
     /// Latest bedtime that still gives `sleepNeedMinutes` before `nextAlarm.latest`; nil when unknown or past.
     let bedtime: Date?
 
     var hasSleep: Bool { sleepMinutes != nil }
+
+    /// Asleep minus need, in minutes: negative is a debt, positive a surplus. nil without a sleep total.
+    var needDelta: Int? { sleepMinutes.map { $0 - sleepNeedMinutes } }
 
     // MARK: Rules
 
@@ -68,13 +94,36 @@ struct NightSummary: Equatable {
         return nil
     }
 
+    /// Efficiency as a whole percentage. The strap stores a fraction (0.94) and imports a percentage (91): a value
+    /// up to 1 is a fraction, the same rule as the watch bridge. 0 and anything outside 0...100 is unknown.
+    static func efficiencyPercent(_ raw: Double?) -> Int? {
+        guard let raw, raw.isFinite, raw > 0 else { return nil }
+        let pct = raw <= 1 ? raw * 100 : raw
+        return pct <= 100 ? Int(pct.rounded()) : nil
+    }
+
+    /// Minutes in bed that were not sleep: `(wake - bed) - asleep`, only from one minute up.
+    static func awakeMinutes(bedTs: Int?, wakeTs: Int?, asleepMinutes: Int?) -> Int? {
+        guard let bedTs, let wakeTs, let asleepMinutes, wakeTs > bedTs else { return nil }
+        let awake = Int((Double(wakeTs - bedTs) / 60).rounded()) - asleepMinutes
+        return awake >= 1 ? awake : nil
+    }
+
+    static func resolveOutcome(earlyWakeAt: Date?, earlyWakeMaximum: Date?, maximumTimeAt: Date?) -> WakeOutcome? {
+        if let earlyWakeAt {
+            let before = earlyWakeMaximum.map { Int($0.timeIntervalSince(earlyWakeAt) / 60) }
+            return .early(at: earlyWakeAt, minutesBefore: before.flatMap { $0 >= 1 ? $0 : nil })
+        }
+        return maximumTimeAt.map { .maximum(at: $0) }
+    }
+
     static func make(_ i: Inputs) -> NightSummary {
         let minutes = i.totalSleepMin.flatMap { $0.isFinite && $0 > 0 ? Int($0.rounded()) : nil }
 
         func whole(_ v: Double?) -> Int { v.flatMap { $0.isFinite && $0 > 0 ? Int($0.rounded()) : nil } ?? 0 }
         let stages = Stages(deepMin: whole(i.deepMin), remMin: whole(i.remMin), lightMin: whole(i.lightMin))
 
-        let efficiency = i.efficiency.flatMap { $0.isFinite && (0...100).contains($0) ? Int($0.rounded()) : nil }
+        let efficiency = efficiencyPercent(i.efficiency)
         let next = resolveNextAlarm(smartWake: i.smartWake, strapAlarm: i.strapAlarm, now: i.now)
 
         return NightSummary(
@@ -84,6 +133,13 @@ struct NightSummary: Equatable {
             stages: minutes != nil && stages.total > 0 ? stages : nil,
             efficiencyPct: minutes == nil ? nil : efficiency,
             earlyWakeAt: minutes == nil ? nil : i.earlyWakeAt,
+            awakeMinutes: minutes == nil ? nil : awakeMinutes(bedTs: i.bedTs, wakeTs: i.wakeTs, asleepMinutes: minutes),
+            wakings: minutes == nil ? nil : i.disturbances.flatMap { $0 > 0 ? $0 : nil },
+            sleepNeedMinutes: i.sleepNeedMinutes,
+            restingHr: minutes == nil ? nil : i.restingHr.flatMap { $0 > 0 ? $0 : nil },
+            hrvMs: minutes == nil ? nil : i.avgHrv.flatMap { $0.isFinite && $0 > 0 ? Int($0.rounded()) : nil },
+            outcome: minutes == nil ? nil
+                : resolveOutcome(earlyWakeAt: i.earlyWakeAt, earlyWakeMaximum: i.earlyWakeMaximum, maximumTimeAt: i.maximumTimeAt),
             nextAlarm: next,
             bedtime: recommendedBedtime(latestWake: next?.latest, sleepNeedMinutes: i.sleepNeedMinutes, now: i.now))
     }

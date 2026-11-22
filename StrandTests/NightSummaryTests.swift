@@ -154,4 +154,27 @@ final class SmartWakeEarlyWakeRecordTests: XCTestCase {
         XCTAssertNil(SmartWakeEarlyWakeRecord.firedAt(inNight: nil, wakeTs: 5_000, defaults: defaults))
         XCTAssertNil(SmartWakeEarlyWakeRecord.firedAt(inNight: 1_000, wakeTs: nil, defaults: defaults))
     }
+
+    // fork: the maximum time stored with an early wake, and the maximum-time wake-up.
+
+    func testMaximumTimeTravelsWithTheEarlyWake() {
+        let max = Date(timeIntervalSince1970: 2_600)
+        SmartWakeEarlyWakeRecord.record(at: Date(timeIntervalSince1970: 2_000), maximumWakeTime: max, defaults: defaults)
+        XCTAssertEqual(SmartWakeEarlyWakeRecord.maximumWake(inNight: 1_000, wakeTs: 5_000, defaults: defaults), max)
+        // The next early wake without a maximum must not keep the old one.
+        SmartWakeEarlyWakeRecord.record(at: Date(timeIntervalSince1970: 2_100), defaults: defaults)
+        XCTAssertNil(SmartWakeEarlyWakeRecord.maximumWake(inNight: 1_000, wakeTs: 5_000, defaults: defaults))
+    }
+
+    func testMaximumOfAnotherNightIsNotStated() {
+        SmartWakeEarlyWakeRecord.record(at: Date(timeIntervalSince1970: 500), maximumWakeTime: Date(timeIntervalSince1970: 900), defaults: defaults)
+        XCTAssertNil(SmartWakeEarlyWakeRecord.maximumWake(inNight: 1_000, wakeTs: 5_000, defaults: defaults))
+    }
+
+    func testMaximumTimeWakeFollowsTheNightRule() {
+        SmartWakeEarlyWakeRecord.recordMaximumTime(at: Date(timeIntervalSince1970: 5_000), defaults: defaults)
+        XCTAssertNotNil(SmartWakeEarlyWakeRecord.maximumTimeAt(inNight: 1_000, wakeTs: 5_000, defaults: defaults))
+        XCTAssertNil(SmartWakeEarlyWakeRecord.maximumTimeAt(inNight: 6_000, wakeTs: 9_000, defaults: defaults))
+        XCTAssertNil(SmartWakeEarlyWakeRecord.maximumTimeAt(inNight: nil, wakeTs: 5_000, defaults: defaults))
+    }
 }

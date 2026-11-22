@@ -5,7 +5,7 @@ import StrandDesign
 ///
 /// Every figure comes from the app (`repo.today`, the main-night span, the early-wake record, the alarm
 /// settings) through `NightSummary`, which holds all the rules. Loading happens in `.task`, never in `body`,
-/// and only when `repo.refreshSeq` or an alarm setting changes.
+/// and only when the night's figures, the hour or an alarm setting change (see `NightKey`).
 struct NightSummaryCard: View {
     #if os(iOS) && canImport(AlarmKit)
     @ObservedObject private var alarmStore = SmartWakeAlarmStore.shared   // fork: reload when the alarm list changes
@@ -43,8 +43,27 @@ struct NightSummaryCard: View {
     /// fork: the style actually drawn; `style` is only what the clock asks for (see `NightCardStyle`).
     @State private var shownStyle: Style?
 
+    /// fork: what a load reads of the night. Replaces `refreshSeq`, which moves on every data refresh (44 loads a day
+    /// for a card that was shown twice): the card reloads when the night's own figures change, when the hour turns
+    /// (the bedtime and the next alarm age) or when an alarm setting changes.
+    private struct NightKey: Equatable {
+        let day: String
+        let total: Double?
+        let efficiency: Double?
+        let deep: Double?
+        let rem: Double?
+        let light: Double?
+        let disturbances: Int?
+        let restingHr: Int?
+        let avgHrv: Double?
+        let sleepSessions: Int
+        /// The ends of both ends of the (sorted) session list: whichever is the newest, a new night moves one of them.
+        let sleepEnds: [Int?]
+    }
+
     private struct LoadKey: Equatable {
-        let refreshSeq: Int
+        let night: NightKey
+        let hour: Int
         let smartWake: Bool
         let strapAlarm: Bool
         let minutes: Int
@@ -67,8 +86,15 @@ struct NightSummaryCard: View {
         #endif
     }
 
+    private var nightKey: NightKey {
+        let t = repo.today
+        return NightKey(day: t?.day ?? "", total: t?.totalSleepMin, efficiency: t?.efficiency, deep: t?.deepMin,
+                        rem: t?.remMin, light: t?.lightMin, disturbances: t?.disturbances, restingHr: t?.restingHr,
+                        avgHrv: t?.avgHrv, sleepSessions: repo.sleeps.count, sleepEnds: [repo.sleeps.first?.endTs, repo.sleeps.last?.endTs])
+    }
+
     private var loadKey: LoadKey {
-        LoadKey(refreshSeq: repo.refreshSeq, smartWake: behavior.smartWakeEnabled,
+        LoadKey(night: nightKey, hour: Int(Date().timeIntervalSince1970 / 3600), smartWake: behavior.smartWakeEnabled,
                 strapAlarm: behavior.smartAlarmEnabled, minutes: behavior.smartAlarmMinutes,
                 window: behavior.smartWakeWindowMinutes, alarms: alarmListRevision,
                 weekdays: behavior.smartAlarmWeekdays, overrides: WindDownNudge.perDayWakeOverrides,
@@ -137,22 +163,66 @@ struct NightSummaryCard: View {
             }
             if let shares = s.stageShares, let stages = s.stages {
                 stageBar(shares)
-                stageLegend(stages)
+                stageLegend(stages, awake: s.awakeMinutes)
             }
-            if let eff = s.efficiencyPct {
-                Text("Efficiency \(eff)%", tableName: "Fork")
-                    .font(StrandFont.footnote)
-                    .foregroundStyle(StrandPalette.textSecondary)
-            }
-            if let early = s.earlyWakeAt {
+            if let line = Self.qualityLine(s) { detailLine(line) }
+            detailLine(Self.needLine(s))
+            if let line = Self.vitalsLine(s) { detailLine(line) }
+            if let outcome = s.outcome {
                 Label {
-                    Text(String(format: String(localized: "Early wake at %@", table: "Fork"), Self.timeText(early)))
+                    Text(verbatim: Self.outcomeText(outcome))
                 } icon: {
                     Image(systemName: "alarm")
                 }
                 .font(StrandFont.footnote)
                 .foregroundStyle(StrandPalette.textSecondary)
             }
+        }
+    }
+
+    private func detailLine(_ text: String) -> some View {
+        Text(verbatim: text)
+            .font(StrandFont.footnote)
+            .foregroundStyle(StrandPalette.textSecondary)
+    }
+
+    /// A Fork-table string as a `String`; the key is the interpolated literal, so catalog keys carry `%lld` / `%@`.
+    private static func fork(_ resource: LocalizedStringResource) -> String { String(localized: resource) }
+
+    /// "Efficiency 94% · Wake-ups: 3"; nil when neither is known.
+    static func qualityLine(_ s: NightSummary) -> String? {
+        var parts: [String] = []
+        if let eff = s.efficiencyPct { parts.append(Self.fork(LocalizedStringResource("Efficiency \(eff)%", table: "Fork"))) }
+        if let wakings = s.wakings { parts.append(Self.fork(LocalizedStringResource("Wake-ups: \(wakings)", table: "Fork"))) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// The need next to what was slept. The need is the one that drives the bedtime below, so the two agree.
+    static func needLine(_ s: NightSummary) -> String {
+        let need = CoupledView.hoursMinutes(Double(s.sleepNeedMinutes))
+        guard let delta = s.needDelta, abs(delta) >= 5 else {
+            return Self.fork(LocalizedStringResource("Need \(need) · met", table: "Fork"))
+        }
+        let amount = CoupledView.hoursMinutes(Double(abs(delta)))
+        return delta < 0 ? Self.fork(LocalizedStringResource("Need \(need) · \(amount) short", table: "Fork"))
+                         : Self.fork(LocalizedStringResource("Need \(need) · \(amount) over", table: "Fork"))
+    }
+
+    static func vitalsLine(_ s: NightSummary) -> String? {
+        var parts: [String] = []
+        if let hr = s.restingHr { parts.append(Self.fork(LocalizedStringResource("Lowest HR \(hr) bpm", table: "Fork"))) }
+        if let hrv = s.hrvMs { parts.append(Self.fork(LocalizedStringResource("HRV \(hrv) ms", table: "Fork"))) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    static func outcomeText(_ outcome: NightSummary.WakeOutcome) -> String {
+        switch outcome {
+        case let .early(at, minutes?):
+            return Self.fork(LocalizedStringResource("Woke at \(timeText(at)), \(minutes) min early", table: "Fork"))
+        case let .early(at, nil):
+            return String(format: String(localized: "Early wake at %@", table: "Fork"), timeText(at))
+        case let .maximum(at):
+            return Self.fork(LocalizedStringResource("Woke at the maximum time, \(timeText(at))", table: "Fork"))
         }
     }
 
@@ -172,11 +242,14 @@ struct NightSummaryCard: View {
         .accessibilityHidden(true)
     }
 
-    private func stageLegend(_ stages: NightSummary.Stages) -> some View {
+    private func stageLegend(_ stages: NightSummary.Stages, awake: Int?) -> some View {
         HStack(spacing: NoopMetrics.space3) {
             legendItem(.deep, name: Text("Deep", tableName: "Fork"), minutes: stages.deepMin)
             legendItem(.rem, name: Text("REM", tableName: "Fork"), minutes: stages.remMin)
             legendItem(.light, name: Text("Light", tableName: "Fork"), minutes: stages.lightMin)
+            if let awake {   // fork: time in bed not asleep
+                legendItem(.awake, name: Text("Awake", tableName: "Fork"), minutes: awake)
+            }
         }
         .accessibilityElement(children: .combine)
     }
@@ -303,7 +376,10 @@ struct NightSummaryCard: View {
             bedTs: span?.start, wakeTs: span?.end,
             earlyWakeAt: SmartWakeEarlyWakeRecord.firedAt(inNight: span?.start, wakeTs: span?.end),
             smartWake: alarms.smartWake, strapAlarm: alarms.strapAlarm,
-            sleepNeedMinutes: WindDownNudge.sleepNeedMinutes, now: now)
+            sleepNeedMinutes: WindDownNudge.sleepNeedMinutes, now: now,
+            disturbances: today?.disturbances, restingHr: today?.restingHr, avgHrv: today?.avgHrv,
+            earlyWakeMaximum: SmartWakeEarlyWakeRecord.maximumWake(inNight: span?.start, wakeTs: span?.end),
+            maximumTimeAt: SmartWakeEarlyWakeRecord.maximumTimeAt(inNight: span?.start, wakeTs: span?.end))
         // fork: a superseded load (the key changed while it awaited) must not overwrite the newer one with older data.
         guard !Task.isCancelled else { return }
         let made = NightSummary.make(inputs)
