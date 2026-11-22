@@ -147,6 +147,9 @@ extension WidgetSnapshot {
         saveAndReloadIfChanged(snap, previous: previous)
     }
 
+    /// fork: when this process last asked WidgetKit for a reload. In memory: a relaunch reloads once, the safe side.
+    @MainActor private static var lastWidgetReload: Date?
+
     /// Persist and ask WidgetKit for a new timeline only when a rendered field changed. The snapshot's
     /// timestamp is metadata only (no widget family displays it), so an otherwise-identical publish is a
     /// true no-op rather than an App-Group write plus an extension reload.
@@ -157,6 +160,22 @@ extension WidgetSnapshot {
         let previous = previous ?? load()
         if renderedContentChanged(from: previous, to: snap) {
             snap.save(previousSeries: previous?.hrSeries ?? [])
+            // fork: a change confined to the heart rate and the battery reloads at most every 30 minutes (a low-battery
+            // crossing at once); the snapshot above is saved either way, so the next timeline reads fresh values.
+            var liveOnly = false
+            if let previous {
+                var probe = snap
+                probe.bpm = previous.bpm
+                probe.batteryPct = previous.batteryPct
+                liveOnly = !renderedContentChanged(from: previous, to: probe)
+            }
+            guard WidgetReloadThrottle.shouldReload(onlyLiveFieldsChanged: liveOnly, previousBattery: previous?.batteryPct,
+                                                    nextBattery: snap.batteryPct, lastReload: lastWidgetReload,
+                                                    now: snap.updated) else {
+                WidgetTelemetry.noteDeclined()
+                return
+            }
+            lastWidgetReload = snap.updated
             WidgetCenter.shared.reloadAllTimelines()
             ForkEnergyCounters.shared.note(.widgetReload) // fork-perf: TEMP
             // Android skips the update entirely when no widget is placed; WidgetKit offers no

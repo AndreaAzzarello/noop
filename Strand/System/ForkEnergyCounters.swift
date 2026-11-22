@@ -31,6 +31,12 @@ final class ForkEnergyCounters: @unchecked Sendable {
         // included, so a phase reads as an upper bound; cpuProcessMs is the sampled total, and what the phases do
         // not add up to is the rest (BLE streaming, UI, system frameworks).
         case cpuProcessMs, cpuOffloadMs, cpuRefreshMs, cpuRescoreMs, cpuWriteBackMs, cpuWidgetMs
+        // Where the process CPU went, by thread (sampled with cpuProcessMs): main thread, Swift-concurrency workers,
+        // other GCD root-queue threads, other named threads, unnamed threads, and threads that ended between two samples.
+        // They add up to cpuProcessMs, so the part the phases above do not explain is read off these.
+        case cpuThrMainMs, cpuThrCoopMs, cpuThrDispatchMs, cpuThrNamedMs, cpuThrUnnamedMs, cpuThrExitedMs
+        // Re-score passes that returned at a gate (nothing new since the last run); their CPU is not in cpuRescoreMs.
+        case rescoreGateSkipped
         // The Night card: its load task started, its load finished, its content appeared on screen.
         case nightCardTask, nightCardLoaded, nightCardShown
         // Offload widget publishes skipped because nothing new was banked.
@@ -43,6 +49,90 @@ final class ForkEnergyCounters: @unchecked Sendable {
         guard getrusage(RUSAGE_SELF, &usage) == 0 else { return 0 }
         func ms(_ t: timeval) -> Int { Int(t.tv_sec) * 1000 + Int(t.tv_usec) / 1000 }
         return ms(usage.ru_utime) + ms(usage.ru_stime)
+    }
+
+    // MARK: Thread attribution (TEMP)
+
+    struct ThreadSlice: Equatable {
+        let id: UInt64
+        let name: String
+        let cpuMs: Int
+        let isMain: Bool
+    }
+
+    /// The bucket a thread's CPU is booked to. Names only: no memory of a dispatch queue is dereferenced.
+    static func bucket(threadName: String, isMain: Bool) -> Counter {
+        if isMain { return .cpuThrMainMs }
+        if threadName.isEmpty { return .cpuThrUnnamedMs }
+        if threadName.contains("cooperative") { return .cpuThrCoopMs }
+        if threadName.hasPrefix("com.apple.root.") { return .cpuThrDispatchMs }
+        return .cpuThrNamedMs
+    }
+
+    /// CPU per bucket since the previous sample, and the part of `processDelta` that live threads do not explain
+    /// (threads that ended in between). A thread first seen now counts in full.
+    static func attribute(slices: [ThreadSlice], previous: [UInt64: Int],
+                          processDelta: Int) -> (byBucket: [Counter: Int], exited: Int) {
+        var byBucket: [Counter: Int] = [:]
+        var live = 0
+        for slice in slices {
+            let delta = max(0, slice.cpuMs - (previous[slice.id] ?? 0))
+            live += delta
+            byBucket[bucket(threadName: slice.name, isMain: slice.isMain), default: 0] += delta
+        }
+        return (byBucket, max(0, processDelta - live))
+    }
+
+    /// Every thread of this process with its CPU time and name. The first thread the kernel lists is the main thread.
+    static func threadSlices() -> [ThreadSlice] {
+        var list: thread_act_array_t?
+        var count = mach_msg_type_number_t(0)
+        guard task_threads(mach_task_self_, &list, &count) == KERN_SUCCESS, let list else { return [] }
+        defer {
+            vm_deallocate(mach_task_self_, vm_address_t(UInt(bitPattern: list)),
+                          vm_size_t(Int(count) * MemoryLayout<thread_t>.stride))
+        }
+        var out: [ThreadSlice] = []
+        for index in 0..<Int(count) {
+            let thread = list[index]
+            defer { mach_port_deallocate(mach_task_self_, thread) }
+
+            var basic = thread_basic_info()
+            var basicCount = mach_msg_type_number_t(MemoryLayout<thread_basic_info>.size / MemoryLayout<integer_t>.size)
+            let basicOK = withUnsafeMutablePointer(to: &basic) {
+                $0.withMemoryRebound(to: integer_t.self, capacity: Int(basicCount)) {
+                    thread_info(thread, thread_flavor_t(THREAD_BASIC_INFO), $0, &basicCount)
+                }
+            } == KERN_SUCCESS
+
+            var ident = thread_identifier_info()
+            var identCount = mach_msg_type_number_t(MemoryLayout<thread_identifier_info>.size / MemoryLayout<integer_t>.size)
+            let identOK = withUnsafeMutablePointer(to: &ident) {
+                $0.withMemoryRebound(to: integer_t.self, capacity: Int(identCount)) {
+                    thread_info(thread, thread_flavor_t(THREAD_IDENTIFIER_INFO), $0, &identCount)
+                }
+            } == KERN_SUCCESS
+
+            var ext = thread_extended_info()
+            var extCount = mach_msg_type_number_t(MemoryLayout<thread_extended_info>.size / MemoryLayout<integer_t>.size)
+            let extOK = withUnsafeMutablePointer(to: &ext) {
+                $0.withMemoryRebound(to: integer_t.self, capacity: Int(extCount)) {
+                    thread_info(thread, thread_flavor_t(THREAD_EXTENDED_INFO), $0, &extCount)
+                }
+            } == KERN_SUCCESS
+
+            guard basicOK, identOK else { continue }
+            func ms(_ t: time_value_t) -> Int { Int(t.seconds) * 1000 + Int(t.microseconds) / 1000 }
+            var name = ""
+            if extOK {
+                name = withUnsafePointer(to: &ext.pth_name) {
+                    $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXTHREADNAMESIZE)) { String(cString: $0) }
+                }
+            }
+            out.append(ThreadSlice(id: ident.thread_id, name: name,
+                                   cpuMs: ms(basic.user_time) + ms(basic.system_time), isMain: index == 0))
+        }
+        return out
     }
 
     /// Add the CPU spent since `startMillis` to a phase counter.
@@ -66,6 +156,7 @@ final class ForkEnergyCounters: @unchecked Sendable {
     private var loaded = false
     private var lastCPUSample = Date.distantPast
     private var lastCPUMillis = 0
+    private var lastThreadCPU: [UInt64: Int] = [:]
     static let cpuSampleInterval: TimeInterval = 300
 
     init(fileURL: URL?, timeZone: TimeZone = .current) {
@@ -98,9 +189,16 @@ final class ForkEnergyCounters: @unchecked Sendable {
         // The process CPU total is sampled at most every 5 minutes and booked to the hour of the sample.
         if now.timeIntervalSince(lastCPUSample) >= Self.cpuSampleInterval {
             let cpu = Self.cpuNowMillis()
+            let slices = Self.threadSlices()
             if lastCPUSample != .distantPast, cpu >= lastCPUMillis {
                 hours[key, default: [:]][Counter.cpuProcessMs.rawValue, default: 0] += cpu - lastCPUMillis
+                let split = Self.attribute(slices: slices, previous: lastThreadCPU, processDelta: cpu - lastCPUMillis)
+                for (counter, ms) in split.byBucket where ms > 0 {
+                    hours[key, default: [:]][counter.rawValue, default: 0] += ms
+                }
+                if split.exited > 0 { hours[key, default: [:]][Counter.cpuThrExitedMs.rawValue, default: 0] += split.exited }
             }
+            lastThreadCPU = Dictionary(slices.map { ($0.id, $0.cpuMs) }, uniquingKeysWith: { _, last in last })
             lastCPUMillis = cpu
             lastCPUSample = now
         }

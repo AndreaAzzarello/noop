@@ -783,9 +783,9 @@ final class IntelligenceEngine: ObservableObject {
         computing = true
         runningPassStart = DispatchTime.now().uptimeNanoseconds
         runningPassDays = maxDays
-        let forkCPU = ForkEnergyCounters.cpuNowMillis() // fork-perf: TEMP
+        var forkCPU: Int? = ForkEnergyCounters.cpuNowMillis() // fork-perf: TEMP
         defer {
-            ForkEnergyCounters.shared.noteCPU(.cpuRescoreMs, since: forkCPU) // fork-perf: TEMP
+            if let forkCPU { ForkEnergyCounters.shared.noteCPU(.cpuRescoreMs, since: forkCPU) } // fork-perf: TEMP
             computing = false
             runningPassStart = nil
             if pendingForcedRescore {
@@ -826,6 +826,7 @@ final class IntelligenceEngine: ObservableObject {
         // construction, not by the reader checking for an `await`. Twin of the Android AppViewModel hoist.
         let storedWatermark = UserDefaults.standard.string(forKey: Self.analyzeWatermarkKey)
         if !force, !wmKey.isEmpty, storedWatermark == wmKey {
+            forkCPU = nil; ForkEnergyCounters.shared.note(.rescoreGateSkipped) // fork-perf: TEMP (gate CPU is not re-score CPU)
             return
         }
         // #1196/#1146: a FORCED post-offload pass can opt into the same fingerprint gate. An empty/duplicate
@@ -842,6 +843,7 @@ final class IntelligenceEngine: ObservableObject {
             // else's name is the same wrong-caller trail #1538 lost three nights to.
             let skipped = triggerLabel ?? "post-offload"
             diagnosticSink?("re-score: trigger=\(skipped) newData=no — skipped (nothing changed since last run)", nil)
+            forkCPU = nil; ForkEnergyCounters.shared.note(.rescoreGateSkipped) // fork-perf: TEMP
             return
         }
         // Attribute the re-score that is ABOUT TO RUN. `trigger=post-offload` was previously logged only on

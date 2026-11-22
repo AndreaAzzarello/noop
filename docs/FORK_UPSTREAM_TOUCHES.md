@@ -212,3 +212,14 @@ Fork-only files added: `Strand/System/HealthWriteBackDeferral.swift`, `OffloadWi
 TEMP (removed with the rest of the audit): the CPU counters and `nightCard*` counters in `ForkEnergyCounters`.
 
 Not touched: `Strand/BLE/**`, `project.yml`, `.github`, `fastlane`, `Localizable.xcstrings`, `NOOPWidget.swift`, `WidgetSnapshot.swift`, the entitlements, `SmartWake*`. No Android change: the iOS-only paths (HealthKit, WidgetKit, BGTask) have no twin, and the Effort-band formula (`optimalStrainRange`) is unchanged.
+
+## Session 9: widget reload budget, CPU attribution
+
+| File | Lines (+/-) this session | What changed |
+|---|---|---|
+| `StrandiOS/Widgets/WidgetPublish.swift` | +19/-0 | `saveAndReloadIfChanged`: a change confined to the heart rate and the battery reloads at most every 30 minutes (a low-battery crossing at once); the snapshot is saved either way. `// fork:` |
+| `Strand/Data/IntelligenceEngine.swift` | +4/-2 | TEMP: a re-score pass that returns at a gate no longer adds to `cpuRescoreMs`; it counts `rescoreGateSkipped` |
+
+Fork files added: `Strand/System/WidgetReloadThrottle.swift`, their tests. TEMP: per-thread CPU counters (`cpuThr*`) in `ForkEnergyCounters`.
+
+Not touched: `Strand/BLE/**`, `WidgetSnapshot.swift`, `NOOPWidget.swift`, `SmartWake*`, `project.yml`, `.github`, `fastlane`.
