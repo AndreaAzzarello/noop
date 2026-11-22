@@ -51,6 +51,9 @@ struct NightSummaryCard: View {
         let window: Int
         /// Changes whenever the Smart Wake alarm list does (iOS; always 0 elsewhere).
         let alarms: Int
+        /// The strap alarm's day set and per-day times: a change to either moves the next alarm the card names.
+        let weekdays: Set<Int>
+        let overrides: [Int: Int]
         let need: Int
         /// The local day, so a card left open across midnight reloads for the new night.
         let day: String
@@ -67,7 +70,9 @@ struct NightSummaryCard: View {
     private var loadKey: LoadKey {
         LoadKey(refreshSeq: repo.refreshSeq, smartWake: behavior.smartWakeEnabled,
                 strapAlarm: behavior.smartAlarmEnabled, minutes: behavior.smartAlarmMinutes,
-                window: behavior.smartWakeWindowMinutes, alarms: alarmListRevision, need: WindDownNudge.sleepNeedMinutes,
+                window: behavior.smartWakeWindowMinutes, alarms: alarmListRevision,
+                weekdays: behavior.smartAlarmWeekdays, overrides: WindDownNudge.perDayWakeOverrides,
+                need: WindDownNudge.sleepNeedMinutes,
                 day: Repository.dayString(Date()))
     }
 

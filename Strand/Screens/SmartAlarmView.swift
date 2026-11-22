@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine   // fork: smartWakeListChanges
 import StrandDesign
 #if os(iOS)
 import UIKit
@@ -55,6 +56,7 @@ struct SmartAlarmView: View {
                 windDownCard
             }
         }
+        .onReceive(smartWakeListChanges) { _ in overrides = WindDownNudge.perDayWakeOverrides }   // fork: the list's mirror rewrote the per-day times
         .alert(String(localized: "Notifications are off"), isPresented: $showNotifDeniedAlert) {
             Button(String(localized: "Open Settings")) { Self.openNotificationSettings() }
             Button(String(localized: "Not now"), role: .cancel) {}
@@ -416,6 +418,16 @@ struct SmartAlarmView: View {
                 }
             }
         }
+    }
+
+    /// fork: fires after every change of the Smart Wake alarm list (once its upstream mirror has written). Never fires
+    /// outside iOS, where there is no list.
+    private var smartWakeListChanges: AnyPublisher<Int, Never> {
+        #if os(iOS)
+        return SmartWakeAlarmStore.shared.$revision.eraseToAnyPublisher()
+        #else
+        return Empty<Int, Never>().eraseToAnyPublisher()
+        #endif
     }
 
     /// fork: true while Smart Wake is on and its alarm list exists; the list then edits the strap alarm's time and days.

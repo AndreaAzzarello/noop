@@ -82,8 +82,8 @@ final class SmartWakeAlarmStore: ObservableObject {
         guard next != book else { return }
         SmartWakeAlarmBookStorage.save(next)
         book = next
-        revision += 1
         mirrorUpstream()
+        revision += 1   // fork: after the mirror, so a view reacting to it reads the final upstream settings
         model?.applySmartWakeSchedule()
     }
 
