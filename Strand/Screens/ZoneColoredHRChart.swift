@@ -96,6 +96,52 @@ enum HRZoneChartModel {
         return runs
     }
 
+    // fork: most single-zone runs one chart may draw. Every run is two Swift Charts series (area and line), and a
+    // long 1 Hz workout whose heart rate sits on a zone edge produced 242 runs (484 series) from the min/max
+    // downsample alone, which kept the edit sheet's chart "loading" for seconds. Measured in
+    // `WorkoutQuickEditLongWorkoutTests`.
+    static let maxRuns = 48
+
+    /// fork: the points to draw and their runs. Starts from the usual min/max downsample (every peak survives); when
+    /// that splits into more than `maxRuns` runs it re-samples by bucket MEAN with half the vertices, until the run
+    /// count fits or the series is down to `minimumVertices`. The hover still reads the full-resolution series.
+    static func drawn(_ sorted: [TrendPoint], zoneSet: HRZoneSet) -> (points: [TrendPoint], runs: [Run]) {
+        var points = ChartDownsample.minMaxBucketed(sorted, threshold: ChartDownsample.markThreshold,
+                                                    targetCount: ChartDownsample.targetVertices)
+        var runs = Self.runs(points, zoneSet: zoneSet)
+        var target = ChartDownsample.targetVertices / 2
+        while runs.count > maxRuns, target >= minimumVertices, sorted.count > target {
+            points = meanBucketed(sorted, targetCount: target)
+            runs = Self.runs(points, zoneSet: zoneSet)
+            target /= 2
+        }
+        return (points, runs)
+    }
+
+    static let minimumVertices = 12
+
+    /// `targetCount` points: the first, the last and the mean (value and time) of each interior bucket. Input sorted.
+    static func meanBucketed(_ sorted: [TrendPoint], targetCount: Int) -> [TrendPoint] {
+        let n = sorted.count
+        guard n > targetCount, targetCount >= 3, let first = sorted.first, let last = sorted.last else { return sorted }
+        let interior = n - 2
+        let buckets = targetCount - 2
+        var out = [first]
+        for b in 0..<buckets {
+            let lo = 1 + (b * interior) / buckets
+            let hi = 1 + ((b + 1) * interior) / buckets
+            guard lo < hi else { continue }
+            let slice = sorted[lo..<hi]
+            let value = slice.reduce(0) { $0 + $1.value } / Double(slice.count)
+            let time = slice.reduce(0) { $0 + $1.date.timeIntervalSince1970 } / Double(slice.count)
+            let date = Date(timeIntervalSince1970: time)
+            if let previous = out.last, date <= previous.date { continue }   // dates stay strictly increasing
+            out.append(TrendPoint(date: date, value: value, segment: sorted[lo].segment))
+        }
+        if last.date > (out.last?.date ?? .distantPast) { out.append(last) }
+        return out
+    }
+
     /// Zone lower thresholds strictly inside the plotted domain (a rule on the edge would clip its label).
     static func thresholds(_ zoneSet: HRZoneSet, in domain: ClosedRange<Double>) -> [Threshold] {
         zoneSet.zones
@@ -210,9 +256,7 @@ struct ZoneColoredHRChart: View {
         self.zoneSet = usable
         if let usable {
             // Same vertex budget as TrendChart; the hover still reads the full-resolution `points`.
-            let drawn = ChartDownsample.minMaxBucketed(sorted, threshold: ChartDownsample.markThreshold,
-                                                       targetCount: ChartDownsample.targetVertices)
-            let runs = HRZoneChartModel.runs(drawn, zoneSet: usable)
+            let runs = HRZoneChartModel.drawn(sorted, zoneSet: usable).runs   // fork: bounded run count
             self.runs = runs
             let padded = HRZoneChartModel.paddedDomain(valueRange, zoneSet: usable)
             self.plotRange = padded
