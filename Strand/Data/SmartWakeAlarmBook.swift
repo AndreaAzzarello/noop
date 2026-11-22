@@ -168,13 +168,22 @@ struct SmartWakeAlarmBook: Codable, Equatable {
         case conflicts([SmartWakeAlarmOverlap.Conflict])
         /// The alarm has no weekday. Nothing was changed.
         case needsWeekday
+        /// fork: a NEW alarm would be the sixth. Nothing was changed.
+        case limitReached
     }
+
+    /// fork: the most alarms the list takes. A list that already holds more (stored earlier) keeps them; only adding is refused.
+    static let maxAlarms = 5
+
+    /// fork: whether one more alarm may be added.
+    var canAdd: Bool { alarms.count < Self.maxAlarms }
 
     /// Inserts or replaces `alarm` (matched by id). Refuses, changing nothing, when the alarm is enabled and shares a
     /// weekday with another enabled alarm. The caller shows the conflicts and may call `forcing`.
     func saving(_ alarm: SmartWakeAlarm) -> Change {
         let clean = alarm.sanitized()
         guard !clean.weekdays.isEmpty else { return .needsWeekday }
+        if !alarms.contains(where: { $0.id == clean.id }), !canAdd { return .limitReached }   // fork
         if clean.isEnabled {
             let conflicts = SmartWakeAlarmOverlap.conflicts(activating: clean, in: alarms)
             if !conflicts.isEmpty { return .conflicts(conflicts) }

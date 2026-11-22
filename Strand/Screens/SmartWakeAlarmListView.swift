@@ -63,7 +63,7 @@ enum SmartWakeAlarmText {
 }
 
 /// A refused change waiting for the user's choice.
-private struct PendingConflict: Identifiable {
+struct PendingConflict: Identifiable {
     let id = UUID()
     let alarm: SmartWakeAlarm
     let conflicts: [SmartWakeAlarmOverlap.Conflict]
@@ -139,36 +139,10 @@ struct SmartWakeAlarmListView: View {
     }
 
     private func row(_ alarm: SmartWakeAlarm) -> some View {
-        HStack(spacing: 12) {
-            Button {
-                isNew = false
-                editing = alarm
-            } label: {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(SmartWakeAlarmText.time(minutes: alarm.wakeMinutes))
-                        .font(StrandFont.number(34, weight: .light))
-                        .foregroundStyle(alarm.isEnabled ? StrandPalette.textPrimary : StrandPalette.textTertiary)
-                    Text(SmartWakeAlarmText.summary(of: alarm))
-                        .font(StrandFont.footnote)
-                        .foregroundStyle(StrandPalette.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            Toggle(isOn: Binding(get: { alarm.isEnabled }, set: { setEnabled(alarm, $0) })) {
-                Text(SmartWakeAlarmText.name(of: alarm))
-            }
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .tint(StrandPalette.accent)
-        }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(SmartWakeAlarmText.spoken(alarm)))
-        .accessibilityAction(named: Text("Edit", tableName: "Fork")) { isNew = false; editing = alarm }
-        .accessibilityAction(named: Text("Delete", tableName: "Fork")) { store.delete(id: alarm.id) }
+        SmartWakeAlarmRow(alarm: alarm,
+                          onEdit: { isNew = false; editing = alarm },
+                          onToggle: { setEnabled(alarm, $0) },
+                          onDelete: { store.delete(id: alarm.id) })
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) { store.delete(id: alarm.id) } label: { Text("Delete", tableName: "Fork") }
         }
@@ -188,7 +162,7 @@ struct SmartWakeAlarmListView: View {
         case let .conflicts(conflicts):
             pending = PendingConflict(alarm: alarm, conflicts: conflicts)
             return false
-        case .needsWeekday: return false
+        case .needsWeekday, .limitReached: return false   // fork: the add button is off at the limit
         }
     }
 
@@ -196,14 +170,14 @@ struct SmartWakeAlarmListView: View {
         Binding(get: { pending != nil }, set: { if !$0 { pending = nil } })
     }
 
-    private static func names(_ conflicts: [SmartWakeAlarmOverlap.Conflict], in book: SmartWakeAlarmBook) -> String {
+    static func names(_ conflicts: [SmartWakeAlarmOverlap.Conflict], in book: SmartWakeAlarmBook) -> String {
         conflicts.map { conflict in
             guard let alarm = book.alarms.first(where: { $0.id == conflict.alarmID }) else { return conflict.label }
             return "«" + SmartWakeAlarmText.name(of: alarm) + "»"
         }.joined(separator: ", ")
     }
 
-    private static func conflictMessage(_ conflicts: [SmartWakeAlarmOverlap.Conflict], in book: SmartWakeAlarmBook) -> String {
+    static func conflictMessage(_ conflicts: [SmartWakeAlarmOverlap.Conflict], in book: SmartWakeAlarmBook) -> String {
         let lines = conflicts.map { conflict -> String in
             let name = names([conflict], in: book)
             return String(localized: "\(name) already rings on \(SmartWakeAlarmText.days(conflict.days, full: true)).", table: "Fork")
@@ -213,7 +187,7 @@ struct SmartWakeAlarmListView: View {
 }
 
 /// The edit sheet. Works on `draft`; the store is only called from Save.
-private struct SmartWakeAlarmEditor: View {
+struct SmartWakeAlarmEditor: View {
     let original: SmartWakeAlarm
     let isNew: Bool
     /// Returns true when the change was saved (false: refused, the list shows why).

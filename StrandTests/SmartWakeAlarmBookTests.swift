@@ -103,6 +103,47 @@ final class SmartWakeAlarmBookTests: XCTestCase {
         XCTAssertEqual(SmartWakeAlarmBook().saving(none), .needsWeekday)
     }
 
+    // fork: at most five alarms.
+
+    private func fullBook() -> SmartWakeAlarmBook {
+        SmartWakeAlarmBook(alarms: (1...5).map { alarm("A\($0)", days: [$0]) })
+    }
+
+    func testASixthAlarmIsRefused() {
+        let book = fullBook()
+        XCTAssertEqual(SmartWakeAlarmBook.maxAlarms, 5)
+        XCTAssertFalse(book.canAdd)
+        XCTAssertEqual(book.saving(alarm("Sixth", days: [6])), .limitReached)
+    }
+
+    func testTheFifthAlarmIsAccepted() {
+        let four = SmartWakeAlarmBook(alarms: (1...4).map { alarm("A\($0)", days: [$0]) })
+        XCTAssertTrue(four.canAdd)
+        guard case let .applied(next) = four.saving(alarm("Fifth", days: [5])) else { return XCTFail("refused") }
+        XCTAssertEqual(next.alarms.count, 5)
+    }
+
+    func testEditingAnAlarmAtTheLimitIsStillAccepted() {
+        let book = fullBook()
+        var changed = book.alarms[0]
+        changed.wakeMinutes = 8 * 60
+        guard case let .applied(next) = book.saving(changed) else { return XCTFail("an edit is not an addition") }
+        XCTAssertEqual(next.alarms.count, 5)
+        XCTAssertEqual(next.alarms[0].wakeMinutes, 8 * 60)
+    }
+
+    func testDeletingAtTheLimitFreesASlot() {
+        let book = fullBook()
+        XCTAssertTrue(book.deleting(id: book.alarms[0].id).canAdd)
+    }
+
+    func testAListStoredWithMoreThanFiveKeepsThemAndRefusesMore() {
+        let big = SmartWakeAlarmBook(alarms: (1...7).map { alarm("A\($0)", days: [$0]) })
+        XCTAssertEqual(big.alarms.count, 7)
+        XCTAssertEqual(big.saving(alarm("More", days: [])), .needsWeekday, "weekday check comes first")
+        XCTAssertFalse(big.canAdd)
+    }
+
     func testDeletingRemovesOnlyThatAlarm() {
         let a = alarm("A", days: [2]), b = alarm("B", days: [3])
         XCTAssertEqual(SmartWakeAlarmBook(alarms: [a, b]).deleting(id: a.id).alarms.map(\.label), ["B"])

@@ -46,14 +46,18 @@ struct SmartAlarmView: View {
         ScreenScaffold(title: "Alarms",
                        subtitle: "Your strap wake-alarm and the evening wind-down reminder, in one place.") {
             VStack(alignment: .leading, spacing: NoopMetrics.sectionGap) {
-                windowHero
-                strapAlarmCard
-                #if os(iOS) && canImport(AlarmKit)
-                SmartWakeCardView(model: model, overrides: overrides).equatable()
-                #endif
-                strapRejectedCard   // #34: only shows when the strap keeps refusing the alarm
-                honestyCard
-                windDownCard
+                if smartWakeScreenActive {   // fork: Smart Wake on, so one screen replaces the cards below
+                    smartWakeScreen
+                } else {
+                    windowHero
+                    strapAlarmCard
+                    #if os(iOS) && canImport(AlarmKit)
+                    SmartWakeCardView(model: model, overrides: overrides).equatable()
+                    #endif
+                    strapRejectedCard   // #34: only shows when the strap keeps refusing the alarm
+                    honestyCard
+                    windDownCard
+                }
             }
         }
         .onReceive(smartWakeListChanges) { _ in overrides = WindDownNudge.perDayWakeOverrides }   // fork: the list's mirror rewrote the per-day times
@@ -427,6 +431,24 @@ struct SmartAlarmView: View {
         return SmartWakeAlarmStore.shared.$revision.eraseToAnyPublisher()
         #else
         return Empty<Int, Never>().eraseToAnyPublisher()
+        #endif
+    }
+
+    /// fork: true while the Smart Wake Alarms screen replaces the stacked cards. Never true outside iOS.
+    private var smartWakeScreenActive: Bool {
+        #if os(iOS) && canImport(AlarmKit)
+        return behavior.smartWakeEnabled   // not `listOwns`: an empty list still gets the new screen, with its "+"
+        #else
+        return false
+        #endif
+    }
+
+    /// fork: the screen itself; empty outside iOS, where `smartWakeScreenActive` is false.
+    @ViewBuilder private var smartWakeScreen: some View {
+        #if os(iOS) && canImport(AlarmKit)
+        SmartWakeAlarmsScreen(model: model, behavior: behavior)
+        #else
+        EmptyView()
         #endif
     }
 

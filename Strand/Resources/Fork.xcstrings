@@ -73,6 +73,18 @@
         }
       }
     },
+    "A calm reminder timed from your usual wake time and your sleep need. It is a suggestion, not an alarm, and the usual wake time does not wake you." : {
+      "comment" : "Information sheet: evening reminder.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un promemoria sereno calcolato dall'orario di sveglia abituale e dal tuo fabbisogno di sonno. È un suggerimento, non una sveglia, e l'orario abituale non ti sveglia."
+          }
+        }
+      }
+    },
     "Add alarm" : {
       "comment" : "VoiceOver label of the + button.",
       "extractionState" : "manual",
@@ -81,6 +93,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aggiungi sveglia"
+          }
+        }
+      }
+    },
+    "Alarm permission is off for NOOP, so the iPhone alarm cannot ring" : {
+      "comment" : "One-line warning on the Alarms screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il permesso Sveglie è disattivato per NOOP: la sveglia dell'iPhone non può suonare"
           }
         }
       }
@@ -299,6 +323,18 @@
         }
       }
     },
+    "Earlier wake" : {
+      "comment" : "Information sheet heading.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sveglia anticipata"
+          }
+        }
+      }
+    },
     "Earlier wake in light sleep" : {
       "comment" : "Smart Wake card title.",
       "extractionState" : "manual",
@@ -419,6 +455,18 @@
         }
       }
     },
+    "Evening reminder" : {
+      "comment" : "Information sheet heading.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Promemoria serale"
+          }
+        }
+      }
+    },
     "Every day" : {
       "comment" : "Alarm repeat summary.",
       "extractionState" : "manual",
@@ -490,6 +538,18 @@
         }
       }
     },
+    "Information" : {
+      "comment" : "Title of the sheet opened by the info button on the Alarms screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Informazioni"
+          }
+        }
+      }
+    },
     "Insistent strap alarm" : {
       "comment" : "Smart Wake card toggle.",
       "extractionState" : "manual",
@@ -550,6 +610,18 @@
         }
       }
     },
+    "Live Activities" : {
+      "comment" : "Information sheet heading.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attività in tempo reale"
+          }
+        }
+      }
+    },
     "Lowest HR %lld bpm" : {
       "comment" : "Lowest heart rate of the night in the Today Night card.",
       "extractionState" : "manual",
@@ -570,6 +642,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gestisci sveglie"
+          }
+        }
+      }
+    },
+    "Maximum %lld alarms" : {
+      "comment" : "Note under the alarm list when it is full; %lld is the maximum.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Massimo %lld sveglie"
           }
         }
       }
@@ -630,6 +714,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "NOOP stima il sonno leggero dalla frequenza cardiaca e dagli intervalli tra i battiti del WHOOP e ti sveglia prima, dentro la finestra, con la fascia e l'iPhone. È una stima, non una fase del sonno misurata. Se i campioni mancano o non bastano, resta programmata la sveglia AlarmKit all'orario massimo."
+          }
+        }
+      }
+    },
+    "NOOP estimates light sleep from WHOOP heart rate and beat intervals and wakes you earlier inside the window. It is an estimate, not a measured sleep stage." : {
+      "comment" : "Information sheet: early wake.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "NOOP stima il sonno leggero dalla frequenza cardiaca e dagli intervalli tra i battiti del WHOOP e ti sveglia prima, dentro la finestra. È una stima, non una fase del sonno misurata."
           }
         }
       }
@@ -706,6 +802,18 @@
         }
       }
     },
+    "Next: %@" : {
+      "comment" : "Next alarm line on the Alarms screen; %@ is a weekday and time.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prossima: %@"
+          }
+        }
+      }
+    },
     "No active alarms. Add or switch one on in the list." : {
       "comment" : "Smart Wake card summary.",
       "extractionState" : "manual",
@@ -762,6 +870,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nessun sonno registrato stanotte"
+          }
+        }
+      }
+    },
+    "Not now" : {
+      "comment" : "Dismiss button of the notifications alert.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non ora"
           }
         }
       }
@@ -882,6 +1002,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Non avviata: il sistema ha rifiutato la sveglia"
+          }
+        }
+      }
+    },
+    "Notifications are off" : {
+      "comment" : "Alert title when the wind-down reminder cannot be turned on.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifiche disattivate"
+          }
+        }
+      }
+    },
+    "On a 5.0 or MG the strap alarm is experimental: it only arms with Protocol probes on (Test Centre, 5/MG protocol diagnostics). Strap wakes have been reported but are not guaranteed." : {
+      "comment" : "Information sheet: 5/MG.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su un 5.0 o MG la sveglia della fascia è sperimentale: si arma solo con Protocol probes attivi (Test Centre, diagnostica del protocollo 5/MG). Sono state segnalate sveglie dalla fascia, ma non sono garantite."
           }
         }
       }
@@ -1030,6 +1174,18 @@
         }
       }
     },
+    "Silent vibration" : {
+      "comment" : "Information sheet heading.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vibrazione silenziosa"
+          }
+        }
+      }
+    },
     "Skip current occurrence" : {
       "comment" : "AppIntent parameter title (not discoverable).",
       "extractionState" : "manual",
@@ -1062,6 +1218,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sveglie Smart Wake"
+          }
+        }
+      }
+    },
+    "Smart Wake also schedules a system alarm (iOS 26 or later) that can ring through Silent mode and Focus. Its maximum-time alarm stays scheduled even when heart-rate data is missing. Keep your Clock alarm as a backup until you have tested Smart Wake on this iPhone." : {
+      "comment" : "Information sheet: AlarmKit.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smart Wake programma anche una sveglia di sistema (iOS 26 o successivo) che può suonare anche in modalità Silenzioso e con i Focus. La sveglia all'orario massimo resta programmata anche senza dati di frequenza cardiaca. Tieni la sveglia dell'app Orologio come riserva finché non hai provato Smart Wake su questo iPhone."
           }
         }
       }
@@ -1252,6 +1420,30 @@
         }
       }
     },
+    "The ringing iPhone alarm is shown through a Live Activity. With Live Activities off for NOOP, the iPhone alarm stays silent." : {
+      "comment" : "Information sheet: Live Activities.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sveglia dell'iPhone che suona viene mostrata tramite un'attività in tempo reale. Con le attività in tempo reale disattivate per NOOP, la sveglia dell'iPhone resta muta."
+          }
+        }
+      }
+    },
+    "The strap alarm is a silent buzz from the strap's own firmware, not a sound. It is armed on the strap, so it can buzz even if the phone is asleep or NOOP is closed." : {
+      "comment" : "Information sheet: strap alarm.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sveglia della fascia è una vibrazione silenziosa del firmware della fascia, non un suono. È armata sulla fascia, quindi può vibrare anche se il telefono è in standby o NOOP è chiuso."
+          }
+        }
+      }
+    },
     "The strap alarm is off: only the iPhone rings." : {
       "comment" : "Alarm list footer.",
       "extractionState" : "manual",
@@ -1260,6 +1452,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "La sveglia della fascia è spenta: suona solo l'iPhone."
+          }
+        }
+      }
+    },
+    "The strap is not accepting the alarm" : {
+      "comment" : "One-line warning on the Alarms screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La fascia non accetta la sveglia"
+          }
+        }
+      }
+    },
+    "The strap is not armed: a 5/MG needs Protocol probes" : {
+      "comment" : "One-line warning on the Alarms screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La fascia non è armata: un 5/MG richiede Protocol probes"
           }
         }
       }
@@ -1380,6 +1596,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Usa un solo orario per tutti i giorni"
+          }
+        }
+      }
+    },
+    "Vibrate the strap too" : {
+      "comment" : "Switch on the Alarms screen: the strap also buzzes at the alarm time.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vibra anche la fascia"
+          }
+        }
+      }
+    },
+    "WHOOP 5.0 and MG" : {
+      "comment" : "Information sheet heading.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WHOOP 5.0 e MG"
           }
         }
       }
@@ -1511,6 +1751,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zona %1$lld, %2$@, da %3$lld a %4$lld battiti al minuto"
+          }
+        }
+      }
+    },
+    "iPhone alarm" : {
+      "comment" : "Information sheet heading.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sveglia dell'iPhone"
           }
         }
       }

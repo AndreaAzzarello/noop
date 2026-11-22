@@ -184,7 +184,7 @@ The alarm list lives in fork-only files; the upstream files touched are two, bot
 | File | Lines (+/-) | What changed |
 |---|---|---|
 | `Strand/App/AppModel.swift` | +2/-1 | `applySmartAlarm` first asks `SmartWakeArmHold.shared.swallows()` (a list change arms the strap once), and the strap alarm is not armed when Smart Wake is on and no alarm is active (`SmartWakeScheduleOwner.allowsStrapAlarm`) |
-| `Strand/Screens/SmartAlarmView.swift` | +46/-34 in total | one computed property (`smartWakeListOwnsSchedule`), then plain `if`s: the strap alarm's time and day editors and "Different wake time per day" are replaced or hidden only while the list owns them; with Smart Wake off the screen is unchanged apart from one note; plus `import Combine`, one computed property (`smartWakeListChanges`, `Empty` outside iOS) and one `.onReceive` that re-reads the per-day times once the list's mirror has written them (the screen named Sunday at the base time from stale overrides) |
+| `Strand/Screens/SmartAlarmView.swift` | +46/-34 in total | one computed property (`smartWakeListOwnsSchedule`), then plain `if`s: the strap alarm's time and day editors and "Different wake time per day" are replaced or hidden only while the list owns them; with Smart Wake off the screen is unchanged apart from one note; plus `import Combine`, one computed property (`smartWakeListChanges`, `Empty` outside iOS) and one `.onReceive` that re-reads the per-day times once the list's mirror has written them (the screen named Sunday at the base time from stale overrides); session 10: two computed properties (`smartWakeScreenActive`, `smartWakeScreen`, each a complete `#if`) and one plain `if/else` in `body`: with Smart Wake on, `SmartWakeAlarmsScreen` replaces the stacked cards (the else branch keeps them unchanged, only re-indented, +30/-8) |
 
 Fork files touched or added: `Strand/Data/SmartWakeAlarmBook.swift`, `SmartWakeUpstreamMirror.swift`, `SmartWakeCommitDebouncer.swift`, `Strand/Screens/SmartWakeAlarmListView.swift`, `SmartWakeManagedScheduleRow.swift`, `SmartWakeCardView.swift`, `SmartWakeDiagnosticsView.swift`, `NightSummaryCard.swift` (the window of the alarm that rings, reload on list change), `StrandiOS/System/SmartWakeAlarmStore.swift`, `AppModel+SmartWake.swift`, `SmartWakeLiveWiring.swift`, `SmartWakeAlarmScheduler.swift`, `SmartWakeStrapAlarm.swift`, `SmartWakeAlarmTitle.swift`, `StrandiOS/Widgets/ForkWidgetPublisher.swift`, `StrandiOSShared/SmartWakeLiveController.swift`, `ForkWidgetSnapshot.swift`, their tests, and strings in `Fork.xcstrings`.
 
@@ -223,3 +223,15 @@ Not touched: `Strand/BLE/**`, `project.yml`, `.github`, `fastlane`, `Localizable
 Fork files added: `Strand/System/WidgetReloadThrottle.swift`, their tests. TEMP: per-thread CPU counters (`cpuThr*`) in `ForkEnergyCounters`.
 
 Not touched: `Strand/BLE/**`, `WidgetSnapshot.swift`, `NOOPWidget.swift`, `SmartWake*`, `project.yml`, `.github`, `fastlane`.
+
+## Session 10: Night card, Alarms screen
+
+| File | What changed |
+|---|---|
+| `Strand/Screens/SmartAlarmView.swift` | see the row above: `if smartWakeScreenActive { smartWakeScreen } else { …classic cards… }` |
+| `Strand/Data/SmartWakeAlarmBook.swift` | `maxAlarms = 5`, `canAdd`, `Change.limitReached` (only adding is refused) |
+| `Strand/Data/SmartWakeEarlyWakeRecord.swift`, `StrandiOS/System/SmartWakeLiveWiring.swift` | the maximum time stored with an early wake; a maximum-time wake-up recorded (write-only, for the Night card) |
+| `StrandiOSShared/SmartWakeEngine.swift` | a light run that opens the window counts after >= 2 contiguous REM/deep epochs just before it |
+| `Strand/Screens/SmartWakeAlarmListView.swift` | editor, conflict type and two helpers made internal; the row moved to `SmartWakeAlarmRow` |
+
+Fork files added: `SmartWakeAlarmsScreen.swift`, `SmartWakeAlarmRow.swift`, `NightSummaryFigureTests.swift`.
