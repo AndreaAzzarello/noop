@@ -38,6 +38,13 @@ final class RRStageTests: XCTestCase {
         XCTAssertLessThan(Separation.signTestP(positive: 13, negative: 3), 0.05)
     }
 
+    func testDecisiveSplitIsTheFirstCountThatBeatsPointZeroFive() {
+        XCTAssertEqual(Separation.decisiveSplit(n: 16), 13)     // 12 of 16 is p = 0.077, 13 of 16 is p = 0.021
+        XCTAssertEqual(Separation.decisiveSplit(n: 21), 16)     // 15 of 21 is p = 0.078, 16 of 21 is p = 0.027
+        XCTAssertEqual(Separation.decisiveSplit(n: 8), 8)       // 7 of 8 is p = 0.070
+        XCTAssertNil(Separation.decisiveSplit(n: 4))            // 4 of 4 is p = 0.125
+    }
+
     func testResidualsOfAPerfectLineAreZeroAndOfAnOffsetAreTheOffset() {
         let x = [0.0, 1, 2, 3, 4]
         for r in Separation.residuals(y: x.map { 2 * $0 + 1 }, x: x) { XCTAssertEqual(r, 0, accuracy: 1e-12) }

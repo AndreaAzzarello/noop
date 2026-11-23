@@ -61,6 +61,12 @@ enum Separation {
         return min(1, 2 * tail / pow(2, Double(n)))
     }
 
+    /// The smallest count on one side of a two-sided sign test over `n` non-tied subjects that gives p < 0.05, or
+    /// nil when even a unanimous split cannot (n below 5).
+    static func decisiveSplit(n: Int) -> Int? {
+        (0...n).first { signTestP(positive: $0, negative: n - $0) < 0.05 && $0 * 2 > n }
+    }
+
     /// Residuals of an ordinary-least-squares line `y = a + b x`. A zero-variance `x` leaves only the mean
     /// removed.
     static func residuals(y: [Double], x: [Double]) -> [Double] {

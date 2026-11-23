@@ -132,6 +132,16 @@ public struct RecipeConfig: Equatable {
     /// the window, so a longer window no longer slides the whole prior. Only meaningful with C5b's period.
     public var onsetAnchoredClock: Bool = false
 
+    // MARK: Ablation switch. Neutral in `.shipped`.
+
+    /// Multiplier on the cycle prior's two position-in-the-night terms (deep early: `1.2 * max(0, 1 - c / 0.55)`,
+    /// REM late: `1.0 * c`). 1 = shipped, 0 = both removed. It scales ONLY those two terms: the REM-latency guard
+    /// is a separate term (`remLatencyPenalty = 0` removes it) and the base priors are untouched. Exists so the
+    /// harness can ask how much of a result is the clock rather than the signals; it is not a candidate.
+    /// Multiplying by exactly 1.0 is exact in IEEE arithmetic, so `.shipped` still reproduces `SleepStagerV2`
+    /// label for label (`PortValidation`).
+    public var cyclePriorScale: Double = 1.0
+
     /// The shipped recipe, as of `Packages/StrandAnalytics/Sources/StrandAnalytics/SleepStagerV2.swift`.
     public static let shipped = RecipeConfig(
         priorLight: log(0.50), priorDeep: log(0.15), priorRem: log(0.22), priorAwake: log(0.10),
@@ -451,8 +461,8 @@ public enum V2Recipe {
     }
 
     static func cyclePrior(_ c: Double, _ minutesSinceOnset: Double, _ cfg: RecipeConfig) -> [String: Double] {
-        ["deep": 1.2 * max(0.0, 1.0 - c / 0.55),
-         "rem": 1.0 * c - remLatencyGuard(minutesSinceOnset, cfg),
+        ["deep": cfg.cyclePriorScale * 1.2 * max(0.0, 1.0 - c / 0.55),
+         "rem": cfg.cyclePriorScale * 1.0 * c - remLatencyGuard(minutesSinceOnset, cfg),
          "light": 0.0, "awake": 0.0]
     }
 
@@ -559,8 +569,8 @@ public enum V2Recipe {
                 case .gradedFromOnset:
                     pr = cyclePrior(clock, .infinity, cfg)
                 case .preNine30FractionStep:
-                    pr = ["deep": 1.2 * max(0.0, 1.0 - clock / 0.55),
-                          "rem": 1.0 * clock - (clock < 0.12 ? cfg.remLatencyPenalty : 0.0),
+                    pr = ["deep": cfg.cyclePriorScale * 1.2 * max(0.0, 1.0 - clock / 0.55),
+                          "rem": cfg.cyclePriorScale * 1.0 * clock - (clock < 0.12 ? cfg.remLatencyPenalty : 0.0),
                           "light": 0.0, "awake": 0.0]
                 }
                 for s in stageNames { em[s]! += pr[s]! }

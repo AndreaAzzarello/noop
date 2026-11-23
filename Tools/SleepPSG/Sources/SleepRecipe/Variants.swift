@@ -234,6 +234,59 @@ public enum Variants {
          c5aRobustNormalisation, c5bOnsetAnchoredStats, c5cAnchoredClock]
     }
 
+    // MARK: - Prior ablation
+    //
+    // NOT candidates: each row removes something the shipped recipe has, to ask how much of its agreement with a
+    // reference survives without it. They answer "how much of the result comes from the signals", and they are
+    // never proposals. Built from either the incumbent or C5b so the two families can be read side by side.
+
+    /// The cycle prior's position-in-the-night terms (deep early, REM late) off.
+    public static func withoutCyclePrior(_ base: Variant) -> Variant {
+        var c = base.config
+        c.cyclePriorScale = 0
+        return Variant(name: "\(base.name) | no cycle prior", note: "cyclePriorScale 1 -> 0", config: c)
+    }
+
+    /// The REM-latency guard (#930) off.
+    public static func withoutRemGuard(_ base: Variant) -> Variant {
+        var c = base.config
+        c.remLatencyPenalty = 0
+        return Variant(name: "\(base.name) | no REM guard", note: "remLatencyPenalty 3 -> 0", config: c)
+    }
+
+    /// Both off: what is left is the base priors, the transition matrix and the per-epoch signals.
+    public static func withoutCycleAndGuard(_ base: Variant) -> Variant {
+        withoutRemGuard(withoutCyclePrior(base))
+    }
+
+    /// CONTROL — the per-epoch signals off (every emission coefficient, the RSA term, the deep gate and the
+    /// motion gate boost at zero). What remains is the base priors, the cycle prior, the guard and the
+    /// transition matrix: the part of the recipe that is not a measurement. Stacked with `withoutCycleAndGuard`
+    /// it is the floor, which should label (almost) everything light and score kappa near 0.
+    public static func withoutSignals(_ base: Variant) -> Variant {
+        var c = base.config
+        c.deepZhv = 0; c.deepZhr = 0; c.deepZmv = 0
+        c.remZhv = 0; c.remZmv = 0; c.remZhr = 0
+        c.awakeZmv = 0; c.awakeZhv = 0; c.awakeZhr = 0
+        c.respWeight = 0; c.deepGateSlope = 0; c.motionGateBoost = 0
+        c.rmssdWeight = 0; c.lfhfWeight = 0
+        return Variant(name: "\(base.name) | signals off", note: "every per-epoch emission term at 0", config: c)
+    }
+
+    /// The ablation table, in print order: the incumbent family, then the C5b family, then the floor.
+    public static var ablations: [Variant] {
+        var rows: [Variant] = []
+        for base in [incumbent, c5bOnsetAnchoredStats] {
+            rows.append(base)
+            rows.append(withoutCyclePrior(base))
+            rows.append(withoutRemGuard(base))
+            rows.append(withoutCycleAndGuard(base))
+            rows.append(withoutSignals(base))
+        }
+        rows.append(withoutCycleAndGuard(withoutSignals(incumbent)))
+        return rows
+    }
+
     /// Short keys the command line uses for `--variant`.
     public static let keys: [String: () -> Variant] = [
         "incumbent": { incumbent }, "C1": { c1MissingGravityNeutral },
