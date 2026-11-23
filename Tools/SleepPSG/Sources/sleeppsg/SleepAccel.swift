@@ -1,4 +1,5 @@
 import Foundation
+import SleepRecipe
 import WhoopProtocol
 
 // SleepAccel — read PhysioNet `sleep-accel` v1.0.0 and present each subject as the streams a NOOP stager

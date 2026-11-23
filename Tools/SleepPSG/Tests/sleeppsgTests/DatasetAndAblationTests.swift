@@ -1,5 +1,6 @@
 import XCTest
 import WhoopProtocol
+@testable import SleepRecipe
 @testable import sleeppsg
 
 /// The dataset reader and the leave-one-subject-out machinery, on synthetic fixtures written to a temp

@@ -34,7 +34,7 @@ import WhoopProtocol
 /// keeps them internal to `StrandAnalytics`. Duplication that can drift is normally a defect; here it is
 /// pinned by `PortValidation`, which fails the build the moment the two disagree on any label.
 /// How the REM emission is held back around sleep onset.
-enum RemLatencyMode: Equatable {
+public enum RemLatencyMode: Equatable {
     /// #930, shipped: a penalty of `remLatencyPenalty` log-odds at sleep ONSET, decaying linearly to zero
     /// `remLatencyMinutes` later. Onset is itself a staging output, so the recipe runs Viterbi twice — once
     /// with the guard off to find onset, once with it re-based on that onset.
@@ -44,49 +44,49 @@ enum RemLatencyMode: Equatable {
     case preNine30FractionStep
 }
 
-struct RecipeConfig: Equatable {
+public struct RecipeConfig: Equatable {
     // Population base rates, as log-priors.
-    var priorLight: Double
-    var priorDeep: Double
-    var priorRem: Double
-    var priorAwake: Double
+    public var priorLight: Double
+    public var priorDeep: Double
+    public var priorRem: Double
+    public var priorAwake: Double
 
     // Deep-eligibility gate on the 11-min HR-flatness percentile.
-    var deepGateThresh: Double
-    var deepGateSlope: Double
+    public var deepGateThresh: Double
+    public var deepGateSlope: Double
 
     // Motion thresholds, all RELATIVE to the night's own quiescent jerk floor.
-    var jerkFloorMoveMult: Double
-    var jerkFloorGateMult: Double
-    var motionGateBoost: Double
+    public var jerkFloorMoveMult: Double
+    public var jerkFloorGateMult: Double
+    public var motionGateBoost: Double
 
     // RSA respiration-regularity weight.
-    var respWeight: Double
+    public var respWeight: Double
 
     /// Dead-zone (± this z) on the cardiac terms of the AWAKE emission. 0 disables it, which is the
     /// shipped state — `dz` is then the identity, so the shipped emission is reproduced exactly.
-    var awakeDeadzone: Double
+    public var awakeDeadzone: Double
 
     // Per-epoch log-emission coefficients.
-    var deepZhv: Double, deepZhr: Double, deepZmv: Double
-    var remZhv: Double, remZmv: Double, remZhr: Double
-    var awakeZmv: Double, awakeZhv: Double, awakeZhr: Double
+    public var deepZhv: Double, deepZhr: Double, deepZmv: Double
+    public var remZhv: Double, remZmv: Double, remZhr: Double
+    public var awakeZmv: Double, awakeZhv: Double, awakeZhr: Double
 
     /// Transition matrix (rows = from, cols = to).
-    var transition: [String: [String: Double]]
+    public var transition: [String: [String: Double]]
 
     // The REM-latency guard (#930) and the sleep-onset rule it is measured from.
-    var remLatencyPenalty: Double
-    var remLatencyMinutes: Double
-    var onsetSustainedEpochs: Int
+    public var remLatencyPenalty: Double
+    public var remLatencyMinutes: Double
+    public var onsetSustainedEpochs: Int
 
     /// Which REM-latency guard the recipe runs. Shipped is `.gradedFromOnset` (#930). The pre-#930 step is
     /// kept because the reference numbers this harness was rebuilt to reproduce were measured against it —
     /// see `Variants.preNine30Guard`. It is a diagnostic, not a candidate.
-    var remLatencyMode: RemLatencyMode = .gradedFromOnset
+    public var remLatencyMode: RemLatencyMode = .gradedFromOnset
 
     /// The shipped recipe, as of `Packages/StrandAnalytics/Sources/StrandAnalytics/SleepStagerV2.swift`.
-    static let shipped = RecipeConfig(
+    public static let shipped = RecipeConfig(
         priorLight: log(0.50), priorDeep: log(0.15), priorRem: log(0.22), priorAwake: log(0.10),
         deepGateThresh: 0.25, deepGateSlope: 5.0,
         jerkFloorMoveMult: 38.0, jerkFloorGateMult: 55.0, motionGateBoost: 2.0,
@@ -110,43 +110,43 @@ struct RecipeConfig: Equatable {
         remLatencyPenalty: 3.0, remLatencyMinutes: 60.0, onsetSustainedEpochs: 10,
         remLatencyMode: .gradedFromOnset)
 
-    var baseLogPrior: [String: Double] {
+    public var baseLogPrior: [String: Double] {
         ["light": priorLight, "deep": priorDeep, "rem": priorRem, "awake": priorAwake]
     }
 }
 
-enum V2Recipe {
+public enum V2Recipe {
 
     static let stageNames = ["deep", "rem", "light", "awake"]
 
     /// Farthest seconds, relative to an epoch, that `features` reads any input. Same values the shipped
     /// stager clips with; they are a property of the feature windows, not a tunable.
-    static let padLo = 330
-    static let padHi = 390
+    public static let padLo = 330
+    public static let padHi = 390
 
     /// One 30 s epoch's recipe features. Public within the harness because the REM ablation (clock vs
     /// physiology) is fit on exactly these columns — the model comparison has to see the same evidence the
     /// recipe does, or it answers a different question.
-    struct Epoch {
-        let start: Int
-        let hr: Double?
-        let hrVar: Double?
-        let hrFlat11: Double?
-        let moveFrac: Double
-        let jerkMax: Double
-        let respReg: Double?
-        let clock: Double
-        let jerkScale: Double
-        let minutesSinceOnset: Double
+    public struct Epoch {
+        public let start: Int
+        public let hr: Double?
+        public let hrVar: Double?
+        public let hrFlat11: Double?
+        public let moveFrac: Double
+        public let jerkMax: Double
+        public let respReg: Double?
+        public let clock: Double
+        public let jerkScale: Double
+        public let minutesSinceOnset: Double
     }
 
     // MARK: - Entry point
 
     /// Stage `[start, end]` with `cfg` and return `StageSegment`s tiling the span — the same contract as
     /// `SleepStagerV2.stageSession`, minus the memo cache.
-    static func stageSession(start: Int, end: Int, grav: [GravitySample], hr: [HRSample],
-                             rr: [RRInterval], resp: [RespSample],
-                             cfg: RecipeConfig = .shipped) -> [StageSegment] {
+    public static func stageSession(start: Int, end: Int, grav: [GravitySample], hr: [HRSample],
+                                    rr: [RRInterval], resp: [RespSample],
+                                    cfg: RecipeConfig = .shipped) -> [StageSegment] {
         let gravW = clipToWindow(grav, lo: start - padLo, hi: end + padHi, ts: { $0.ts })
         let hrW = clipToWindow(hr, lo: start - padLo, hi: end + padHi, ts: { $0.ts })
         let rrW = clipToWindow(rr, lo: start - padLo, hi: end + padHi, ts: { $0.ts })
@@ -176,9 +176,9 @@ enum V2Recipe {
     /// Stage `[start, end]` and return one label per FEATURISED epoch, alongside those epochs. The scoring
     /// paths want the epoch grid the recipe actually built (an epoch with no coverage at all is skipped by
     /// `features`, and a scorer that assumed a dense grid would silently shift every later label).
-    static func stageEpochsDetailed(start: Int, end: Int, grav: [GravitySample], hr: [HRSample],
-                                    rr: [RRInterval], resp: [RespSample],
-                                    cfg: RecipeConfig = .shipped) -> (epochs: [Epoch], labels: [String]) {
+    public static func stageEpochsDetailed(start: Int, end: Int, grav: [GravitySample], hr: [HRSample],
+                                           rr: [RRInterval], resp: [RespSample],
+                                           cfg: RecipeConfig = .shipped) -> (epochs: [Epoch], labels: [String]) {
         let gravW = clipToWindow(grav, lo: start - padLo, hi: end + padHi, ts: { $0.ts })
         let hrW = clipToWindow(hr, lo: start - padLo, hi: end + padHi, ts: { $0.ts })
         let rrW = clipToWindow(rr, lo: start - padLo, hi: end + padHi, ts: { $0.ts })

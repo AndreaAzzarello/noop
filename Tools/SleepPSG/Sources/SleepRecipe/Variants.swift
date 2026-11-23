@@ -11,20 +11,20 @@ import Foundation
 // Every variant differs from `RecipeConfig.shipped` in the fewest fields that express it. A variant that
 // bundled two changes could not be attributed.
 
-struct Variant {
-    let name: String
-    let note: String
-    let config: RecipeConfig
+public struct Variant {
+    public let name: String
+    public let note: String
+    public let config: RecipeConfig
 }
 
-enum Variants {
+public enum Variants {
 
     /// The awake transition row before PR #987, and after it. #987 forbids wake → deep and wake → REM
     /// outright and gives the freed mass to the wake self-loop. It was landed on band-state evidence — band
     /// kappa 0.105 → 0.118, wake sensitivity 16.0 % → 17.6 %, first-REM latency MAE 53.9 → 41.6 min — and
     /// never checked against PSG, which is one of the two questions this harness exists to answer.
-    static let awakeRowPre987: [String: Double] = ["deep": 0.01, "rem": 0.02, "light": 0.27, "awake": 0.70]
-    static let awakeRowPR987: [String: Double] = ["deep": 0.0, "rem": 0.0, "light": 0.10, "awake": 0.90]
+    public static let awakeRowPre987: [String: Double] = ["deep": 0.01, "rem": 0.02, "light": 0.27, "awake": 0.70]
+    public static let awakeRowPR987: [String: Double] = ["deep": 0.0, "rem": 0.0, "light": 0.10, "awake": 0.90]
 
     /// The #987 comparison, whichever side of it this branch is on.
     ///
@@ -34,7 +34,7 @@ enum Variants {
     /// `PortValidation` enforces). Rather than hard-code one direction and be wrong half the time, the
     /// variant reads the shipped awake row and offers the OTHER one. The comparison is the same either way;
     /// only the sign of the delta and the row's name flip.
-    static var pr987: Variant {
+    public static var pr987: Variant {
         let shippedRow = RecipeConfig.shipped.transition["awake"] ?? awakeRowPre987
         let alreadyHas987 = shippedRow == awakeRowPR987
         var c = RecipeConfig.shipped
@@ -50,7 +50,7 @@ enum Variants {
     /// #348 component 1 — base priors. Measured alone on band state: healthy wake fraction 9.43 % → 17.76 %,
     /// i.e. the #437 blow-out reproduced. Its deep half (0.18 → 0.15) now ships, on this dataset's evidence, so
     /// against the incumbent this row moves only the awake prior.
-    static var p348Priors: Variant {
+    public static var p348Priors: Variant {
         var c = RecipeConfig.shipped
         c.priorDeep = log(0.15); c.priorAwake = log(0.34)
         return Variant(name: "#348-A base priors",
@@ -59,14 +59,14 @@ enum Variants {
 
     /// The deep prior as it was before it moved to #348's 0.15 on this PSG evidence (section 7). Kept as the
     /// "before" row, so the change stays re-checkable against the dataset rather than asserted.
-    static var deepPriorBefore: Variant {
+    public static var deepPriorBefore: Variant {
         var c = RecipeConfig.shipped
         c.priorDeep = log(0.18)
         return Variant(name: "deep prior 0.18 (before)", note: "deep 0.15→0.18, the value before", config: c)
     }
 
     /// #348 component 2 — motion gate. A second wake channel: alone, healthy wake 9.43 % → 15.92 %.
-    static var p348Motion: Variant {
+    public static var p348Motion: Variant {
         var c = RecipeConfig.shipped
         c.jerkFloorMoveMult = 75.0; c.jerkFloorGateMult = 35.0; c.motionGateBoost = 4.0
         return Variant(name: "#348-B motion gate",
@@ -75,7 +75,7 @@ enum Variants {
 
     /// #348 component 3 — emission coefficients. Alone: band kappa 0.105 → 0.094, but the closest call of
     /// the six (it cut healthy deep 22.09 % → 15.30 % and latency MAE 53.9 → 32.1 min).
-    static var p348Emissions: Variant {
+    public static var p348Emissions: Variant {
         var c = RecipeConfig.shipped
         c.deepZhv = -0.8; c.deepZhr = 0.5; c.deepZmv = -0.1
         c.remZhv = 0.8; c.remZmv = -0.4; c.remZhr = 0.4
@@ -85,14 +85,14 @@ enum Variants {
     }
 
     /// #348 component 4 — deep gate. Alone: healthy deep 22.09 % → 25.47 %, worsening an over-call.
-    static var p348DeepGate: Variant {
+    public static var p348DeepGate: Variant {
         var c = RecipeConfig.shipped
         c.deepGateThresh = 0.40
         return Variant(name: "#348-D deep gate", note: "deepGateThresh 0.25→0.40", config: c)
     }
 
     /// #348 component 5 — awake cardiac dead-zone. Alone: band kappa 0.105 → 0.099.
-    static var p348Deadzone: Variant {
+    public static var p348Deadzone: Variant {
         var c = RecipeConfig.shipped
         c.awakeDeadzone = 0.30
         return Variant(name: "#348-E awake dead-zone", note: "awakeDeadzone off→0.30", config: c)
@@ -100,7 +100,7 @@ enum Variants {
 
     /// #348 component 6 — the other three transition rows. Alone: band kappa 0.105 → 0.101, healthy REM
     /// 29.58 % → 33.11 %.
-    static var p348OtherRows: Variant {
+    public static var p348OtherRows: Variant {
         var c = RecipeConfig.shipped
         c.transition["deep"] = ["deep": 0.76, "rem": 0.012, "light": 0.216, "awake": 0.012]
         c.transition["rem"] = ["deep": 0.00333, "rem": 0.92, "light": 0.06667, "awake": 0.01]
@@ -111,7 +111,7 @@ enum Variants {
 
     /// All seven together — the build #437 reverted. Reported so the component rows can be checked for
     /// additivity rather than assumed to be.
-    static var p348All: Variant {
+    public static var p348All: Variant {
         var c = p348Priors.config
         let m = p348Motion.config, e = p348Emissions.config, d = p348Deadzone.config
         c.jerkFloorMoveMult = m.jerkFloorMoveMult; c.jerkFloorGateMult = m.jerkFloorGateMult
@@ -149,7 +149,7 @@ enum Variants {
     /// #930 was the CANDIDATE — so the incumbent they describe is the recipe as it stood BEFORE it.
     ///
     /// This variant runs that pre-#930 guard so the claim is checked rather than asserted.
-    static var preNine30Guard: Variant {
+    public static var preNine30Guard: Variant {
         var c = RecipeConfig.shipped
         c.remLatencyMode = .preNine30FractionStep
         return Variant(name: "pre-#930 REM guard (provenance)",
@@ -157,11 +157,11 @@ enum Variants {
     }
 
     /// The shipped recipe itself, so a table row exists to difference against.
-    static var incumbent: Variant {
+    public static var incumbent: Variant {
         Variant(name: "incumbent (shipped)", note: "SleepStagerV2 as it ships today", config: .shipped)
     }
 
-    static var all: [Variant] {
+    public static var all: [Variant] {
         [incumbent, deepPriorBefore, pr987, p348Priors, p348Motion, p348Emissions, p348DeepGate,
          p348Deadzone, p348OtherRows, p348All, preNine30Guard]
     }

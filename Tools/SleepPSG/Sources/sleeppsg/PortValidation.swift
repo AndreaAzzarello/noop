@@ -1,4 +1,5 @@
 import Foundation
+import SleepRecipe
 import StrandAnalytics
 import WhoopProtocol
 

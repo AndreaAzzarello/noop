@@ -1,6 +1,7 @@
 import XCTest
 import StrandAnalytics
 import WhoopProtocol
+@testable import SleepRecipe
 @testable import sleeppsg
 
 /// The test that keeps this harness honest.

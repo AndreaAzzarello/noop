@@ -18,16 +18,23 @@ import PackageDescription
 let package = Package(
     name: "sleeppsg",
     platforms: [.macOS(.v13)],
+    products: [
+        // The recipe port and its variants, as a library so other offline harnesses (SleepBench) replay the
+        // very same `V2Recipe` this tool validates against the shipped stager, instead of keeping a second
+        // copy that could drift from it. The port-equivalence test stays here, next to the port.
+        .library(name: "SleepRecipe", targets: ["SleepRecipe"]),
+    ],
     dependencies: [
         .package(path: "../../Packages/StrandAnalytics"),
         .package(path: "../../Packages/WhoopProtocol"),
     ],
     targets: [
-        .executableTarget(name: "sleeppsg", dependencies: ["StrandAnalytics", "WhoopProtocol"]),
+        .target(name: "SleepRecipe", dependencies: ["StrandAnalytics", "WhoopProtocol"]),
+        .executableTarget(name: "sleeppsg", dependencies: ["SleepRecipe", "StrandAnalytics", "WhoopProtocol"]),
         // The port-equivalence check and every scoring primitive are pure functions — they need neither the
         // dataset nor a database, so `swift test` here runs anywhere the packages build, with no arguments
         // and no downloads. That is deliberate: the check that keeps this harness honest (the recipe port
         // reproducing the shipped stager label-for-label) has to run in CI, where the dataset never exists.
-        .testTarget(name: "sleeppsgTests", dependencies: ["sleeppsg"]),
+        .testTarget(name: "sleeppsgTests", dependencies: ["sleeppsg", "SleepRecipe"]),
     ]
 )
