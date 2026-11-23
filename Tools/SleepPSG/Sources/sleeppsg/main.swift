@@ -15,6 +15,7 @@ struct Args {
     var section = "all"
     var csv: String?
     var bandsOut: String?
+    var slpdb: String?
     var subjects: Int?
     var seed: UInt64 = PortValidation.defaultSeed
 }
@@ -26,15 +27,19 @@ while let k = it.next() {
     case "--section": a.section = it.next() ?? a.section
     case "--csv": a.csv = it.next()
     case "--bands-out": a.bandsOut = it.next()
+    case "--slpdb": a.slpdb = it.next()
     case "--subjects": a.subjects = Int(it.next() ?? "")
     case "--seed": a.seed = UInt64(it.next() ?? "") ?? a.seed
     case "-h", "--help":
         print("""
         usage: sleeppsg --dataset <sleep-accel root> [--section all|port|baseline|strata|rem|variants|candidates|priors]
                         [--subjects N] [--csv <path>] [--seed <n>] [--bands-out <path>]
+               sleeppsg --section rrstage --slpdb <dir written by scripts/slpdb_export.py>
 
           --dataset   PhysioNet sleep-accel v1.0.0, extracted. See README.md for the download step and the
                       attribution its licence requires. Never committed; read-only here.
+          --slpdb     the CSV export of the MIT-BIH Polysomnographic Database (`--section rrstage` only; it needs
+                      no sleep-accel dataset).
           --section   which report to print. `port` needs no dataset. `candidates` is section 6's table for the
                       proposals under evaluation (C1, C3, C5) instead of the provenance variants.
           --bands-out write the p10..p90 plausibility bands of the PSG hypnograms (for `sleepbench --bands`)
@@ -80,6 +85,16 @@ if want("port") {
 }
 
 if a.section == "port" { exit(0) }
+
+// The R-R / stage separation runs on a different dataset (MIT-BIH Polysomnographic, exported to CSV) and needs
+// nothing from sleep-accel, so it is handled before the sleep-accel guard below.
+if a.section == "rrstage" {
+    guard let dir = a.slpdb else {
+        FileHandle.standardError.write(Data("--section rrstage needs --slpdb <export dir> (scripts/slpdb_export.py)\n".utf8))
+        exit(2)
+    }
+    exit(RRStageReport.run(dir: (dir as NSString).expandingTildeInPath) ? 0 : 1)
+}
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // Dataset

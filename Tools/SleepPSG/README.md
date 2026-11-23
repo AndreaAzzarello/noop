@@ -48,6 +48,41 @@ swift run -c release sleeppsg --dataset ~/datasets/motion-and-heart-rate-*-1.0.0
 
 ---
 
+## R-R against sleep stages (MIT-BIH Polysomnographic, `--section rrstage`)
+
+`sleep-accel` has no beat-to-beat intervals, so it cannot say whether the R-R features candidate C3 weighs
+(ln RMSSD, ln LF/HF) tell stages apart. The MIT-BIH Polysomnographic Database can: a beat-annotated ECG with
+human-scored 30 s hypnograms (18 records of 16 patients; `slp01a/b` and `slp02a/b` are segments of one patient
+each). Open access, ODC-By 1.0. Never committed; always outside this repository.
+
+WFDB is a bespoke binary format, so the export is the only Python step. Install the reader in a virtualenv
+**outside the repo** (it pulls numpy, scipy, pandas, matplotlib):
+
+```bash
+python3 -m venv ~/noop-eval/venv-wfdb && ~/noop-eval/venv-wfdb/bin/python -m pip install wfdb
+~/noop-eval/venv-wfdb/bin/python -I scripts/slpdb_export.py \
+  --slpdb ~/datasets/slpdb-x/mit-bih-polysomnographic-database-1.0.0 --out ~/noop-eval/out/slpdb
+swift run -c release sleeppsg --section rrstage --slpdb ~/noop-eval/out/slpdb
+```
+
+The features are not recomputed: the beats go through `V2Recipe.stageEpochsDetailed` with the C3 terms on, so
+ln RMSSD and ln LF/HF are what the recipe would read (centred 5-minute window, the app's R-R cleaning, its
+Lomb-Scargle estimator). The report gives, per patient and across patients, the AUC and Cohen's d of each feature
+for deep vs REM, deep vs light and REM vs light, oriented to the direction the recipe assumes, next to the same
+numbers for the recipe's existing cardiac inputs, and repeats them after removing a linear time trend, heart
+rate, the recipe's three cardiac inputs jointly, and annotated apnoeas. The only inference is a sign test over
+patients (epochs overlap by 90 %, so an epoch-level p-value would only measure the overlap).
+
+What it cannot show: the cohort is 16 men aged 32-56 recorded for suspected sleep-disordered breathing (deep sleep
+is 6 % and REM 7 % of scored epochs, and only 8 of 16 patients have enough of both to be compared), the signal is
+a chest ECG and cleaner than an optical strap's R-R, and separating two stages is not the same as improving a
+staging recipe.
+
+Attribution: Ichimaru Y, Moody GB. *Development of the polysomnographic database on CD-ROM.* Psychiatry and
+Clinical Neurosciences 53(2):175-177 (1999), distributed on PhysioNet under ODC-By 1.0.
+
+---
+
 ## Attribution — required by both licences
 
 **Dataset.** Walch O, Huang Y, Forger D, Goldstein C. *Sleep stage prediction with raw acceleration and
