@@ -49,6 +49,9 @@ def main() -> int:
     parser.add_argument("--stream-device", help="deviceId of the raw streams (default: the one with most hrSample rows)")
     parser.add_argument("--session-device", help="deviceId of the stored sleep sessions (default: <stream>-noop, else the stream id)")
     parser.add_argument("--min-hours", type=float, default=3.0, help="skip sessions shorter than this (default 3)")
+    parser.add_argument("--rr-rule", choices=("app", "all"), default="app",
+                        help="app (default): the R-R the app reads, one transport per window. all: every stored row, "
+                             "which on a WHOOP 5 feeds each beat twice; only for measuring what that did to a replay")
     args = parser.parse_args()
 
     con = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
@@ -81,7 +84,7 @@ def main() -> int:
                   (stream, lo, hi))
         if len(hr) < 3600:
             continue
-        rr_extra, rr_params = rr_scope(rows, stream, lo, hi)
+        rr_extra, rr_params = ("", ()) if args.rr_rule == "all" else rr_scope(rows, stream, lo, hi)
         rr = rows("SELECT ts, rrMs FROM rrInterval WHERE deviceId = ? AND ts >= ? AND ts <= ?" + rr_extra
                   + " ORDER BY ts, ord, rrMs, seq", (stream, lo, hi, *rr_params))
         band = rows("SELECT ts, state FROM sleepStateSample WHERE deviceId = ? AND ts >= ? AND ts <= ? ORDER BY ts",

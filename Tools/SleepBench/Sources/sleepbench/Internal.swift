@@ -241,3 +241,81 @@ enum StageExport {
         return out
     }
 }
+
+// MARK: - R-R duplication (--rr-effect)
+
+/// The same WHOOP 5 beat arrives twice: once live over standard BLE 0x2A37 (channel 7, stamped when the
+/// notification is received) and once in the strap's history (channel 5, stamped from the strap clock). They
+/// never share a (ts, rrMs) key, so the store keeps both. These are the beat lists a consumer could be handed.
+enum RRVariants {
+    typealias Beat = (ts: Int, rr: Int, ch: Int)
+
+    /// What the app reads: one transport, the lowest present (5 over 7).
+    static func app(_ rows: [Beat]) -> [Beat] {
+        guard let ch = rows.map({ $0.ch }).min() else { return [] }
+        return rows.filter { $0.ch == ch }
+    }
+
+    /// Only exact (ts, rrMs) repeats removed: the dedup the table's own key already does.
+    static func exactDedup(_ rows: [Beat]) -> [Beat] {
+        var seen = Set<[Int]>()
+        return rows.filter { seen.insert([$0.ts, $0.rr]).inserted }
+    }
+
+    /// A channel-7 beat is dropped when a channel-5 beat within `window` seconds has the same interval within
+    /// `tolerance` ms: the same physical beat seen twice. Channel 7 survives only where channel 5 has nothing.
+    static func nearDedup(_ rows: [Beat], window: Int = 3, tolerance: Int = 3) -> [Beat] {
+        let five = rows.filter { $0.ch == 5 }
+        let fiveTs = five.map { $0.ts }
+        func lowerBound(_ t: Int) -> Int {
+            var lo = 0, hi = fiveTs.count
+            while lo < hi { let mid = (lo + hi) / 2; if fiveTs[mid] < t { lo = mid + 1 } else { hi = mid } }
+            return lo
+        }
+        return rows.filter { b in
+            guard b.ch == 7 else { return true }
+            var k = lowerBound(b.ts - window)
+            while k < five.count && five[k].ts <= b.ts + window {
+                if abs(five[k].rr - b.rr) <= tolerance { return false }
+                k += 1
+            }
+            return true
+        }
+    }
+}
+
+/// RMSSD (gap-aware, after the app's cleaning), and HF power and LF/HF from the Lomb-Scargle estimator, over
+/// consecutive 5-minute blocks of a beat list; each is the MEDIAN over blocks that had a value.
+struct HRVBlocks {
+    let beatsPerMinute: Double
+    let rmssd: Double
+    let hf: Double
+    let lfhf: Double
+    let cleanedShare: Double
+
+    static func of(_ beats: [(ts: Int, rr: Int)], start: Int, end: Int, block: Int = 300) -> HRVBlocks {
+        var rm: [Double] = [], hf: [Double] = [], lh: [Double] = []
+        var kept = 0, total = 0
+        var i = 0
+        var t = start
+        while t + block <= end {
+            var raw: [Double] = []
+            while i < beats.count && beats[i].ts < t { i += 1 }
+            var j = i
+            while j < beats.count && beats[j].ts < t + block { raw.append(Double(beats[j].rr)); j += 1 }
+            if raw.count >= 30 {
+                let c = HRVAnalyzer.cleanRRGapAware(raw)
+                total += raw.count; kept += c.nn.count
+                if let r = HRVAnalyzer.rmssdGapAware(c.nn, c.contiguous) { rm.append(r) }
+                if let b = HRVFreqDomain.freqDomain(rawRR: raw) {
+                    hf.append(b.hf)
+                    if let ratio = b.lfhf { lh.append(ratio) }
+                }
+            }
+            t += block
+        }
+        let minutes = Double(max(1, end - start)) / 60
+        return HRVBlocks(beatsPerMinute: Double(beats.count) / minutes, rmssd: median(rm), hf: median(hf),
+                         lfhf: median(lh), cleanedShare: total == 0 ? .nan : Double(kept) / Double(total))
+    }
+}

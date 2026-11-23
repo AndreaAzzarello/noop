@@ -289,3 +289,61 @@ enum Sections {
         if run.variants.count == 1 { print("\n  no candidate variant selected (--variants)") }
     }
 }
+
+// MARK: - R-R duplication
+
+extension Sections {
+    /// How much the nightly HRV figures change between the beat list the app reads and the lists a raw-row
+    /// consumer would be handed, on every night that has both WHOOP 5 transports. Aggregates only.
+    static func printRREffect(db: ReadOnlyDB, rows: [SessionRow], streamDevice: String) throws {
+        print("""
+        ================================================================================
+        R. R-R DUPLICATION — what each way of reading the beats does to the HRV figures
+        ================================================================================
+        Per night, 5-minute blocks, the median over blocks of RMSSD / HF power / LF-HF (the app's own cleaning and
+        Lomb-Scargle estimator). Ratios are against the beat list the app reads (one transport). "both rows" is the
+        raw dump: every stored row, channels 5 and 7. "exact dedup" removes only identical (ts, rrMs) pairs, which is
+        all the table key can do. "near dedup" also drops a channel-7 beat that has a channel-5 twin within 3 s and
+        3 ms. Nights without both transports are skipped.
+        """)
+        struct Acc { var beats: [Double] = [], rmssd: [Double] = [], hf: [Double] = [], lfhf: [Double] = [], kept: [Double] = [] }
+        var acc: [String: Acc] = [:]
+        let names = ["app", "both rows", "exact dedup", "near dedup"]
+        var used = 0
+        var hrMean: [Double] = []
+        for r in rows where r.durMin >= 150 {
+            let raw = try db.rrWithChannel(device: streamDevice, from: r.startTs, to: r.endTs)
+            guard raw.contains(where: { $0.ch == 5 }), raw.contains(where: { $0.ch == 7 }) else { continue }
+            used += 1
+            if let hs = try db.hrStats(device: streamDevice, from: r.startTs, to: r.endTs) { hrMean.append(hs.mean) }
+            let lists: [String: [RRVariants.Beat]] = [
+                "app": RRVariants.app(raw), "both rows": raw,
+                "exact dedup": RRVariants.exactDedup(raw), "near dedup": RRVariants.nearDedup(raw)]
+            for n in names {
+                let m = HRVBlocks.of(lists[n]!.map { ($0.ts, $0.rr) }, start: r.startTs, end: r.endTs)
+                acc[n, default: Acc()].beats.append(m.beatsPerMinute)
+                acc[n, default: Acc()].rmssd.append(m.rmssd)
+                acc[n, default: Acc()].hf.append(m.hf)
+                acc[n, default: Acc()].lfhf.append(m.lfhf)
+                acc[n, default: Acc()].kept.append(m.cleanedShare)
+            }
+            FileHandle.standardError.write(Data(".".utf8))
+        }
+        FileHandle.standardError.write(Data("\n".utf8))
+        guard used > 0, let base = acc["app"] else { print("no night has both transports"); return }
+        print("nights with both transports: \(used); mean heart rate over those nights, median \(f(median(hrMean), 0, 1)) bpm\n")
+        print("  list           beats/min  (x mean HR)   kept by cleaning     RMSSD ratio med [min..max]      HF ratio med [min..max]       LF/HF ratio med [min..max]")
+        func ratio(_ a: [Double], _ b: [Double]) -> String {
+            let rs = zip(a, b).map { $1 / $0 }.filter { $0.isFinite }
+            guard !rs.isEmpty else { return "           -" }
+            return "\(f(median(rs), 6, 3)) [\(f(rs.min()!, 6, 3)) ..\(f(rs.max()!, 7, 3))]"
+        }
+        for n in names {
+            let a = acc[n]!
+            let bpm = median(a.beats), hr = median(hrMean)
+            print("  \(pad(n, 13)) \(f(bpm, 9, 1))  \(f(bpm / hr, 11, 2))   \(f(median(a.kept) * 100, 12, 1))%      "
+                + "\(ratio(base.rmssd, a.rmssd))   \(ratio(base.hf, a.hf))   \(ratio(base.lfhf, a.lfhf))")
+        }
+        print("\n  absolute, app list: RMSSD median \(f(median(base.rmssd), 0, 1)) ms, HF median \(f(median(base.hf), 0, 3)) (estimator units), LF/HF median \(f(median(base.lfhf), 0, 2))")
+    }
+}

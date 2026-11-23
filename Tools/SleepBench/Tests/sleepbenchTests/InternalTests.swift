@@ -169,4 +169,34 @@ final class InternalTests: XCTestCase {
         XCTAssertEqual(StageExport.csv(start: 0, end: 70, labels: ["light", "light", "deep"]),
                        "N,0,70\nS,0,60,light\nS,60,70,deep\n")
     }
+
+    // MARK: R-R duplication
+
+    private var twinBeats: [RRVariants.Beat] {
+        // The same three beats on channel 5 (strap clock) and channel 7 (stamped a second later, 1 ms off),
+        // plus one beat only the live transport saw.
+        [(10, 1000, 5), (11, 1010, 5), (11, 1001, 7), (12, 990, 5), (12, 1011, 7), (13, 991, 7), (50, 900, 7)]
+    }
+
+    func testAppRuleKeepsOneTransportNearDedupKeepsTheLoneLiveBeatExactDedupKeepsEverything() {
+        let rows = twinBeats
+        XCTAssertEqual(RRVariants.app(rows).map { $0.ch }, [5, 5, 5])
+        XCTAssertEqual(RRVariants.exactDedup(rows).count, 7, "no (ts, rrMs) pair repeats, so exact dedup removes nothing")
+        let near = RRVariants.nearDedup(rows)
+        XCTAssertEqual(near.count, 4)
+        XCTAssertEqual(near.last?.ts, 50)
+        XCTAssertEqual(near.filter { $0.ch == 7 }.count, 1)
+    }
+
+    func testExactDedupDoesRemoveAnIdenticalPair() {
+        let rows: [RRVariants.Beat] = [(10, 1000, 5), (10, 1000, 7), (11, 1002, 7)]
+        XCTAssertEqual(RRVariants.exactDedup(rows).count, 2)
+    }
+
+    func testHRVBlocksOfASteadyTachogramHasTheExpectedRateAndNoVariability() {
+        let beats = (0..<1200).map { (ts: $0 * 1, rr: 1000) }          // 60 bpm for 20 minutes
+        let m = HRVBlocks.of(beats, start: 0, end: 1200)
+        XCTAssertEqual(m.beatsPerMinute, 60, accuracy: 1e-9)
+        XCTAssertEqual(m.rmssd, 0, accuracy: 1e-9)
+    }
 }

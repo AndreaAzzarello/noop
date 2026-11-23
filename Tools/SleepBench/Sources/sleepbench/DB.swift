@@ -124,6 +124,19 @@ extension ReadOnlyDB {
         }
     }
 
+    /// Every non-suspect WHOOP 5 R-R row over `[from, to]` with its transport (`srcChannel`), in the raw-dump
+    /// order (`ts, ord, rrMs, seq`). Only for the R-R duplication measurement: scoring reads go through `rrQuery`.
+    func rrWithChannel(device: String, from: Int, to: Int) throws -> [(ts: Int, rr: Int, ch: Int)] {
+        var out: [(ts: Int, rr: Int, ch: Int)] = []
+        try query("""
+            SELECT ts, rrMs, srcChannel FROM rrInterval
+            WHERE deviceId = '\(device)' AND ts >= \(from) AND ts <= \(to) AND srcChannel IN (5, 7)
+              AND (tsSuspect IS NULL OR tsSuspect <> 1)
+            ORDER BY ts ASC, ord ASC, rrMs ASC, seq ASC
+            """) { s in out.append((ReadOnlyDB.int(s, 0), ReadOnlyDB.int(s, 1), ReadOnlyDB.int(s, 2))) }
+        return out
+    }
+
     /// Sessions the WHOOP CSV import wrote (`stagesJSON` is a per-stage minutes dictionary, no timeline) and how
     /// many of those also have recorded heart rate over more than half their span. Only the latter could be
     /// scored against a replay, and the dictionary has totals only, so it can never be an epoch reference.

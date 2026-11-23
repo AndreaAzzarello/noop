@@ -42,6 +42,8 @@ struct Args {
     var bands: String?
     /// Write each variant's stages as `<dir>/<variant>/night_<startTs>.csv` for `SmartWakeReplay --stages-dir`.
     var stagesOut: String?
+    /// Print only the R-R duplication measurement (section R) and exit.
+    var rrEffect = false
 }
 var a = Args()
 var it = CommandLine.arguments.dropFirst().makeIterator()
@@ -57,6 +59,7 @@ while let k = it.next() {
     case "--variants": a.variants = (it.next() ?? "").split(separator: ",").map(String.init)
     case "--bands": a.bands = it.next()
     case "--stages-out": a.stagesOut = it.next()
+    case "--rr-effect": a.rrEffect = true
     default: FileHandle.standardError.write(Data("unknown argument \(k)\n".utf8)); exit(2)
     }
 }
@@ -73,6 +76,7 @@ guard !a.db.isEmpty else {
       --variants  candidates to replay, from: \(Variants.keys.keys.sorted().joined(separator: ", ")) (default C1,C3a,C3b)
       --bands     PSG-derived plausibility bands (JSON); default is the author's broad fallback, labelled as such
       --stages-out DIR  write each variant's stages for Tools/SmartWakeReplay's --stages-dir
+      --rr-effect  only section R: how the HRV figures change with and without de-duplicating the two R-R transports
     """)
     exit(2)
 }
@@ -80,6 +84,10 @@ guard !a.db.isEmpty else {
 let db = try ReadOnlyDB(path: a.db)
 let rows = try db.sessions(device: a.device)
 guard !rows.isEmpty else { print("no sessions for device \(a.device)"); exit(1) }
+if a.rrEffect {
+    try Sections.printRREffect(db: db, rows: rows, streamDevice: a.streamDevice)
+    exit(0)
+}
 // Which `userEdited` rows carry a HUMAN-AUTHORED hypnogram rather than machine stages re-derived over a
 // human-corrected window. Only the former can serve as a stage-level reference.
 let stageLocked = try db.stageLockedStarts(device: a.device).subtracting(a.exclude)
