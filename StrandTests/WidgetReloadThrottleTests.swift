@@ -48,4 +48,35 @@ final class WidgetReloadThrottleTests: XCTestCase {
         }
         XCTAssertLessThanOrEqual(reloads, 48 + 1)
     }
+
+    // MARK: Background policy
+
+    private func background(first: Bool = false, from: Int? = 60, to: Int? = 60, bonded: Bool = false,
+                            charge: Bool = false, day: Bool = false) -> Bool {
+        WidgetReloadThrottle.backgroundReloadWarranted(firstPublish: first, previousBattery: from, nextBattery: to,
+                                                       bondedChanged: bonded, chargeChanged: charge, dayRolled: day)
+    }
+
+    func testBackgroundChangesThatAreOnlyLiveOrGradualDoNotReload() {
+        XCTAssertFalse(background(), "heart rate, Effort, stress and HRV changes alone")
+        XCTAssertFalse(background(from: 60, to: 59))
+        XCTAssertFalse(background(from: 10, to: 9), "still low is not a crossing")
+    }
+
+    func testBackgroundReloadsForTheEventsThatMatter() {
+        let line = WidgetReloadThrottle.lowBatteryThreshold
+        XCTAssertTrue(background(first: true))
+        XCTAssertTrue(background(from: line + 1, to: line), "drops onto the low line")
+        XCTAssertTrue(background(from: line, to: line + 1), "recovers above it")
+        XCTAssertTrue(background(bonded: true))
+        XCTAssertTrue(background(charge: true))
+        XCTAssertTrue(background(day: true))
+    }
+
+    func testBackgroundPolicyIgnoresTheForegroundThrottleClock() {
+        // The 30-minute live interval belongs to the foreground path; the background rule has no clock at all.
+        XCTAssertFalse(background())
+        XCTAssertTrue(reload(live: false, last: t0, now: at(1)), "the foreground rule is unchanged")
+        XCTAssertFalse(reload(last: t0, now: at(1)))
+    }
 }

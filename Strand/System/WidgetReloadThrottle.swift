@@ -31,4 +31,16 @@ enum WidgetReloadThrottle {
         guard let lastReload else { return true }
         return now.timeIntervalSince(lastReload) >= interval || now < lastReload   // a clock that moved back reloads
     }
+
+    /// What a change confined to the background may reload for. The snapshot is saved either way, and the widget's own
+    /// 15-minute timeline (`NOOPWidget.getTimeline`) reads it, so a reload here only buys speed, and a background reload
+    /// is budgeted by WidgetKit. Only what the wearer would act on, or what would read as wrong, is worth it:
+    /// the very first snapshot, the strap battery crossing the low line either way, the connection flipping, the Charge
+    /// score changing, and the local day rolling over. Everything else (heart rate, Effort creeping up, a new stress
+    /// hour, HRV) waits for the timeline or for the app's next foreground, which reloads once (`reloadOwed`).
+    static func backgroundReloadWarranted(firstPublish: Bool, previousBattery: Int?, nextBattery: Int?,
+                                          bondedChanged: Bool, chargeChanged: Bool, dayRolled: Bool) -> Bool {
+        firstPublish || crossesLowBattery(previous: previousBattery, next: nextBattery)
+            || bondedChanged || chargeChanged || dayRolled
+    }
 }

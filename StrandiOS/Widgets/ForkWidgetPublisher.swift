@@ -225,6 +225,7 @@ enum ForkWidgetPublisher {
         }
         if decision.reload {
             WidgetCenter.shared.reloadTimelines(ofKind: ForkWidgetSnapshot.kind)
+            ForkEnergyCounters.shared.note(.widgetReload) // fork-perf: TEMP (every reload, whoever asks)
             ForkEnergyCounters.shared.note(.widgetReloadFork) // fork-perf: TEMP
         }
     }

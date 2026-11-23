@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import UIKit
 import WidgetKit
 
 extension WidgetSnapshot {
@@ -152,6 +153,11 @@ extension WidgetSnapshot {
     /// fork: when this process last asked WidgetKit for a reload. In memory: a relaunch reloads once, the safe side.
     @MainActor private static var lastWidgetReload: Date?
 
+    /// fork: a background save that skipped its reload. The next foreground publish reloads once, even when the snapshot it
+    /// builds equals the saved one (which is exactly what the background save made it), so the widget never keeps
+    /// the older picture until its timeline fires. In memory: a relaunch builds a fresh timeline anyway.
+    @MainActor private static var reloadOwed = false
+
     /// Persist and ask WidgetKit for a new timeline only when a rendered field changed. The snapshot's
     /// timestamp is metadata only (no widget family displays it), so an otherwise-identical publish is a
     /// true no-op rather than an App-Group write plus an extension reload.
@@ -160,7 +166,9 @@ extension WidgetSnapshot {
     @MainActor
     private static func saveAndReloadIfChanged(_ snap: WidgetSnapshot, previous: WidgetSnapshot? = nil) {
         let previous = previous ?? load()
-        if renderedContentChanged(from: previous, to: snap) {
+        let background = UIApplication.shared.applicationState != .active
+        let owed = !background && reloadOwed
+        if renderedContentChanged(from: previous, to: snap) || owed {
             snap.save(previousSeries: previous?.hrSeries ?? [])
             // fork: a change confined to the heart rate and the battery reloads at most every 30 minutes (a low-battery
             // crossing at once); the snapshot above is saved either way, so the next timeline reads fresh values.
@@ -171,13 +179,28 @@ extension WidgetSnapshot {
                 probe.batteryPct = previous.batteryPct
                 liveOnly = !renderedContentChanged(from: previous, to: probe)
             }
-            guard WidgetReloadThrottle.shouldReload(onlyLiveFieldsChanged: liveOnly, previousBattery: previous?.batteryPct,
-                                                    nextBattery: snap.batteryPct, lastReload: lastWidgetReload,
-                                                    now: snap.updated) else {
+            let reload: Bool
+            if background {
+                // fork: in the background the snapshot is saved and only the events listed there reload (see the policy).
+                reload = WidgetReloadThrottle.backgroundReloadWarranted(
+                    firstPublish: previous == nil, previousBattery: previous?.batteryPct, nextBattery: snap.batteryPct,
+                    bondedChanged: previous.map { $0.bonded != snap.bonded } ?? false,
+                    chargeChanged: previous.map { $0.recovery != snap.recovery } ?? false,
+                    dayRolled: previous != nil && liveUpdateRequiresFullBuild(previous: previous, now: snap.updated))
+                if !reload { reloadOwed = true }
+            } else if owed {
+                reload = true
+            } else {
+                reload = WidgetReloadThrottle.shouldReload(onlyLiveFieldsChanged: liveOnly, previousBattery: previous?.batteryPct,
+                                                           nextBattery: snap.batteryPct, lastReload: lastWidgetReload,
+                                                           now: snap.updated)
+            }
+            guard reload else {
                 WidgetTelemetry.noteDeclined()
                 ForkEnergyCounters.shared.note(.widgetSavedNoReload) // fork-perf: TEMP
                 return
             }
+            reloadOwed = false
             lastWidgetReload = snap.updated
             WidgetCenter.shared.reloadAllTimelines()
             ForkEnergyCounters.shared.note(.widgetReload) // fork-perf: TEMP

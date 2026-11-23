@@ -142,6 +142,7 @@ enum CoachBriefScheduler {
         // without waiting for the next scheduled refresh. The kind string must match the widget's
         // `kind` property (see CoachBriefWidget.swift in StrandiOSWidgets).
         WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
+        ForkEnergyCounters.shared.note(.widgetReload) // fork-perf: TEMP (every reload, whoever asks)
         ForkEnergyCounters.shared.note(.widgetReloadCoach) // fork-perf: TEMP
     }
     #endif
