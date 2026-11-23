@@ -116,6 +116,26 @@ extension ReadOnlyDB {
         }
     }
 
+    /// Sessions the WHOOP CSV import wrote (`stagesJSON` is a per-stage minutes dictionary, no timeline) and how
+    /// many of those also have recorded heart rate over more than half their span. Only the latter could be
+    /// scored against a replay, and the dictionary has totals only, so it can never be an epoch reference.
+    func csvNightCounts(sessionDevice: String, streamDevice: String) throws -> (csv: Int, withRawStreams: Int) {
+        var spans: [(Int, Int)] = []
+        try query("""
+            SELECT startTs, endTs FROM sleepSession
+            WHERE deviceId = '\(sessionDevice)' AND stagesJSON IS NOT NULL AND ltrim(stagesJSON) LIKE '{%'
+            """) { s in spans.append((ReadOnlyDB.int(s, 0), ReadOnlyDB.int(s, 1))) }
+        var overlapping = 0
+        for (from, to) in spans {
+            var n = 0
+            try query("SELECT COUNT(*) FROM hrSample WHERE deviceId = '\(streamDevice)' AND ts >= \(from) AND ts <= \(to)") {
+                n = ReadOnlyDB.int($0, 0)
+            }
+            if Double(n) > 0.5 * Double(to - from) { overlapping += 1 }
+        }
+        return (spans.count, overlapping)
+    }
+
     func sessions(device: String) throws -> [SessionRow] {
         var out: [SessionRow] = []
         let sql = """

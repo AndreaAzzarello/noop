@@ -78,4 +78,18 @@ final class RRRuleTests: XCTestCase {
         let db = try makeDatabase(sql)
         XCTAssertEqual(try rows(db, device: "plain", from: 0, to: 100, rule: .app).count, 5)
     }
+
+    func testCsvNightCountsSeparateDictionaryRowsFromTimelinesAndFindOverlap() throws {
+        var sql = ["CREATE TABLE sleepSession (deviceId TEXT, startTs INTEGER, endTs INTEGER, stagesJSON TEXT)",
+                   "CREATE TABLE hrSample (deviceId TEXT, ts INTEGER, bpm INTEGER)"]
+        sql.append("INSERT INTO sleepSession VALUES ('d', 0, 1000, '{\"light\":300,\"deep\":60}')")        // csv, covered
+        sql.append("INSERT INTO sleepSession VALUES ('d', 5000, 6000, ' {\"light\":10}')")                   // csv, uncovered
+        sql.append("INSERT INTO sleepSession VALUES ('d', 9000, 9600, '[{\"start\":9000,\"end\":9600,\"stage\":\"light\"}]')")
+        sql.append("INSERT INTO sleepSession VALUES ('other', 0, 1000, '{\"light\":1}')")
+        for ts in 0..<800 { sql.append("INSERT INTO hrSample VALUES ('s', \(ts), 55)") }
+        let db = try makeDatabase(sql)
+        let r = try db.csvNightCounts(sessionDevice: "d", streamDevice: "s")
+        XCTAssertEqual(r.csv, 2)
+        XCTAssertEqual(r.withRawStreams, 1)
+    }
 }

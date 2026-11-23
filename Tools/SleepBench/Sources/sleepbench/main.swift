@@ -1,5 +1,6 @@
 import Foundation
 import StrandAnalytics
+import SleepRecipe
 import WhoopProtocol
 
 // sleepbench — replay the sleep stagers over real recorded nights and score them against every
@@ -7,6 +8,7 @@ import WhoopProtocol
 //
 // USAGE:  sleepbench --db /path/to/whoop.sqlite [--device my-whoop-noop] [--pad 3600] [--csv out.csv]
 //                     [--exclude <startTs,…>]
+//                     [--sections HIJK] [--variants C1,C3a,C3b] [--bands bands.json] [--stages-out DIR]
 //
 // The database is never written to and never lives in this repository. Pass a COPY; never point this at
 // a device's live database.
@@ -30,6 +32,16 @@ struct Args {
     /// is to name it ONCE and pass the same `--exclude` list to every build being compared. Excluding by
     /// explicit timestamp keeps the set frozen; excluding by "matches this build's V2" would not.
     var exclude: Set<Int> = []
+    /// Which candidate sections to print after A-G, as letters out of `HIJK`. Empty (the default) prints none,
+    /// so a plain run is unchanged. They cost a restage per variant, knob and damage, so they are opt-in.
+    var sections = ""
+    /// Candidate recipes replayed beside the incumbent (keys of `Variants.keys`).
+    var variants = ["C1", "C3a", "C3b"]
+    /// A PSG-derived `PlausibilityBands` JSON file. Without one, section H uses the author's broad bounds and
+    /// says so.
+    var bands: String?
+    /// Write each variant's stages as `<dir>/<variant>/night_<startTs>.csv` for `SmartWakeReplay --stages-dir`.
+    var stagesOut: String?
 }
 var a = Args()
 var it = CommandLine.arguments.dropFirst().makeIterator()
@@ -41,6 +53,10 @@ while let k = it.next() {
     case "--pad": a.pad = Int(it.next() ?? "") ?? a.pad
     case "--csv": a.csv = it.next()
     case "--exclude": a.exclude = Set((it.next() ?? "").split(separator: ",").compactMap { Int($0) })
+    case "--sections": a.sections = (it.next() ?? "").uppercased()
+    case "--variants": a.variants = (it.next() ?? "").split(separator: ",").map(String.init)
+    case "--bands": a.bands = it.next()
+    case "--stages-out": a.stagesOut = it.next()
     default: FileHandle.standardError.write(Data("unknown argument \(k)\n".utf8)); exit(2)
     }
 }
@@ -51,6 +67,12 @@ guard !a.db.isEmpty else {
 
       --exclude   session startTs values held out of section E's calibration reference set. Pass the SAME
                   list to every build in a before/after comparison; section E names the candidates.
+
+      --sections  HIJK (any subset): candidate recipes against the incumbent. H internal consistency, I
+                  sensitivity and robustness, J the strap's sleep/wake verdict, K the A/B table.
+      --variants  candidates to replay, from: \(Variants.keys.keys.sorted().joined(separator: ", ")) (default C1,C3a,C3b)
+      --bands     PSG-derived plausibility bands (JSON); default is the author's broad fallback, labelled as such
+      --stages-out DIR  write each variant's stages for Tools/SmartWakeReplay's --stages-dir
     """)
     exit(2)
 }
@@ -114,6 +136,8 @@ struct Night {
     let meanHR: Double
     let machineWakeMin: Double?   // wake implied by the STALE pre-edit efficiency column
     let hasSteps: Bool
+    /// The streams and window this night was staged from, kept so sections H-K can stage it again.
+    let input: NightInput
 }
 
 var nights: [Night] = []
@@ -144,7 +168,8 @@ for r in rows {
         band: bandEpochs.count == n ? bandEpochs : [],
         meanHR: hrS?.mean ?? .nan,
         machineWakeMin: machineWake,
-        hasSteps: !st.steps.isEmpty))
+        hasSteps: !st.steps.isEmpty,
+        input: NightInput(start: r.startTs, end: r.endTs, grav: st.grav, hr: st.hr, rr: st.rr, resp: st.resp)))
     FileHandle.standardError.write(Data(".".utf8))
 }
 FileHandle.standardError.write(Data("\n".utf8))
@@ -574,4 +599,48 @@ if let path = a.csv {
     }
     try out.write(toFile: path, atomically: true, encoding: .utf8)
     FileHandle.standardError.write(Data("wrote \(path)\n".utf8))
+}
+
+// MARK: - H-K. Candidate recipes (opt-in)
+
+if !a.sections.isEmpty || a.stagesOut != nil {
+    var unknown: [String] = []
+    var variants = [Variants.incumbent]
+    for key in a.variants where key != "incumbent" {
+        if let v = Variants.named(key) { variants.append(v) } else { unknown.append(key) }
+    }
+    guard unknown.isEmpty else {
+        FileHandle.standardError.write(Data("unknown --variants \(unknown.joined(separator: ",")); known: \(Variants.keys.keys.sorted().joined(separator: ", "))\n".utf8))
+        exit(2)
+    }
+    let bands: PlausibilityBands
+    if let path = a.bands {
+        bands = try PlausibilityBands.parse(json: try Data(contentsOf: URL(fileURLWithPath: path)))
+    } else {
+        bands = .broad
+    }
+    FileHandle.standardError.write(Data("replaying \(variants.count) recipe(s) over \(nights.count) nights…\n".utf8))
+    let run = CandidateRun.replay(nights: nights, variants: variants)
+
+    if a.sections.contains("H") { Sections.printH(nights: nights, run: run, bands: bands) }
+    if a.sections.contains("I") { Sections.printI(nights: nights, run: run) }
+    if a.sections.contains("J") {
+        let csv = try db.csvNightCounts(sessionDevice: a.device, streamDevice: a.streamDevice)
+        Sections.printJ(nights: nights, run: run, csv: csv)
+    }
+    if a.sections.contains("K") { Sections.printK(nights: nights, run: run, bands: bands) }
+
+    if let dir = a.stagesOut {
+        for (vi, v) in variants.enumerated() {
+            let key = vi == 0 ? "incumbent" : (Variants.keys.first { $0.value().name == v.name }?.key ?? "variant\(vi)")
+            let folder = URL(fileURLWithPath: dir).appendingPathComponent(key)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            for (i, nt) in nights.enumerated() {
+                let csv = StageExport.csv(start: nt.row.startTs, end: nt.row.endTs, labels: run.labels[vi][i])
+                try csv.write(to: folder.appendingPathComponent("night_\(nt.row.startTs).csv"), atomically: true, encoding: .utf8)
+            }
+        }
+        FileHandle.standardError.write(Data("wrote stages for \(variants.count) recipe(s) to \(dir)\n".utf8))
+    }
 }

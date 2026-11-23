@@ -72,6 +72,21 @@ func labelAgreement(_ a: [String], _ b: [String]) -> Double {
     return n == 0 ? .nan : Double(zip(a, b).filter { $0 == $1 }.count) / Double(n)
 }
 
+// MARK: - Strap reference (section J)
+
+/// The strap's own band `sleep_state` against a hypnogram, sleep versus wake only: band 2 is sleep, 0 and 3 are
+/// wake, and 1 ("still", genuinely ambiguous) is left out. The band carries no stages, and its code meanings are
+/// inferred, so this is agreement with a proprietary black box and not accuracy.
+func bandConfusion(_ labels: [String], band: [Int]) -> Confusion {
+    var c = Confusion(classes: ["wake", "sleep"])
+    let pred = toSleepWake(labels)
+    for (i, b) in band.enumerated() where i < pred.count {
+        guard b != 1 else { continue }
+        c.add(ref: b == SleepStager.bandStateAsleep ? "sleep" : "wake", pred: pred[i])
+    }
+    return c
+}
+
 // MARK: - Sensitivity (section I)
 
 /// A recipe parameter scaled by a factor. `skipWhenZero` keeps a switched-off candidate weight at zero

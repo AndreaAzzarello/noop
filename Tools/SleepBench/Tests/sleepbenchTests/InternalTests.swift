@@ -64,6 +64,19 @@ final class InternalTests: XCTestCase {
         XCTAssertTrue(Set(a).isSubset(of: Set(stageOrder)), "\(Set(a))")
     }
 
+    // MARK: Band reference
+
+    func testBandConfusionExcludesStillAndMapsAsleepAndWake() {
+        let labels = ["wake", "light", "light", "wake", "deep"]
+        let band =   [0,      2,       1,       2,      3]        // wake, asleep, still(excluded), asleep, up
+        let c = bandConfusion(labels, band: band)
+        XCTAssertEqual(c.total, 4)
+        XCTAssertEqual(c.m[0][0], 1)   // band wake  & stager wake
+        XCTAssertEqual(c.m[1][1], 1)   // band sleep & stager sleep
+        XCTAssertEqual(c.m[1][0], 1)   // band sleep & stager wake
+        XCTAssertEqual(c.m[0][1], 1)   // band up    & stager sleep
+    }
+
     // MARK: Sensitivity
 
     func testSelfLoopKnobKeepsEveryRowSummingToOne() {
