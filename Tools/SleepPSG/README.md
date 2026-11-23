@@ -38,7 +38,8 @@ swift run -c release sleeppsg --dataset ~/datasets/motion-and-heart-rate-*-1.0.0
 | flag | meaning |
 |---|---|
 | `--dataset PATH` | the extracted `sleep-accel` root. Required for every section except `port`. |
-| `--section S` | `all` (default), or one of `port`, `baseline`, `strata`, `rem`, `variants`, `priors`. |
+| `--section S` | `all` (default), or one of `port`, `baseline`, `strata`, `rem`, `variants`, `priors`. `candidates`, `rrstage`, `signtest`, `dropout` and `priorsoff` are run by name and are never part of `all`. |
+| `--slpdb DIR` | the CSV export of the MIT-BIH Polysomnographic Database, for `--section rrstage` only. |
 | `--subjects N` | score only the first N subject ids — a fast smoke run. |
 | `--csv PATH` | write the per-variant table as CSV. |
 | `--seed N` | the port-validation corpus seed. |
@@ -80,6 +81,29 @@ staging recipe.
 
 Attribution: Ichimaru Y, Moody GB. *Development of the polysomnographic database on CD-ROM.* Psychiatry and
 Clinical Neurosciences 53(2):175-177 (1999), distributed on PhysioNet under ODC-By 1.0.
+
+---
+
+## Per-subject comparisons (`signtest`, `dropout`, `priorsoff`)
+
+Pooled kappa over 26 773 epochs can be carried by a few long nights, so these three sections count every subject
+once. All three stage each subject through the recipe port, which `swift test` pins label-for-label to the shipped
+stager.
+
+- `--section signtest` scores candidate C5b against the incumbent per subject: kappa for each, wins / losses / ties,
+  the exact two-sided sign test (ties dropped), a seeded percentile bootstrap interval on the mean change in kappa,
+  and the change in minutes per stage with how many subjects land closer to the PSG.
+- `--section dropout` removes the same samples for every recipe (seeded per subject and scenario) and scores C1 and
+  C5b against the PSG: gravity holes of 15 / 30 / 60 minutes and 2-minute bursts covering 10 / 30 / 50 % of the
+  night, heart-rate holes and per-sample loss, and one combined scenario. Gravity is only ever lost in holes:
+  dropping single seconds leaves every epoch with plenty. It prints the kappa each recipe keeps, what the damage
+  cost it, and the paired change against the incumbent under the same damage.
+- `--section priorsoff` removes the cycle prior (`RecipeConfig.cyclePriorScale = 0`) and the REM-latency guard
+  (`remLatencyPenalty = 0`) from the incumbent and from C5b, plus a control with every per-epoch signal at zero and
+  a floor with the priors removed as well, which must call everything light (kappa 0).
+
+None of these says a recipe is accurate: they say how far it moves, for how many subjects, and how much of its
+agreement survives when something is taken away. The cohort is 31 laboratory nights of one dataset.
 
 ---
 

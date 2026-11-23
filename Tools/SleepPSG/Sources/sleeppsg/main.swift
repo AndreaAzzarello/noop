@@ -35,12 +35,15 @@ while let k = it.next() {
         usage: sleeppsg --dataset <sleep-accel root> [--section all|port|baseline|strata|rem|variants|candidates|priors]
                         [--subjects N] [--csv <path>] [--seed <n>] [--bands-out <path>]
                sleeppsg --section rrstage --slpdb <dir written by scripts/slpdb_export.py>
+               sleeppsg --dataset <sleep-accel root> --section signtest|dropout|priorsoff
 
           --dataset   PhysioNet sleep-accel v1.0.0, extracted. See README.md for the download step and the
                       attribution its licence requires. Never committed; read-only here.
           --slpdb     the CSV export of the MIT-BIH Polysomnographic Database (`--section rrstage` only; it needs
                       no sleep-accel dataset).
-          --section   which report to print. `port` needs no dataset. `candidates` is section 6's table for the
+          --section   which report to print. `signtest` (C5b against the incumbent, subject by subject), `dropout`
+                      (seeded gravity / heart-rate loss, C1 and C5b against PSG) and `priorsoff` (cycle prior and
+                      REM guard ablation) are never part of `all`: run them by name. `port` needs no dataset. `candidates` is section 6's table for the
                       proposals under evaluation (C1, C3, C5) instead of the provenance variants.
           --bands-out write the p10..p90 plausibility bands of the PSG hypnograms (for `sleepbench --bands`)
           --subjects  score only the first N subject ids (a fast smoke run; full cohort is the default).
@@ -549,6 +552,201 @@ if want("priors") {
               + "\(f(meanAbs("wake"), 5, 2)) \(f(meanAbs("deep"), 5, 2)) \(f(meanAbs("rem"), 5, 2)) \(f(meanAbs("light"), 5, 2))      "
               + "\(better("wake"))/\(n) \(better("deep"))/\(n) \(better("rem"))/\(n) \(better("light"))/\(n)")
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// Per-subject comparisons: sign test, graded dropout, prior ablation. Named sections only — they are not part
+// of `all` because each re-stages every subject several times.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/// Stage every subject with `cfg`, concurrently, and score against the PSG. The recipe port is pure, so the
+/// subjects are independent and the result order is the input order.
+func scoreAll(_ subs: [PSGSubject], _ cfg: RecipeConfig) -> [Scored] {
+    var out = [Scored?](repeating: nil, count: subs.count)
+    out.withUnsafeMutableBufferPointer { buf in
+        let b = buf
+        DispatchQueue.concurrentPerform(iterations: subs.count) { i in
+            b[i] = score(subs[i], using: stageVariant(cfg))
+        }
+    }
+    return out.map { $0! }
+}
+
+/// Mean of the per-subject kappas, leaving out the subjects whose night carries a single class.
+func meanSubjectKappa(_ rows: [Scored]) -> Double {
+    mean(rows.map { confusion(ref: $0.truth, pred: $0.pred).kappa }.filter { !$0.isNaN })
+}
+
+func signedF(_ v: Double, _ w: Int = 7, _ p: Int = 3) -> String {
+    v.isNaN ? String(repeating: " ", count: max(0, w - 3)) + "n/a" : String(format: "%+\(w).\(p)f", v)
+}
+
+if a.section == "signtest" {
+    let cand = Variants.c5bOnsetAnchoredStats
+    print("""
+
+    ================================================================================
+    SIGN TEST. \(cand.name.uppercased()) AGAINST THE INCUMBENT, SUBJECT BY SUBJECT, ON PSG
+    ================================================================================
+    Same subjects, same scored epochs, same PSG. Each subject's four-class kappa against its own hypnogram is
+    computed for the shipped stager and for the candidate; the candidate WINS a subject when its kappa is higher.
+    A kappa difference below \(PairedComparison.tieEpsilon) is a tie (an identical hypnogram). The test is the exact two-sided sign
+    test over subjects (ties dropped); the interval is a percentile bootstrap over subjects (4 000 resamples,
+    seeded). Minutes are per night; "error" is |minutes in the stage - the PSG's minutes in that stage|.
+    """)
+    let candRows = scoreAll(subjects, cand.config)
+    let r = PairedComparison.compare(truth: shipped.map { $0.truth }, base: shipped.map { $0.pred },
+                                     cand: candRows.map { $0.pred })
+    print("    subject   scored min   kappa inc   kappa cand   change   | minutes change (cand - inc):  wake  light   deep    REM")
+    for (i, row) in shipped.enumerated() {
+        func d(_ st: String) -> String {
+            let n = { (rows: [Scored]) in Double(rows[i].pred.filter { $0 == st }.count) * 0.5 }
+            return String(format: "%+6.1f", n(candRows) - n(shipped))
+        }
+        print("    \(row.subject.id.padding(toLength: 9, withPad: " ", startingAt: 0)) \(f(row.subject.scoredMinutes, 10, 1))   \(f(r.kappaBase[i], 9, 3))   \(f(r.kappaCand[i], 10, 3))   \(signedF(r.kappaCand[i] - r.kappaBase[i], 6, 3))   |                              \(d("wake")) \(d("light")) \(d("deep")) \(d("rem"))")
+    }
+    let pooledBase = summarise(shipped).kappa, pooledCand = summarise(candRows).kappa
+    print("""
+
+    subjects                 \(r.subjects)   (kappa defined for \(r.wins + r.losses + r.ties))
+    candidate wins / losses / ties   \(r.wins) / \(r.losses) / \(r.ties)
+    exact two-sided sign test   p = \(f(r.signP, 6, 3))
+    mean per-subject change in kappa   \(signedF(r.meanDelta, 7, 4))   95 % bootstrap interval [\(signedF(r.ciLow, 7, 4)), \(signedF(r.ciHigh, 7, 4))]
+    pooled kappa   incumbent \(f(pooledBase, 6, 3))   candidate \(f(pooledCand, 6, 3))   (\(signedF(pooledCand - pooledBase, 6, 3)))
+
+    MINUTES PER STAGE, per night (mean over subjects)
+    stage      shift (cand - inc)   worst |shift|   error inc   error cand   subjects closer / farther to PSG
+    """)
+    for st in stageOrder {
+        let m = r.stages[st]!
+        print("      \(st.padding(toLength: 8, withPad: " ", startingAt: 0)) \(signedF(m.meanShift, 14, 2))   \(f(m.worstShift, 12, 1))   \(f(m.errorBase, 9, 1))   \(f(m.errorCand, 10, 1))   \(String(format: "%2d", m.closer)) / \(String(format: "%-2d", m.farther))")
+    }
+    print("""
+
+    With \(r.wins + r.losses) subjects that are not ties, the two-sided sign test needs at least \(Separation.decisiveSplit(n: r.wins + r.losses).map(String.init) ?? "more than all of them") of them
+    on one side to reach p < 0.05 (a tie is not a vote). "Not significant" means the cohort cannot tell the two
+    apart, not that they are equal.
+    The comparison is on a laboratory cohort of Apple Watch signals, with no R-R: the recipe's respiration term
+    is silent here, and what C5b changes (the window the statistics are taken over) is exercised on 8-hour
+    nights that are already well framed.
+    """)
+}
+
+if a.section == "dropout" {
+    let variants: [(name: String, cfg: RecipeConfig)] = [
+        ("incumbent", .shipped), ("C1", Variants.c1MissingGravityNeutral.config), ("C5b", Variants.c5bOnsetAnchoredStats.config),
+    ]
+    print("""
+
+    ================================================================================
+    SYNTHETIC DROPOUT. C1 AND C5b AGAINST PSG UNDER GRADED DATA LOSS
+    ================================================================================
+    Each scenario removes the same samples for every recipe (seeded per subject and scenario), then scores the
+    staged night against the PSG. The incumbent runs through the recipe port with the shipped config: the port is
+    pinned label-for-label to `SleepStagerV2` by the port validation, and the clean run below re-checks it on this
+    dataset. Gravity can only be lost in holes (a contiguous gap, or 2-minute bursts), because dropping single
+    seconds leaves every epoch with plenty. kappa is the mean of the per-subject kappas against the PSG.
+    """)
+    let cleanRows = variants.map { scoreAll(subjects, $0.cfg) }
+    let portMatches = zip(cleanRows[0], shipped).allSatisfy { $0.0.pred == $0.1.pred }
+    print("    clean run: the port at the shipped config reproduces the shipped stager's labels on every subject: \(portMatches ? "yes" : "NO — numbers below are not about the shipped recipe")")
+    let cleanKappa = cleanRows.map { meanSubjectKappa($0) }
+    print("    clean            kappa   incumbent \(f(cleanKappa[0], 6, 3))   C1 \(f(cleanKappa[1], 6, 3))   C5b \(f(cleanKappa[2], 6, 3))")
+
+    print("""
+
+    kappa under damage (mean per subject) and what the damage cost each recipe (clean kappa - damaged kappa)
+    scenario                              removed      incumbent   cost     C1   cost      C5b   cost
+    """)
+    struct Row { let name: String; let removed: String; let kappa: [Double]; let paired: [PairedResult] }
+    var table: [Row] = []
+    for sc in DropoutScenario.all {
+        let damaged = subjects.map { sc.apply(to: $0) }
+        let rows = variants.map { scoreAll(damaged, $0.cfg) }
+        let kappas = rows.map { meanSubjectKappa($0) }
+        let gravGone = 1 - Double(damaged.reduce(0) { $0 + $1.grav.count }) / Double(max(1, subjects.reduce(0) { $0 + $1.grav.count }))
+        let hrGone = 1 - Double(damaged.reduce(0) { $0 + $1.hr.count }) / Double(max(1, subjects.reduce(0) { $0 + $1.hr.count }))
+        let removed = [gravGone > 1e-9 ? "grav \(f(gravGone * 100, 4, 1))%" : nil, hrGone > 1e-9 ? "HR \(f(hrGone * 100, 4, 1))%" : nil]
+            .compactMap { $0 }.joined(separator: " ")
+        let truth = rows[0].map { $0.truth }
+        let paired = (1..<variants.count).map {
+            PairedComparison.compare(truth: truth, base: rows[0].map { $0.pred }, cand: rows[$0].map { $0.pred })
+        }
+        table.append(Row(name: sc.name, removed: removed, kappa: kappas, paired: paired))
+        print("    \(sc.name.padding(toLength: 36, withPad: " ", startingAt: 0)) \(removed.padding(toLength: 12, withPad: " ", startingAt: 0)) \(f(kappas[0], 8, 3)) \(f(cleanKappa[0] - kappas[0], 6, 3))  \(f(kappas[1], 6, 3)) \(f(cleanKappa[1] - kappas[1], 6, 3))   \(f(kappas[2], 6, 3)) \(f(cleanKappa[2] - kappas[2], 6, 3))")
+    }
+
+    print("""
+
+    PAIRED AGAINST THE INCUMBENT UNDER THE SAME DAMAGE (change in per-subject kappa; wins / losses / ties over subjects; exact sign test)
+    scenario                              | C1:  change   [95 % interval]      W / L / T    p     | C5b: change   [95 % interval]      W / L / T    p
+    """)
+    func pairedCell(_ p: PairedResult) -> String {
+        "\(signedF(p.meanDelta, 7, 4)) [\(signedF(p.ciLow, 7, 4)), \(signedF(p.ciHigh, 7, 4))]  \(String(format: "%2d", p.wins)) /\(String(format: "%2d", p.losses)) /\(String(format: "%2d", p.ties))  \(f(p.signP, 6, 3))"
+    }
+    // The clean row first: the baseline the damaged rows are read against.
+    let cleanPaired = (1..<variants.count).map {
+        PairedComparison.compare(truth: cleanRows[0].map { $0.truth }, base: cleanRows[0].map { $0.pred }, cand: cleanRows[$0].map { $0.pred })
+    }
+    print("    \("clean (no damage)".padding(toLength: 37, withPad: " ", startingAt: 0))| \(pairedCell(cleanPaired[0]))   | \(pairedCell(cleanPaired[1]))")
+    for row in table {
+        print("    \(row.name.padding(toLength: 37, withPad: " ", startingAt: 0))| \(pairedCell(row.paired[0]))   | \(pairedCell(row.paired[1]))")
+    }
+    print("""
+
+    How to read it. `cost` is how much kappa each recipe loses against the PSG when the damage lands; the paired
+    block asks whether a candidate beats the incumbent subject by subject under that same damage. C1 can only
+    matter where gravity is PARTLY missing (a hole or bursts), and is a no-op on the heart-rate scenarios by
+    construction; C5b changes where the statistics are taken, so it can matter under either. A candidate that
+    loses less kappa than the incumbent under damage is more robust; it is not thereby more accurate on a clean
+    night, which the first line and the sign-test section report. The damage is synthetic: it says how the
+    recipes behave when samples vanish in these patterns, not that a strap loses data in them.
+    """)
+}
+
+if a.section == "priorsoff" {
+    let ablations = Variants.ablations
+    print("""
+
+    ================================================================================
+    PRIOR ABLATION. HOW MUCH OF THE RESULT IS THE SIGNALS, HOW MUCH IS THE CLOCK?
+    ================================================================================
+    Rows remove one thing from the recipe and score the result against the PSG. `cycle prior` is the deep-early /
+    REM-late position-in-the-night term, `REM guard` is the #930 latency penalty. `signals off` is a CONTROL: every
+    per-epoch measurement term at zero, so only the priors, the clock and the transition matrix remain. The last row
+    removes both priors from that, which leaves only the base rates: it should call everything light (kappa near 0).
+    Nothing here is a candidate. Subject kappa is the mean of per-subject kappas; the paired columns difference
+    each row against the incumbent subject by subject.
+    """)
+    var rows: [[Scored]] = []
+    for v in ablations { rows.append(v.name.hasPrefix("incumbent (shipped)") && v.config == .shipped ? shipped : scoreAll(subjects, v.config)) }
+    let truth = shipped.map { $0.truth }
+    print("    row                                                    pooled k  subj k   REM F1  deep F1  wake rec   wake bias  deep bias  REM bias   vs incumbent: change   W / L / T     p")
+    let base = rows[0].map { $0.pred }
+    for (i, v) in ablations.enumerated() {
+        let s = summarise(rows[i])
+        let p = pooledPct(rows[i]) { $0.pred }, t = pooledPct(rows[i]) { $0.truth }
+        let pr = PairedComparison.compare(truth: truth, base: base, cand: rows[i].map { $0.pred })
+        let cmp = i == 0 ? "         (baseline)" : "\(signedF(pr.meanDelta, 8, 3))   \(String(format: "%2d", pr.wins)) /\(String(format: "%2d", pr.losses)) /\(String(format: "%2d", pr.ties))   \(f(pr.signP, 6, 3))"
+        print("    \(v.name.padding(toLength: 54, withPad: " ", startingAt: 0)) \(f(s.kappa, 8, 3)) \(f(meanSubjectKappa(rows[i]), 7, 3)) \(f(s.conf.prf("rem").f1, 7, 3)) \(f(s.conf.prf("deep").f1, 8, 3)) \(f(s.conf.prf("wake").recall * 100, 8, 1)) \(signedF(p["wake"]! - t["wake"]!, 10, 2)) \(signedF(p["deep"]! - t["deep"]!, 10, 2)) \(signedF(p["rem"]! - t["rem"]!, 9, 2))   \(cmp)")
+    }
+    let k = summarise(rows[0]).kappa
+    print("""
+
+    Share of the incumbent's pooled kappa (\(f(k, 5, 3))) that survives each removal:
+    """)
+    for (i, v) in ablations.enumerated() where i > 0 {
+        let kk = summarise(rows[i]).kappa
+        print("      \(v.name.padding(toLength: 54, withPad: " ", startingAt: 0)) \(f(kk / k * 100, 6, 1)) %")
+    }
+    print("""
+
+    How to read it. The share that survives with `signals off` is the part of the agreement that needs no
+    measurement at all (base rates, the clock, the sticky transitions); the cycle-prior and guard rows say which
+    of the two clock terms carries it. A recipe whose kappa barely moves when the signals are removed is mostly
+    priors. The ablation measures dependence, not correctness: a term whose removal costs nothing is not
+    thereby wrong, and one whose removal costs a lot is not thereby right.
+    """)
 }
 
 print("")
