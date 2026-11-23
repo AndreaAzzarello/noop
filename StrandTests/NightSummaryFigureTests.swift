@@ -101,6 +101,26 @@ final class NightSummaryFigureTests: XCTestCase {
         XCTAssertEqual(make(early: at, earlyMax: at.addingTimeInterval(-60)).outcome, .early(at: at, minutesBefore: nil))
     }
 
+    func testEarlyWakeMinutesCountWholeClockMinutes() {
+        let minute = Date(timeIntervalSince1970: 1_799_999_940)   // a full minute (divisible by 60)
+        let max = minute.addingTimeInterval(20 * 60)
+        for seconds in [0.0, 30, 55] {   // 07:00:30 → 07:20 used to read 19
+            let at = minute.addingTimeInterval(seconds)
+            XCTAssertEqual(make(early: at, earlyMax: max).outcome, .early(at: at, minutesBefore: 20), "early +\(seconds)s")
+        }
+        let at = minute.addingTimeInterval(10)
+        XCTAssertEqual(make(early: at, earlyMax: minute.addingTimeInterval(40)).outcome, .early(at: at, minutesBefore: nil),
+                       "inside the same clock minute is not 'early'")
+    }
+
+    func testLegendDurationsAreShort() {
+        XCTAssertEqual(NightSummaryCard.shortDuration(16), "16m")
+        XCTAssertEqual(NightSummaryCard.shortDuration(0), "0m")
+        XCTAssertEqual(NightSummaryCard.shortDuration(120), "2h")
+        XCTAssertEqual(NightSummaryCard.shortDuration(124), "2h 4m")
+        XCTAssertEqual(NightSummaryCard.shortDuration(122), "2h 2m")
+    }
+
     func testTheMaximumTimeOutcome() {
         let at = now.addingTimeInterval(-1_800)
         XCTAssertEqual(make(maxAt: at).outcome, .maximum(at: at))

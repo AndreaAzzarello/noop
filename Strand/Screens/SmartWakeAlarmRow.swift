@@ -33,6 +33,7 @@ struct SmartWakeAlarmRow: View {
             .labelsHidden()
             .toggleStyle(.switch)
             .tint(StrandPalette.accent)
+            .fixedSize()   // the text gives way at large Dynamic Type, never the switch
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
@@ -80,7 +81,9 @@ struct SmartWakeSwipeToDelete: ViewModifier {
                             offset = value.translation.width < -reveal / 2 ? -reveal : 0
                         }
                     })
-            .clipped()
+            // The switch paints its thumb/glow past its layout frame, so a plain `.clipped()` cut it at the right edge.
+            // Only the left side needs hiding (the row slides out that way): widen the mask on the other three sides.
+            .mask { Rectangle().padding(.trailing, -16).padding(.vertical, -8) }
     }
 }
 #endif

@@ -242,27 +242,63 @@ struct NightSummaryCard: View {
         .accessibilityHidden(true)
     }
 
+    /// One row of four, else two rows of two, else one column: the first layout that fits, so no entry is ever cut.
     private func stageLegend(_ stages: NightSummary.Stages, awake: Int?) -> some View {
-        HStack(spacing: NoopMetrics.space3) {
-            legendItem(.deep, name: Text("Deep", tableName: "Fork"), minutes: stages.deepMin)
-            legendItem(.rem, name: Text("REM", tableName: "Fork"), minutes: stages.remMin)
-            legendItem(.light, name: Text("Light", tableName: "Fork"), minutes: stages.lightMin)
-            if let awake {   // fork: time in bed not asleep
-                legendItem(.awake, name: Text("Awake", tableName: "Fork"), minutes: awake)
+        let items = legendEntries(stages, awake: awake)
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: NoopMetrics.space3) {
+                ForEach(items.indices, id: \.self) { legendItem(items[$0]) }
+            }
+            VStack(alignment: .leading, spacing: NoopMetrics.space2) {
+                ForEach(stride(from: 0, to: items.count, by: 2).map { $0 }, id: \.self) { start in
+                    HStack(spacing: NoopMetrics.space3) {
+                        ForEach(start..<min(start + 2, items.count), id: \.self) { legendItem(items[$0]) }
+                    }
+                }
+            }
+            VStack(alignment: .leading, spacing: NoopMetrics.space2) {
+                ForEach(items.indices, id: \.self) { legendItem(items[$0]) }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 
-    private func legendItem(_ stage: SleepStage, name: Text, minutes: Int) -> some View {
+    private struct LegendEntry {
+        let stage: SleepStage
+        let name: Text
+        let minutes: Int
+    }
+
+    private func legendEntries(_ stages: NightSummary.Stages, awake: Int?) -> [LegendEntry] {
+        var items = [
+            LegendEntry(stage: .deep, name: Text("Deep", tableName: "Fork"), minutes: stages.deepMin),
+            LegendEntry(stage: .rem, name: Text("REM", tableName: "Fork"), minutes: stages.remMin),
+            LegendEntry(stage: .light, name: Text("Light", tableName: "Fork"), minutes: stages.lightMin),
+        ]
+        if let awake {   // fork: time in bed not asleep
+            items.append(LegendEntry(stage: .awake, name: Text("Awake", tableName: "Fork"), minutes: awake))
+        }
+        return items
+    }
+
+    private func legendItem(_ entry: LegendEntry) -> some View {
         HStack(spacing: 4) {
-            Circle().fill(StrandPalette.sleepStageColor(stage)).frame(width: 7, height: 7).accessibilityHidden(true)
-            name.font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
-            Text(verbatim: CoupledView.hoursMinutes(Double(minutes)))
+            Circle().fill(StrandPalette.sleepStageColor(entry.stage)).frame(width: 7, height: 7).accessibilityHidden(true)
+            entry.name.font(StrandFont.caption).foregroundStyle(StrandPalette.textSecondary)
+            Text(verbatim: Self.shortDuration(entry.minutes))
                 .font(StrandFont.captionNumber).foregroundStyle(StrandPalette.textPrimary)
         }
         .lineLimit(1)
-        .minimumScaleFactor(0.8)
+        .fixedSize()
+    }
+
+    /// "16m", "2h", "2h 4m": the legend's compact duration (the headline total keeps `hoursMinutes`).
+    static func shortDuration(_ minutes: Int) -> String {
+        let total = max(0, minutes)
+        let h = total / 60, m = total % 60
+        if h == 0 { return "\(m)m" }
+        return m == 0 ? "\(h)h" : "\(h)h \(m)m"
     }
 
     @ViewBuilder

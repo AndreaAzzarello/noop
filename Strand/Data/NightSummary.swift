@@ -109,9 +109,12 @@ struct NightSummary: Equatable {
         return awake >= 1 ? awake : nil
     }
 
+    private static func wholeMinute(_ date: Date) -> Int { Int((date.timeIntervalSince1970 / 60).rounded(.down)) }
+
     static func resolveOutcome(earlyWakeAt: Date?, earlyWakeMaximum: Date?, maximumTimeAt: Date?) -> WakeOutcome? {
         if let earlyWakeAt {
-            let before = earlyWakeMaximum.map { Int($0.timeIntervalSince(earlyWakeAt) / 60) }
+            // Whole clock minutes between the two times as the card prints them (07:00:30 → 07:20 is 20, not 19).
+            let before = earlyWakeMaximum.map { wholeMinute($0) - wholeMinute(earlyWakeAt) }
             return .early(at: earlyWakeAt, minutesBefore: before.flatMap { $0 >= 1 ? $0 : nil })
         }
         return maximumTimeAt.map { .maximum(at: $0) }
