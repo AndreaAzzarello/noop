@@ -21,23 +21,6 @@ import WhoopProtocol
 // `Packages/StrandAnalytics/Sources/StrandAnalytics/SleepStagerV2.swift` have diverged; the report names
 // the night and the first epoch that differs.
 
-/// SplitMix64 — a tiny deterministic PRNG so the generated corpus is identical on every machine and every
-/// run. A benchmark whose validation set moves between runs cannot tell a real divergence from a reroll.
-struct SplitMix64: RandomNumberGenerator {
-    private var state: UInt64
-    init(seed: UInt64) { state = seed }
-    mutating func next() -> UInt64 {
-        state &+= 0x9E37_79B9_7F4A_7C15
-        var z = state
-        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
-        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
-        return z ^ (z >> 31)
-    }
-    mutating func double(_ lo: Double, _ hi: Double) -> Double { Double.random(in: lo..<hi, using: &self) }
-    mutating func int(_ lo: Int, _ hi: Int) -> Int { Int.random(in: lo...hi, using: &self) }
-    mutating func chance(_ p: Double) -> Bool { Double.random(in: 0..<1, using: &self) < p }
-}
-
 /// One synthetic night: the exact arguments a `stageSession` call takes, plus a name for the report.
 struct SyntheticNight {
     let name: String

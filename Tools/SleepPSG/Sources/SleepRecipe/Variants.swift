@@ -165,4 +165,53 @@ public enum Variants {
         [incumbent, deepPriorBefore, pr987, p348Priors, p348Motion, p348Emissions, p348DeepGate,
          p348Deadzone, p348OtherRows, p348All, preNine30Guard]
     }
+
+    // MARK: - Candidates under evaluation
+    //
+    // Unlike the provenance variants above, these do not reproduce something that shipped: they are proposals,
+    // each ONE field away from `.shipped`, with coefficients fixed a priori and never fit to a label. They are
+    // kept out of `all` so the existing ablation tables do not change shape; `candidates` and `named(_:)` are
+    // how the bench asks for them. None is wired into the app.
+
+    /// C1 — an epoch with no computable jerk (fewer than two gravity seconds) stops reading as "perfectly
+    /// still". See `RecipeConfig.missingGravityIsNeutral`. Changes nothing on a night with full gravity, and
+    /// nothing on a night with no gravity at all; it can only move a night where gravity is partly missing.
+    public static var c1MissingGravityNeutral: Variant {
+        var c = RecipeConfig.shipped
+        c.missingGravityIsNeutral = true
+        return Variant(name: "C1 missing gravity is neutral",
+                       note: "no-jerk epochs leave the motion z-score statistics and take z = 0", config: c)
+    }
+
+    /// C3a — ln(RMSSD) over a centred 5-minute window pushes deep up and REM down, weight 0.6: the order of
+    /// the respiration-regularity term it sits beside (`respWeight`), chosen before looking at any data.
+    public static var c3aRmssd: Variant {
+        var c = RecipeConfig.shipped
+        c.rmssdWeight = 0.6
+        return Variant(name: "C3a ln(RMSSD) deep+/REM-",
+                       note: "5-min centred window of cleaned R-R, weight 0.6 (a priori)", config: c)
+    }
+
+    /// C3b — C3a plus ln(LF/HF), which pushes REM up and deep down at half the weight: the sympathetic-leaning
+    /// balance is a weaker, noisier marker over 5 minutes than vagal power, so it is given less say.
+    public static var c3bRmssdLfHf: Variant {
+        var c = RecipeConfig.shipped
+        c.rmssdWeight = 0.6
+        c.lfhfWeight = 0.3
+        return Variant(name: "C3b ln(RMSSD) + ln(LF/HF)",
+                       note: "C3a plus LF/HF at weight 0.3 (a priori)", config: c)
+    }
+
+    /// The candidates, in the order the A/B table prints them (the incumbent comes first, as the baseline).
+    public static var candidates: [Variant] {
+        [incumbent, c1MissingGravityNeutral, c3aRmssd, c3bRmssdLfHf]
+    }
+
+    /// Short keys the command line uses for `--variant`.
+    public static let keys: [String: () -> Variant] = [
+        "incumbent": { incumbent }, "C1": { c1MissingGravityNeutral },
+        "C3a": { c3aRmssd }, "C3b": { c3bRmssdLfHf },
+    ]
+
+    public static func named(_ key: String) -> Variant? { keys[key]?() }
 }

@@ -85,6 +85,28 @@ public struct RecipeConfig: Equatable {
     /// see `Variants.preNine30Guard`. It is a diagnostic, not a candidate.
     public var remLatencyMode: RemLatencyMode = .gradedFromOnset
 
+    // MARK: Candidate switches. All three are NEUTRAL in `.shipped`, which is what keeps the port label-for-
+    // label equal to `SleepStagerV2` (`PortValidation`). None of them exists in the shipped stager.
+
+    /// C1. An epoch with fewer than two gravity seconds has no computable jerk. Shipped reads it as perfectly
+    /// still (`moveFrac = 0`, `jerkMax = 0`), which pulls the motion z-score of the whole night toward
+    /// "still" and tilts that epoch toward deep / REM. With this on, such an epoch contributes nothing to the
+    /// night's motion statistics and takes a NEUTRAL motion z of 0; the quiescent clamp is unchanged, so heart
+    /// rate alone still cannot vote it awake. A night with NO gravity at all is already neutral in the shipped
+    /// recipe (every epoch ties at 0, the z-score's spread collapses to 1), so C1 is a no-op there by
+    /// construction; it changes only nights where gravity is PARTLY missing.
+    public var missingGravityIsNeutral: Bool = false
+
+    /// C3. Weight of the ln(RMSSD) term, over a centred 5-minute window of the night's R-R. Deep gains and REM
+    /// loses as it rises, mirroring the respiration-regularity term. 0 = off (shipped). Sign from sleep
+    /// physiology (vagal predominance in N3, lower beat-to-beat variability in REM), magnitude fixed a priori
+    /// at the order of `respWeight`; never fit to labels.
+    public var rmssdWeight: Double = 0
+
+    /// C3. Weight of the ln(LF/HF) term over the same window: REM gains and deep loses as it rises (a more
+    /// sympathetic-leaning balance in REM, parasympathetic in N3). 0 = off (shipped).
+    public var lfhfWeight: Double = 0
+
     /// The shipped recipe, as of `Packages/StrandAnalytics/Sources/StrandAnalytics/SleepStagerV2.swift`.
     public static let shipped = RecipeConfig(
         priorLight: log(0.50), priorDeep: log(0.15), priorRem: log(0.22), priorAwake: log(0.10),
@@ -121,6 +143,10 @@ public enum V2Recipe {
 
     /// Farthest seconds, relative to an epoch, that `features` reads any input. Same values the shipped
     /// stager clips with; they are a property of the feature windows, not a tunable.
+    /// Fewest cleaned beats a 5-minute window needs before RMSSD / LF-HF are read from it (about a quarter of the
+    /// ~220-300 beats such a window carries asleep). Below it the term is absent and takes a neutral z.
+    static let hrvMinBeats = 60
+
     public static let padLo = 330
     public static let padHi = 390
 
@@ -138,6 +164,12 @@ public enum V2Recipe {
         public let clock: Double
         public let jerkScale: Double
         public let minutesSinceOnset: Double
+        /// False when the epoch holds fewer than two gravity seconds, so no jerk could be computed (C1).
+        public let gravKnown: Bool
+        /// ln(RMSSD) and ln(LF/HF) over a centred 5-minute window of cleaned R-R; nil when the candidate that
+        /// reads them is off, or the window holds too few beats (C3).
+        public let lnRmssd: Double?
+        public let lnLfHf: Double?
     }
 
     // MARK: - Entry point
@@ -258,6 +290,7 @@ public enum V2Recipe {
             let start: Int; let hr: Double?; let hrVar: Double?; let hrFlat11: Double?
             let jerks: [Double]; let gapSec: Int; let jerkMax: Double; let respReg: Double?; let clock: Double
             let minutes: Double
+            let gravKnown: Bool; let lnRmssd: Double?; let lnLfHf: Double?
         }
         var raws: [Raw] = []
         var allJerks: [Double] = []
@@ -292,10 +325,30 @@ public enum V2Recipe {
             beats.sort { $0.0 != $1.0 ? $0.0 < $1.0 : $0.1 < $1.1 }
             let respReg = respRegularity(beats)
 
+            // C3: beat-to-beat variability over the SAME centred 5-minute span as `hrVar`. Computed only when
+            // a candidate reads it, so the shipped path does no extra work and stays byte-identical.
+            var lnRmssd: Double? = nil, lnLfHf: Double? = nil
+            if cfg.rmssdWeight != 0 || cfg.lfhfWeight != 0 {
+                var window: [Double] = []
+                for s in (e - 150)..<(e + 30 + 150) { if let vs = rrBy[s] { window.append(contentsOf: vs) } }
+                if window.count >= hrvMinBeats {
+                    let clean = HRVAnalyzer.cleanRRGapAware(window)
+                    if clean.nn.count >= hrvMinBeats, cfg.rmssdWeight != 0,
+                       let r = HRVAnalyzer.rmssdGapAware(clean.nn, clean.contiguous), r > 0 {
+                        lnRmssd = log(r)
+                    }
+                    if cfg.lfhfWeight != 0, let bands = HRVFreqDomain.freqDomain(rawRR: window),
+                       let ratio = bands.lfhf, ratio > 0 {
+                        lnLfHf = log(ratio)
+                    }
+                }
+            }
+
             raws.append(Raw(start: e, hr: hrMean, hrVar: hrVar, hrFlat11: hrFlat11,
                             jerks: jerks, gapSec: max(1, gseq.count - 1), jerkMax: jerkMax,
                             respReg: respReg, clock: Double(e + 15 - start) / span,
-                            minutes: Double(e + 15 - start) / 60.0))
+                            minutes: Double(e + 15 - start) / 60.0,
+                            gravKnown: gseq.count >= 2, lnRmssd: lnRmssd, lnLfHf: lnLfHf))
             e += 30
         }
 
@@ -313,7 +366,8 @@ public enum V2Recipe {
             feats.append(Epoch(
                 start: r.start, hr: r.hr, hrVar: r.hrVar, hrFlat11: r.hrFlat11,
                 moveFrac: Double(moves) / Double(r.gapSec), jerkMax: r.jerkMax, respReg: r.respReg,
-                clock: r.clock, jerkScale: jerkScale, minutesSinceOnset: r.minutes))
+                clock: r.clock, jerkScale: jerkScale, minutesSinceOnset: r.minutes,
+                gravKnown: r.gravKnown, lnRmssd: r.lnRmssd, lnLfHf: r.lnLfHf))
         }
         return feats
     }
@@ -427,8 +481,12 @@ public enum V2Recipe {
         }
         let zhr = zfun(feats.map { $0.hr })
         let zhv = zfun(feats.map { $0.hrVar })
-        let zmv = zfun(feats.map { Optional($0.moveFrac) })
+        // C1: an epoch with no computable jerk is left out of the night's motion statistics.
+        func motion(_ f: Epoch) -> Double? { cfg.missingGravityIsNeutral && !f.gravKnown ? nil : f.moveFrac }
+        let zmv = zfun(feats.map { motion($0) })
         let zrg = zfun(feats.map { $0.respReg })
+        let zrm = zfun(feats.map { $0.lnRmssd })
+        let zlh = zfun(feats.map { $0.lnLfHf })
 
         let fsorted = feats.compactMap { $0.hrFlat11 }.sorted()
         func fpct(_ v: Double?) -> Double {
@@ -441,7 +499,7 @@ public enum V2Recipe {
         var seq: [[String: Double]] = []
         seq.reserveCapacity(feats.count)
         for f in feats {
-            let zhrv = zhr(f.hr), zhvv = zhv(f.hrVar), zmvv = zmv(f.moveFrac)
+            let zhrv = zhr(f.hr), zhvv = zhv(f.hrVar), zmvv = zmv(motion(f))
             let gate = cfg.deepGateSlope * max(0.0, fpct(f.hrFlat11) - cfg.deepGateThresh)
             let awakeCardiac0 = cfg.awakeZhv * dz(zhvv, cfg.awakeDeadzone)
                 + cfg.awakeZhr * dz(zhrv, cfg.awakeDeadzone)
@@ -467,6 +525,12 @@ public enum V2Recipe {
             for s in stageNames { em[s]! += pr[s]! }
             if f.jerkMax > f.jerkScale * cfg.jerkFloorGateMult { em["awake"]! += cfg.motionGateBoost }
             if let rg = f.respReg { let z = zrg(rg); em["deep"]! += cfg.respWeight * z; em["rem"]! -= cfg.respWeight * z }
+            if cfg.rmssdWeight != 0, let v = f.lnRmssd {
+                let z = zrm(v); em["deep"]! += cfg.rmssdWeight * z; em["rem"]! -= cfg.rmssdWeight * z
+            }
+            if cfg.lfhfWeight != 0, let v = f.lnLfHf {
+                let z = zlh(v); em["deep"]! -= cfg.lfhfWeight * z; em["rem"]! += cfg.lfhfWeight * z
+            }
             seq.append(em)
         }
 
