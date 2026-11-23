@@ -20,9 +20,15 @@ let package = Package(
         // A bench that fed an Oura ring's per-window RATE rows to the stager as if they were a WHOOP's
         // raw ADC waveform would report numbers the app can never produce.
         .package(path: "../../Packages/WhoopStore"),
+        // The recipe port and its candidate variants (sections H-K). The same `V2Recipe` that `sleeppsg`'s
+        // PortValidation holds label-for-label equal to the shipped stager, imported rather than copied.
+        .package(path: "../SleepPSG"),
     ],
     targets: [
-        .executableTarget(name: "sleepbench", dependencies: ["StrandAnalytics", "WhoopProtocol", "WhoopStore"]),
+        .executableTarget(name: "sleepbench", dependencies: [
+            "StrandAnalytics", "WhoopProtocol", "WhoopStore",
+            .product(name: "SleepRecipe", package: "SleepPSG"),
+        ]),
         // The scoring primitives are pure functions over label arrays, so they are unit-testable without a
         // database. `swift test` here needs no health data and no `--db` argument.
         .testTarget(name: "sleepbenchTests", dependencies: ["sleepbench"]),
