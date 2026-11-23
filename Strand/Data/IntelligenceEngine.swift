@@ -784,8 +784,10 @@ final class IntelligenceEngine: ObservableObject {
         runningPassStart = DispatchTime.now().uptimeNanoseconds
         runningPassDays = maxDays
         var forkCPU: Int? = ForkEnergyCounters.cpuNowMillis() // fork-perf: TEMP
+        var forkTrigger: String? // fork-perf: TEMP
         defer {
             if let forkCPU { ForkEnergyCounters.shared.noteCPU(.cpuRescoreMs, since: forkCPU) } // fork-perf: TEMP
+            if let forkCPU, let forkTrigger { ForkEnergyCounters.shared.noteRescore(trigger: forkTrigger, cpuSince: forkCPU) } // fork-perf: TEMP
             computing = false
             runningPassStart = nil
             if pendingForcedRescore {
@@ -868,6 +870,7 @@ final class IntelligenceEngine: ObservableObject {
         // pass, and labelling it post-offload would put the investigation on the wrong caller for
         // the second time in this area.
         let trigger = triggerLabel ?? (!force ? "idle" : (skipIfUnchanged ? "post-offload" : "forced"))
+        forkTrigger = trigger // fork-perf: TEMP
         let hadNew = wmKey.isEmpty || storedWatermark != wmKey
         diagnosticSink?("re-score: trigger=\(trigger) "
                         + "newData=\(hadNew ? "yes" : "no (nothing changed since last run)")", nil)
@@ -1874,6 +1877,8 @@ final class IntelligenceEngine: ObservableObject {
                 let parts = dayCacheMissBy.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }
                 missBy = " missBy=" + parts.joined(separator: ",")
             }
+            ForkEnergyCounters.shared.note(.rescoreDaysCached, by: dayCacheReused) // fork-perf: TEMP
+            ForkEnergyCounters.shared.note(.rescoreDaysScored, by: max(0, out.count - dayCacheReused)) // fork-perf: TEMP
             skippedDayLines.append("analyzeRecent dayCache reused=\(dayCacheReused)/"
                                    + "\(dayCacheReused + dayCacheCacheable) "
                                    + "size=\(dayScanCacheLocal.count) days=\(maxDays)\(missBy)")

@@ -274,6 +274,7 @@ final class AppModel: ObservableObject {
         // @Published setter lands, so read the CURRENT values , they're already committed by the time the
         // next reconcile reads `strainProfile`). Display-only; the score itself is unchanged.
         self.repo.strainProfile = Repository.StrainProfile(hrMax: Double(profile.hrMax), sex: profile.sex)
+        live.objectWillChange.sink { ForkEnergyCounters.shared.note(.liveWillChange) }.store(in: &hrCancellables) // fork-perf: TEMP
         profile.objectWillChange.sink { [weak self] in
             guard let self else { return }
             DispatchQueue.main.async {
@@ -735,6 +736,7 @@ final class AppModel: ObservableObject {
         #if os(iOS)
         // The deferred pass is the one that finally produces today's score, and it runs with no UI
         // attached — so publish the snapshot here too, for the same reason the post-offload path does.
+        ForkEnergyCounters.shared.note(.widgetPublishResume) // fork-perf: TEMP
         await WidgetSnapshot.publish(from: self)
         // Apple Health too. The post-offload write-back ran BEFORE this pass (the offload deferred its
         // re-score here), so it published the store as it stood then: last night's sleep and vitals were
@@ -784,6 +786,7 @@ final class AppModel: ObservableObject {
         // fork-perf: an offload that banked nothing new publishes only if the alarm list, the next alarm or a low strap
         // battery changed (`OffloadWidgetPublishGate`); everything else still publishes as before.
         if shouldPublishWidgetAfterOffload(newDataBanked: bankedNewData) {
+            ForkEnergyCounters.shared.note(.widgetPublishPostOffload) // fork-perf: TEMP
             await WidgetSnapshot.publish(from: self)
         }
         // #1021: same reasoning as the widget publish above, for Apple Health. The only automatic
@@ -813,6 +816,7 @@ final class AppModel: ObservableObject {
             if heartRate == nil && rr.isEmpty { resetSmoothing() }
             return
         }
+        ForkEnergyCounters.shared.note(.hrSamples) // fork-perf: TEMP
         let now = Date()
         hrWindow.append((now, inst))
         hrWindow.removeAll { now.timeIntervalSince($0.t) > 10 }   // ~10s window
@@ -822,7 +826,7 @@ final class AppModel: ObservableObject {
         // heartRate AND rr update (~1–3 Hz), but the median is stable across most of them , an
         // unconditional assign re-renders every bpm observer (Live, menu bar, widgets) for nothing.
         let smoothed = vals.isEmpty ? nil : Int(vals[vals.count / 2].rounded())
-        if bpm != smoothed { bpm = smoothed }
+        if bpm != smoothed { bpm = smoothed; ForkEnergyCounters.shared.note(.bpmPublished) } // fork-perf: TEMP
         captureWorkoutSample()
         evaluateStress()
     }

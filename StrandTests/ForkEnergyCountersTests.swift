@@ -140,4 +140,58 @@ final class ForkEnergyCountersTests: XCTestCase {
         XCTAssertNotNil(hour?["nightCardTask"])
         XCTAssertTrue(ForkEnergyCounters.Counter.allCases.contains(.cpuProcessMs))
     }
+
+    // MARK: Per-source counters (round 3)
+
+    func testRescoreTriggersMapToTheirOwnCounters() {
+        typealias C = ForkEnergyCounters
+        XCTAssertEqual(C.rescoreCounters(trigger: "idle").runs, .rescoreIdle)
+        XCTAssertEqual(C.rescoreCounters(trigger: "post-offload").ms, .rescorePostOffloadMs)
+        XCTAssertEqual(C.rescoreCounters(trigger: "resume-gated").runs, .rescoreResume)
+        XCTAssertEqual(C.rescoreCounters(trigger: "resume-forced").ms, .rescoreResumeMs)
+        XCTAssertEqual(C.rescoreCounters(trigger: "forced").runs, .rescoreForced)
+        XCTAssertEqual(C.rescoreCounters(trigger: "sleep-wear-history-repair").runs, .rescoreForced)
+    }
+
+    func testBLEFrameCountsAllAndDataFrames() {
+        let c = ForkEnergyCounters.shared
+        c.reset()
+        c.noteBLEFrame(isData: false)
+        c.noteBLEFrame(isData: true)
+        c.noteBLEFrame(isData: true)
+        let total = c.snapshot().values.reduce(into: [String: Int]()) { acc, hour in
+            for (k, v) in hour { acc[k, default: 0] += v }
+        }
+        XCTAssertEqual(total["bleFrames"], 3)
+        XCTAssertEqual(total["bleRawFrames"], 2)
+        c.reset()
+    }
+
+    func testLogLineCountsEveryLineAndCarriesSubMillisecondTime() {
+        let c = ForkEnergyCounters.shared
+        c.reset()
+        for _ in 0..<3 { c.noteLogLine(sinceNanos: DispatchTime.now().uptimeNanoseconds) }
+        let total = c.snapshot().values.reduce(into: [String: Int]()) { acc, hour in
+            for (k, v) in hour { acc[k, default: 0] += v }
+        }
+        XCTAssertEqual(total["logLines"], 3)
+        XCTAssertLessThan(total["logAppendMs", default: 0], 5, "instant lines must not book whole milliseconds")
+        c.reset()
+    }
+
+    func testNewCountersAppearInTheReportAndTheWorkersBucketIsRenamed() {
+        let c = ForkEnergyCounters(fileURL: nil, timeZone: utc)
+        let at = date("2026-11-21T09:00:00Z")
+        for counter in [ForkEnergyCounters.Counter.widgetReloadLive, .widgetReloadFork, .widgetReloadCoach,
+                        .widgetPublishPostOffload, .rescoreDaysCached, .hrSamples, .liveWillChange, .uiBodyBg] {
+            c.note(counter, at: at)
+        }
+        let report = c.report()
+        for name in ["widgetReloadLive", "widgetReloadFork", "widgetReloadCoach", "widgetPublishPostOffload",
+                     "rescoreDaysCached", "hrSamples", "liveWillChange", "uiBodyBg"] {
+            XCTAssertTrue(report.contains("\(name)=1"), name)
+        }
+        XCTAssertEqual(ForkEnergyCounters.bucket(threadName: "x.cooperative", isMain: false), .cpuThrWorkersMs)
+        XCTAssertNil(ForkEnergyCounters.Counter(rawValue: "cpuThrCoopMs"))
+    }
 }

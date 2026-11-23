@@ -7338,6 +7338,7 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
         // #1809: count BEFORE the per-characteristic switch below, so the tally covers every inbound
         // frame including ones no branch consumes - the epitaph must answer "did anything arrive at all".
         inboundFrames += 1
+        ForkEnergyCounters.shared.noteBLEFrame(isData: characteristic.uuid == BLEManager.dataNotifyChar) // fork-perf: TEMP
         inboundBytes += bytes.count
         if characteristic.uuid == BLEManager.cmdNotifyChar { cmdChannelFrames += 1 }
 

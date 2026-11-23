@@ -1431,6 +1431,7 @@ struct TodayView: View {
     }
 
     var body: some View {
+        let _ = ForkEnergyCounters.noteBodyEvaluated() // fork-perf: TEMP
         ScreenScaffold(title: scaffoldTitle, onRefresh: { await repo.refresh() },
                        // PERF (scroll): lazy column so the scaffold materialises Today's content on demand.
                        // Today supplies its own inner eager VStack (below), so the staggered section reveal is

@@ -10,7 +10,7 @@ final class ForkThreadAttributionTests: XCTestCase {
     func testBuckets() {
         XCTAssertEqual(C.bucket(threadName: "", isMain: true), .cpuThrMainMs)
         XCTAssertEqual(C.bucket(threadName: "", isMain: false), .cpuThrUnnamedMs)
-        XCTAssertEqual(C.bucket(threadName: "com.apple.root.user-initiated-qos.cooperative", isMain: false), .cpuThrCoopMs)
+        XCTAssertEqual(C.bucket(threadName: "com.apple.root.user-initiated-qos.cooperative", isMain: false), .cpuThrWorkersMs)
         XCTAssertEqual(C.bucket(threadName: "com.apple.root.default-qos", isMain: false), .cpuThrDispatchMs)
         XCTAssertEqual(C.bucket(threadName: "com.apple.CoreBluetooth", isMain: false), .cpuThrNamedMs)
     }

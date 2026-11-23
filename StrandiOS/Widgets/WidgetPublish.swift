@@ -41,6 +41,7 @@ extension WidgetSnapshot {
     /// the rollover yet always describes today.
     @MainActor
     static func publish(from model: AppModel) async {
+        ForkEnergyCounters.shared.note(.widgetPublishTotal) // fork-perf: TEMP
         let forkCPU = ForkEnergyCounters.cpuNowMillis() // fork-perf: TEMP
         defer { ForkEnergyCounters.shared.noteCPU(.cpuWidgetMs, since: forkCPU) } // fork-perf: TEMP
         await refreshWidgetPresence()
@@ -131,6 +132,7 @@ extension WidgetSnapshot {
     /// after a local-day rollover also takes the full path so the score anchor advances with Today.
     @MainActor
     static func publishLive(from model: AppModel) async {
+        ForkEnergyCounters.shared.note(.widgetPublishLive) // fork-perf: TEMP
         let now = Date()
         guard var snap = load(), !liveUpdateRequiresFullBuild(previous: snap, now: now) else {
             await publish(from: model)
@@ -173,11 +175,13 @@ extension WidgetSnapshot {
                                                     nextBattery: snap.batteryPct, lastReload: lastWidgetReload,
                                                     now: snap.updated) else {
                 WidgetTelemetry.noteDeclined()
+                ForkEnergyCounters.shared.note(.widgetSavedNoReload) // fork-perf: TEMP
                 return
             }
             lastWidgetReload = snap.updated
             WidgetCenter.shared.reloadAllTimelines()
             ForkEnergyCounters.shared.note(.widgetReload) // fork-perf: TEMP
+            ForkEnergyCounters.shared.note(Self.reloadCounter(previous: previous, next: snap)) // fork-perf: TEMP
             // Android skips the update entirely when no widget is placed; WidgetKit offers no
             // synchronous way to know, so the reload still goes out and is instead recorded honestly.
             // Counting it as a reload would make a widget-removed export read exactly like a
@@ -194,17 +198,34 @@ extension WidgetSnapshot {
             // and spending a reload a minute is exactly what the dedup above exists to avoid.
             snap.save(previousSeries: previous?.hrSeries ?? [])
             WidgetTelemetry.noteDeclined()
+            ForkEnergyCounters.shared.note(.widgetSavedNoReload) // fork-perf: TEMP
         } else if liveUpdateRequiresFullBuild(previous: previous, now: snap.updated) {
             // The rollover's visible values can legitimately match yesterday's. Persist the fresh day
             // stamp once without spending a redundant WidgetKit reload, so later live ticks stay fast.
             snap.save(previousSeries: previous?.hrSeries ?? [])
             WidgetTelemetry.noteDeclined()
+            ForkEnergyCounters.shared.note(.widgetSavedNoReload) // fork-perf: TEMP
         } else {
             // Nothing at all to do. Counted rather than left as a silent fall-through: an outcome that
             // records nothing is exactly how the Android counters came to report publishes that never
             // went anywhere as if they had.
             WidgetTelemetry.noteDeclined()
         }
+    }
+
+    /// fork-perf: TEMP. The counter a reload is booked to: the first of low battery, connection, score, stress, else the
+    /// live fields (heart rate and battery) alone.
+    static func reloadCounter(previous: WidgetSnapshot?, next: WidgetSnapshot) -> ForkEnergyCounters.Counter {
+        guard let previous else { return .widgetReloadScore }
+        if WidgetReloadThrottle.crossesLowBattery(previous: previous.batteryPct, next: next.batteryPct) { return .widgetReloadLowBatt }
+        if previous.bonded != next.bonded { return .widgetReloadBonded }
+        if previous.recovery != next.recovery || previous.effort != next.effort || previous.rest != next.rest
+            || previous.hrv != next.hrv || previous.restingHr != next.restingHr
+            || previous.effortDisplay != next.effortDisplay || previous.effortWhoop != next.effortWhoop {
+            return .widgetReloadScore
+        }
+        if previous.stressSeries != next.stressSeries || previous.stressDay != next.stressDay { return .widgetReloadStress }
+        return .widgetReloadLive
     }
 
     /// Ask WidgetKit whether any widget is actually installed, and remember the answer.

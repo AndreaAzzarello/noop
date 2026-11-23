@@ -430,6 +430,7 @@ struct StrandiOSApp: App {
                 // #114: capture the LAST in-app live state on the way out so the Home widget matches what
                 // the user just saw — its battery/HR/score otherwise lag to the last FOREGROUND refreshSeq
                 // bump. One reload per app-exit is low-frequency and well within WidgetKit's daily budget.
+                ForkEnergyCounters.shared.note(.widgetPublishBackground) // fork-perf: TEMP
                 Task { await WidgetSnapshot.publish(from: model) }
                 // #155: refresh the Documents/noop_sync.txt drop file the user's Siri Shortcut logs
                 // into Apple Health. Gated inside writeIfEnabled on the opt-in default (OFF) — a

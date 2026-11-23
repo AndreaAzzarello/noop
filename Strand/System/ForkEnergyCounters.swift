@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // fork-perf: TEMP — energy audit counters. Remove with `git revert` of the "perf(temp): energy counters" commit.
 
@@ -31,16 +34,33 @@ final class ForkEnergyCounters: @unchecked Sendable {
         // included, so a phase reads as an upper bound; cpuProcessMs is the sampled total, and what the phases do
         // not add up to is the rest (BLE streaming, UI, system frameworks).
         case cpuProcessMs, cpuOffloadMs, cpuRefreshMs, cpuRescoreMs, cpuWriteBackMs, cpuWidgetMs
-        // Where the process CPU went, by thread (sampled with cpuProcessMs): main thread, Swift-concurrency workers,
-        // other GCD root-queue threads, other named threads, unnamed threads, and threads that ended between two samples.
+        // Where the process CPU went, by thread (sampled with cpuProcessMs): main thread, threads whose name says
+        // "cooperative" (workers), other GCD root-queue threads, other named threads, unnamed threads, and threads that ended between two samples.
         // They add up to cpuProcessMs, so the part the phases above do not explain is read off these.
-        case cpuThrMainMs, cpuThrCoopMs, cpuThrDispatchMs, cpuThrNamedMs, cpuThrUnnamedMs, cpuThrExitedMs
+        case cpuThrMainMs, cpuThrWorkersMs, cpuThrDispatchMs, cpuThrNamedMs, cpuThrUnnamedMs, cpuThrExitedMs
         // Re-score passes that returned at a gate (nothing new since the last run); their CPU is not in cpuRescoreMs.
         case rescoreGateSkipped
         // The Night card: its load task started, its load finished, its content appeared on screen.
         case nightCardTask, nightCardLoaded, nightCardShown
         // Offload widget publishes skipped because nothing new was banked.
         case widgetPublishSkipped
+        // Widget reloads by the field that caused them (one reason per reload, first match in this order), the saves
+        // that asked for none, and the reloads that do not go through `widgetReload` (NOOP+ widget, coach brief).
+        case widgetReloadLive, widgetReloadScore, widgetReloadStress, widgetReloadBonded, widgetReloadLowBatt
+        case widgetSavedNoReload, widgetReloadFork, widgetReloadCoach
+        // Widget publishes by call site: every full publish, every live-only publish, and the three background callers.
+        case widgetPublishTotal, widgetPublishLive, widgetPublishPostOffload, widgetPublishResume, widgetPublishBackground
+        // Re-score passes that ran, by trigger, with the process CPU each took (Resume = the deferred background pass).
+        case rescoreIdle, rescoreIdleMs, rescorePostOffload, rescorePostOffloadMs
+        case rescoreForced, rescoreForcedMs, rescoreResume, rescoreResumeMs
+        // Days of those passes served from the per-day cache versus scored again.
+        case rescoreDaysCached, rescoreDaysScored
+        // Live heart rate on the main thread: samples ingested, smoothed values published, LiveState change notices.
+        case hrSamples, bpmPublished, liveWillChange
+        // SwiftUI body evaluations of the main screens while the app was not active.
+        case uiBodyBg
+        // Inbound BLE notifications (all, and those on the data characteristic), strap-log lines and their main-thread ms.
+        case bleFrames, bleRawFrames, logLines, logAppendMs
     }
 
     /// Process CPU time so far, milliseconds (user + system), 0 when the system call fails.
@@ -64,7 +84,7 @@ final class ForkEnergyCounters: @unchecked Sendable {
     static func bucket(threadName: String, isMain: Bool) -> Counter {
         if isMain { return .cpuThrMainMs }
         if threadName.isEmpty { return .cpuThrUnnamedMs }
-        if threadName.contains("cooperative") { return .cpuThrCoopMs }
+        if threadName.contains("cooperative") { return .cpuThrWorkersMs }
         if threadName.hasPrefix("com.apple.root.") { return .cpuThrDispatchMs }
         return .cpuThrNamedMs
     }
@@ -138,6 +158,50 @@ final class ForkEnergyCounters: @unchecked Sendable {
     /// Add the CPU spent since `startMillis` to a phase counter.
     func noteCPU(_ counter: Counter, since startMillis: Int, at now: Date = Date()) {
         note(counter, by: max(0, Self.cpuNowMillis() - startMillis), at: now)
+    }
+
+    /// One inbound BLE notification. `isData`: it arrived on the data characteristic (raw stream and history offload).
+    func noteBLEFrame(isData: Bool) {
+        note(.bleFrames)
+        if isData { note(.bleRawFrames) }
+    }
+
+    private var logAppendRemainderUs = 0
+
+    /// One strap-log line that started at `start` (uptime ns) and has just ended; whole milliseconds are booked, the rest carries.
+    func noteLogLine(sinceNanos start: UInt64) {
+        let micros = Int(DispatchTime.now().uptimeNanoseconds &- start) / 1000
+        note(.logLines)
+        lock.lock()
+        logAppendRemainderUs += micros
+        let whole = logAppendRemainderUs / 1000
+        logAppendRemainderUs %= 1000
+        lock.unlock()
+        if whole > 0 { note(.logAppendMs, by: whole) }
+    }
+
+    /// A body evaluation of a main screen (main thread); counted only while the app is not in the foreground.
+    /// Always 0 on macOS, where there is no background state to ask about.
+    @MainActor
+    static func noteBodyEvaluated() -> Bool {
+        #if canImport(UIKit) && !os(watchOS)
+        if UIApplication.shared.applicationState != .active { shared.note(.uiBodyBg) }
+        #endif
+        return true
+    }
+
+    /// The counters a re-score pass books, by its trigger label (`idle`, `post-offload`, `forced`, `resume-…`).
+    static func rescoreCounters(trigger: String) -> (runs: Counter, ms: Counter) {
+        if trigger == "idle" { return (.rescoreIdle, .rescoreIdleMs) }
+        if trigger == "post-offload" { return (.rescorePostOffload, .rescorePostOffloadMs) }
+        if trigger.hasPrefix("resume") { return (.rescoreResume, .rescoreResumeMs) }
+        return (.rescoreForced, .rescoreForcedMs)
+    }
+
+    func noteRescore(trigger: String, cpuSince startMillis: Int, at now: Date = Date()) {
+        let pair = Self.rescoreCounters(trigger: trigger)
+        note(pair.runs, at: now)
+        noteCPU(pair.ms, since: startMillis, at: now)
     }
 
     static let shared = ForkEnergyCounters(fileURL: ForkEnergyCounters.defaultFileURL())
