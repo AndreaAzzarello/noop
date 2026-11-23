@@ -88,8 +88,16 @@ struct Streams {
 enum RRRule { case app, allRows }
 
 extension ReadOnlyDB {
+    /// Column names of `rrInterval`: a copy taken at an older schema has neither `srcChannel` nor `tsSuspect`.
+    func rrColumns() throws -> Set<String> {
+        var names: Set<String> = []
+        try query("PRAGMA table_info(rrInterval)") { if let n = ReadOnlyDB.str($0, 1) { names.insert(n) } }
+        return names
+    }
+
     /// True when the device has any WHOOP 5 labelled beat, which is what puts it under the strict rule.
     func isWhoop5RR(device: String) throws -> Bool {
+        guard try rrColumns().contains("srcChannel") else { return false }
         var found = false
         try query("SELECT 1 FROM rrInterval WHERE deviceId = '\(device)' AND srcChannel IN (5, 7) LIMIT 1") { _ in found = true }
         return found
@@ -99,7 +107,7 @@ extension ReadOnlyDB {
     func rrQuery(device: String, from: Int, to: Int, rule: RRRule) throws -> String {
         let w = "deviceId = '\(device)' AND ts >= \(from) AND ts <= \(to)"
         let order = "ORDER BY ts ASC, ord ASC, rrMs ASC, seq ASC"
-        let notSuspect = "(tsSuspect IS NULL OR tsSuspect <> 1)"
+        let notSuspect = try rrColumns().contains("tsSuspect") ? "(tsSuspect IS NULL OR tsSuspect <> 1)" : "1"
         switch rule {
         case .allRows:
             return "SELECT ts, rrMs FROM rrInterval WHERE \(w) ORDER BY ts, ord, seq"

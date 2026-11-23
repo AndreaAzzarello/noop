@@ -92,4 +92,13 @@ final class RRRuleTests: XCTestCase {
         XCTAssertEqual(r.csv, 2)
         XCTAssertEqual(r.withRawStreams, 1)
     }
+
+    /// A copy taken before `srcChannel` / `tsSuspect` existed must still open and read every beat.
+    func testAnOlderSchemaWithoutTheNewColumnsStillReads() throws {
+        var sql = ["CREATE TABLE rrInterval (deviceId TEXT, ts INTEGER, rrMs INTEGER, ord INTEGER, seq INTEGER)"]
+        for i in 0..<4 { sql.append("INSERT INTO rrInterval VALUES ('old', \(i), 900, 0, \(i))") }
+        let db = try makeDatabase(sql)
+        XCTAssertEqual(try rows(db, device: "old", from: 0, to: 10, rule: .app).count, 4)
+        XCTAssertEqual(try rows(db, device: "old", from: 0, to: 10, rule: .allRows).count, 4)
+    }
 }
