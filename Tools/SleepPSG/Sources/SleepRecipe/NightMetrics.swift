@@ -148,6 +148,24 @@ public struct PlausibilityBands: Equatable {
         "deepFirstHalf": 0.5...1.0, "remSecondHalf": 0.5...1.0, "firstRemLatencyMin": 30...180,
         "remPeriodMin": 60...130, "transitionsPerHour": 4...40, "shortBoutShare": 0...0.6])
 
+    /// The p`low`..p`high` range of every metric over `nights` that slept, in the bands' own vocabulary. A metric
+    /// seen in fewer than `minimumNights` nights gets no range, so a band is never drawn from a handful of values.
+    public static func derive(from nights: [NightMetrics], source: String, low: Double = 0.10, high: Double = 0.90,
+                              minimumNights: Int = 5) -> PlausibilityBands {
+        func percentile(_ sorted: [Double], _ p: Double) -> Double {
+            let k = p * Double(sorted.count - 1)
+            let lo = Int(k.rounded(.down)), hi = Int(k.rounded(.up))
+            return sorted[lo] + (sorted[hi] - sorted[lo]) * (k - Double(lo))
+        }
+        var ranges: [String: ClosedRange<Double>] = [:]
+        let slept = nights.filter { $0.hasSleep }
+        for key in (slept.first?.values.keys.sorted() ?? []) {
+            let v = slept.compactMap { $0.values[key] ?? nil }.filter { $0.isFinite }.sorted()
+            if v.count >= minimumNights { ranges[key] = percentile(v, low)...percentile(v, high) }
+        }
+        return PlausibilityBands(source: source, ranges: ranges)
+    }
+
     /// `{"source": "...", "ranges": {"deepPct": [lo, hi], ...}}`
     public static func parse(json: Data) throws -> PlausibilityBands {
         struct File: Decodable { let source: String; let ranges: [String: [Double]] }

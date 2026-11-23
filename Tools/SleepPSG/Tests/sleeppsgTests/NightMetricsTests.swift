@@ -93,4 +93,19 @@ final class NightMetricsTests: XCTestCase {
         let b = try PlausibilityBands.parse(json: json)
         XCTAssertEqual(Set(b.ranges.keys), ["deepPct"])
     }
+
+    func testDerivedBandsAreThePercentilesOfTheNightsAndNeedEnoughOfThem() {
+        func night(deepMin: Int) -> NightMetrics {
+            NightMetrics.of(run("light", 60) + run("deep", Double(deepMin)) + run("light", 60) + run("rem", 30))
+        }
+        let nights = (1...11).map { night(deepMin: $0 * 5) }          // deep shares rise steadily across the nights
+        let bands = PlausibilityBands.derive(from: nights, source: "synthetic")
+        let deep = nights.map { $0.deepPct }.sorted()
+        // Eleven nights put p10 and p90 exactly on the second and the tenth value (rank 1 and rank 9).
+        XCTAssertEqual(bands.ranges["deepPct"]!.lowerBound, deep[1], accuracy: 1e-9)
+        XCTAssertEqual(bands.ranges["deepPct"]!.upperBound, deep[9], accuracy: 1e-9)
+        XCTAssertTrue(PlausibilityBands.derive(from: Array(nights.prefix(4)), source: "few").ranges.isEmpty,
+                      "fewer than five nights draw no band")
+        XCTAssertTrue(PlausibilityBands.derive(from: [], source: "none").ranges.isEmpty)
+    }
 }

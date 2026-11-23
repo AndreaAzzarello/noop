@@ -14,6 +14,7 @@ struct Args {
     var dataset: String?
     var section = "all"
     var csv: String?
+    var bandsOut: String?
     var subjects: Int?
     var seed: UInt64 = PortValidation.defaultSeed
 }
@@ -24,16 +25,19 @@ while let k = it.next() {
     case "--dataset": a.dataset = it.next()
     case "--section": a.section = it.next() ?? a.section
     case "--csv": a.csv = it.next()
+    case "--bands-out": a.bandsOut = it.next()
     case "--subjects": a.subjects = Int(it.next() ?? "")
     case "--seed": a.seed = UInt64(it.next() ?? "") ?? a.seed
     case "-h", "--help":
         print("""
-        usage: sleeppsg --dataset <sleep-accel root> [--section all|port|baseline|strata|rem|variants|priors]
-                        [--subjects N] [--csv <path>] [--seed <n>]
+        usage: sleeppsg --dataset <sleep-accel root> [--section all|port|baseline|strata|rem|variants|candidates|priors]
+                        [--subjects N] [--csv <path>] [--seed <n>] [--bands-out <path>]
 
           --dataset   PhysioNet sleep-accel v1.0.0, extracted. See README.md for the download step and the
                       attribution its licence requires. Never committed; read-only here.
-          --section   which report to print. `port` needs no dataset.
+          --section   which report to print. `port` needs no dataset. `candidates` is section 6's table for the
+                      proposals under evaluation (C1, C3, C5) instead of the provenance variants.
+          --bands-out write the p10..p90 plausibility bands of the PSG hypnograms (for `sleepbench --bands`)
           --subjects  score only the first N subject ids (a fast smoke run; full cohort is the default).
         """)
         exit(0)
@@ -430,7 +434,7 @@ if want("rem") {
 // Variants
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-if want("variants") {
+if want("variants") || a.section == "candidates" {
     print("""
 
     ================================================================================
@@ -448,10 +452,12 @@ if want("variants") {
     // the strap's band state (16.0 % → 17.6 %). Printing it here is what makes that claim checkable against
     // truth rather than merely restated.
     print("    variant                          kappa     Δκ   REM F1  wakeSens   wake%  bias   deep%  bias    REM%  bias   latMAE")
-    for v in Variants.all {
+    var variantRows: [(name: String, rows: [Scored])] = []
+    for v in (a.section == "candidates" ? Variants.candidates : Variants.all) {
         let rows = v.name.hasPrefix("incumbent")
             ? shipped
             : subjects.map { score($0, using: stageVariant(v.config)) }
+        variantRows.append((v.name, rows))
         let s = summarise(rows)
         let p = pooledPct(rows) { $0.pred }, t = pooledPct(rows) { $0.truth }
         let latMae = mae(zip(s.latencyPairsPred, s.latencyPairsTruth).map { $0 - $1 })
@@ -466,6 +472,24 @@ if want("variants") {
         }
         row += ["\(median(s.latencyPred))", "\(latMae)"]
         csvLines.append(row.joined(separator: ","))
+    }
+    // Plausibility against bands drawn from the PSG hypnograms themselves. The truth row is inside its own
+    // bands about 80 % of the time by construction (p10..p90), which is the yardstick for the other rows.
+    let truthMetrics = shipped.map { NightMetrics.of($0.truth) }
+    let psgBands = PlausibilityBands.derive(from: truthMetrics, source: "PSG p10..p90 over \(truthMetrics.filter { $0.hasSleep }.count) subjects (sleep-accel)")
+    print("\n    PLAUSIBILITY against \(psgBands.source) — shape, not accuracy")
+    print("    row                              inside bands  transitions/h  short-bout share  REM period min")
+    func plausibilityRow(_ name: String, _ labels: [[String]]) {
+        let ms = labels.map { NightMetrics.of($0) }.filter { $0.hasSleep }
+        let inside = ms.map { psgBands.score($0) }.reduce((0, 0)) { ($0.0 + $1.inside, $0.1 + $1.judged) }
+        let spacing = ms.compactMap { $0.remPeriodMin }
+        print("    \(name.padding(toLength: 32, withPad: " ", startingAt: 0)) \(f(Double(inside.0) / Double(max(1, inside.1)) * 100, 9, 1))%  \(f(median(ms.map { $0.transitionsPerHour }), 12, 1)) \(f(median(ms.map { $0.shortBoutShare }) * 100, 15, 0))% \(f(median(spacing), 14, 0))")
+    }
+    plausibilityRow("PSG truth", shipped.map { $0.truth })
+    for vr in variantRows { plausibilityRow(vr.name, vr.rows.map { $0.pred }) }
+    if let path = a.bandsOut {
+        try? psgBands.encoded().write(to: URL(fileURLWithPath: path))
+        print("    PSG plausibility bands written to \(path)")
     }
     print("""
 
