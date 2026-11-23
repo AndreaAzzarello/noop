@@ -74,7 +74,48 @@ struct Streams {
     var band: [(ts: Int, state: Int)] = []
 }
 
+/// Which R-R rows a replay reads.
+///
+/// `.app` mirrors what the app's stagers are actually handed: `WhoopStore.rrIntervals` (Reads.swift,
+/// Whoop5RRReadPolicy.swift) reads ONE transport per requested window for a WHOOP 5 — the lowest of
+/// channels 5 (v18 history) and 7 (standard BLE heart rate) present, never both — and skips beats flagged
+/// `tsSuspect` (future-stamped, or the strap's 500 ms fill). The two channels carry the same beats, so
+/// reading both feeds the stager every beat twice, which no scored night in the app ever sees.
+/// `.allRows` is the previous behaviour, kept only so the size of that difference can be measured.
+///
+/// Mirrored: the WHOOP 5 rule. Not mirrored: the WHOOP 4 per-hour source choice and the Oura per-hour
+/// choice, which this bench never replayed; a device with no channel 5/7 rows keeps every non-suspect row.
+enum RRRule { case app, allRows }
+
 extension ReadOnlyDB {
+    /// True when the device has any WHOOP 5 labelled beat, which is what puts it under the strict rule.
+    func isWhoop5RR(device: String) throws -> Bool {
+        var found = false
+        try query("SELECT 1 FROM rrInterval WHERE deviceId = '\(device)' AND srcChannel IN (5, 7) LIMIT 1") { _ in found = true }
+        return found
+    }
+
+    /// The `SELECT` that returns `device`'s R-R over `[from, to]` under `rule`, in the app's read order.
+    func rrQuery(device: String, from: Int, to: Int, rule: RRRule) throws -> String {
+        let w = "deviceId = '\(device)' AND ts >= \(from) AND ts <= \(to)"
+        let order = "ORDER BY ts ASC, ord ASC, rrMs ASC, seq ASC"
+        let notSuspect = "(tsSuspect IS NULL OR tsSuspect <> 1)"
+        switch rule {
+        case .allRows:
+            return "SELECT ts, rrMs FROM rrInterval WHERE \(w) ORDER BY ts, ord, seq"
+        case .app:
+            if try isWhoop5RR(device: device) {
+                return """
+                SELECT ts, rrMs FROM rrInterval WHERE \(w) AND \(notSuspect)
+                AND srcChannel = (SELECT MIN(srcChannel) FROM rrInterval
+                                  WHERE \(w) AND srcChannel IN (5, 7) AND \(notSuspect))
+                \(order)
+                """
+            }
+            return "SELECT ts, rrMs FROM rrInterval WHERE \(w) AND \(notSuspect) \(order)"
+        }
+    }
+
     func sessions(device: String) throws -> [SessionRow] {
         var out: [SessionRow] = []
         let sql = """
@@ -104,14 +145,14 @@ extension ReadOnlyDB {
 
     /// Every stream the stagers read, over `[from, to]`. The stagers themselves clip to the window they
     /// need, but detection wants a wider span than the session, hence the caller-chosen padding.
-    func streams(device: String, from: Int, to: Int) throws -> Streams {
+    func streams(device: String, from: Int, to: Int, rrRule: RRRule = .app) throws -> Streams {
         var st = Streams()
         let w = "deviceId = '\(device)' AND ts >= \(from) AND ts <= \(to)"
         try query("SELECT ts, bpm FROM hrSample WHERE \(w) ORDER BY ts") { s in
             st.hr.append(HRSample(ts: ReadOnlyDB.int(s, 0), bpm: ReadOnlyDB.int(s, 1)))
         }
         // `ord` then `seq` preserves the within-second beat order the store guarantees.
-        try query("SELECT ts, rrMs FROM rrInterval WHERE \(w) ORDER BY ts, ord, seq") { s in
+        try query(try rrQuery(device: device, from: from, to: to, rule: rrRule)) { s in
             st.rr.append(RRInterval(ts: ReadOnlyDB.int(s, 0), rrMs: ReadOnlyDB.int(s, 1)))
         }
         try query("SELECT ts, x, y, z, dynAccel FROM gravitySample WHERE \(w) ORDER BY ts") { s in

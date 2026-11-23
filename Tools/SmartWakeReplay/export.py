@@ -22,6 +22,26 @@ import sqlite3
 import sys
 
 
+def rr_scope(rows, device, lo, hi):
+    """SQL fragment + params selecting the R-R the app reads for [lo, hi], as `WhoopStore.rrIntervals` does.
+
+    A WHOOP 5 stores each beat on two transports, 5 (v18 history) and 7 (standard BLE heart rate); the app
+    reads ONE per window (the lowest present) and skips `tsSuspect` beats. Exporting every row would hand the
+    live detector each beat twice, which `addBeats` turns into a tachogram running at twice the speed.
+    Same rule as Tools/SleepBench `ReadOnlyDB.rrQuery`.
+    """
+    cols = {r[1] for r in rows("PRAGMA table_info(rrInterval)")}
+    suspect = " AND (tsSuspect IS NULL OR tsSuspect <> 1)" if "tsSuspect" in cols else ""
+    if "srcChannel" not in cols or not rows(
+            "SELECT 1 FROM rrInterval WHERE deviceId = ? AND srcChannel IN (5, 7) LIMIT 1", (device,)):
+        return suspect, ()
+    chosen = rows("SELECT MIN(srcChannel) FROM rrInterval WHERE deviceId = ? AND ts >= ? AND ts <= ? "
+                  "AND srcChannel IN (5, 7)" + suspect, (device, lo, hi))[0][0]
+    if chosen is None:
+        return " AND 0", ()
+    return suspect + " AND srcChannel = ?", (chosen,)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("db", help="a COPY of the NOOP database (opened read-only)")
@@ -61,8 +81,9 @@ def main() -> int:
                   (stream, lo, hi))
         if len(hr) < 3600:
             continue
-        rr = rows("SELECT ts, rrMs FROM rrInterval WHERE deviceId = ? AND ts >= ? AND ts <= ? ORDER BY ts, ord, seq",
-                  (stream, lo, hi))
+        rr_extra, rr_params = rr_scope(rows, stream, lo, hi)
+        rr = rows("SELECT ts, rrMs FROM rrInterval WHERE deviceId = ? AND ts >= ? AND ts <= ?" + rr_extra
+                  + " ORDER BY ts, ord, rrMs, seq", (stream, lo, hi, *rr_params))
         band = rows("SELECT ts, state FROM sleepStateSample WHERE deviceId = ? AND ts >= ? AND ts <= ? ORDER BY ts",
                     (stream, lo, hi))
         try:

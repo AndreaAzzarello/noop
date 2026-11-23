@@ -13,6 +13,8 @@ What it prints: counts, percentages of 30 s epochs, and medians / p10 / p90 acro
 prints: a timestamp, a date (the raw-data span is given as a month), or any sample value. It opens the file
 with `mode=ro&immutable=1`, so it cannot write, and the database stays outside the repository.
 
+R-R is read the way the app reads it (one transport per window, no `tsSuspect` beats); see `rr_scope`.
+
 Epoch bookkeeping mirrors `SleepStagerV2.features`: 30 s epochs on the wall-clock grid, an epoch is SKIPPED
 when it holds neither a heart-rate nor a gravity second, and an epoch with fewer than two gravity seconds has
 no computable jerk (the stager then reads it as perfectly still).
@@ -41,11 +43,35 @@ def open_ro(path):
     return sqlite3.connect(uri, uri=True)
 
 
-def per_epoch(con, table, device, lo, hi):
+def per_epoch(con, table, device, lo, hi, extra="", extra_params=()):
     """{epoch index: row count} for rows of `table` in [lo, hi). `table` is one of a fixed internal set."""
     return dict(con.execute(
-        f"SELECT ts/{EPOCH_S}, COUNT(*) FROM {table} WHERE deviceId = ? AND ts >= ? AND ts < ? GROUP BY 1",
-        (device, lo, hi)))
+        f"SELECT ts/{EPOCH_S}, COUNT(*) FROM {table} WHERE deviceId = ? AND ts >= ? AND ts < ? {extra} GROUP BY 1",
+        (device, lo, hi, *extra_params)))
+
+
+def rr_scope(con, device, lo, hi):
+    """(SQL fragment, params) selecting the R-R rows the app's stagers are handed for the window [lo, hi).
+
+    Mirrors `WhoopStore.rrIntervals` for a WHOOP 5: ONE transport per window, the lowest of channel 5 (v18
+    history) and 7 (standard BLE heart rate) that is present, and never a beat flagged `tsSuspect`. The two
+    channels carry the same beats, so reading the table unfiltered counts every beat twice. A database
+    without those columns, or a device without channel 5/7 rows, gets the plain non-suspect read.
+    """
+    cols = {r[1] for r in con.execute("PRAGMA table_info(rrInterval)")}
+    suspect = " AND (tsSuspect IS NULL OR tsSuspect <> 1)" if "tsSuspect" in cols else ""
+    if "srcChannel" not in cols:
+        return suspect, ()
+    labelled = con.execute("SELECT 1 FROM rrInterval WHERE deviceId = ? AND srcChannel IN (5, 7) LIMIT 1",
+                           (device,)).fetchone()
+    if not labelled:
+        return suspect, ()
+    chosen = con.execute(
+        "SELECT MIN(srcChannel) FROM rrInterval WHERE deviceId = ? AND ts >= ? AND ts < ? "
+        f"AND srcChannel IN (5, 7){suspect}", (device, lo, hi)).fetchone()[0]
+    if chosen is None:
+        return " AND 0", ()
+    return f"{suspect} AND srcChannel = ?", (chosen,)
 
 
 def longest_run_min(flags):
@@ -73,15 +99,16 @@ def coverage(con, stream, start, end):
         return None
     lo, hi = k0 * EPOCH_S, end
     hr = per_epoch(con, "hrSample", stream, lo, hi)
-    rr = per_epoch(con, "rrInterval", stream, lo, hi)
+    rr_extra, rr_params = rr_scope(con, stream, lo, hi)
+    rr = per_epoch(con, "rrInterval", stream, lo, hi, rr_extra, rr_params)
     grav = per_epoch(con, "gravitySample", stream, lo, hi)
     band = per_epoch(con, "sleepStateSample", stream, lo, hi)
     ks = range(k0, k1 + 1)
 
     rr_out, rr_total = con.execute(
         "SELECT COALESCE(SUM(CASE WHEN rrMs < ? OR rrMs > ? THEN 1 ELSE 0 END), 0), COUNT(*) "
-        "FROM rrInterval WHERE deviceId = ? AND ts >= ? AND ts < ?",
-        (RR_CLAMP_LO, RR_CLAMP_HI, stream, lo, hi)).fetchone()
+        f"FROM rrInterval WHERE deviceId = ? AND ts >= ? AND ts < ?{rr_extra}",
+        (RR_CLAMP_LO, RR_CLAMP_HI, stream, lo, hi, *rr_params)).fetchone()
     resp_rows = con.execute(
         "SELECT COUNT(*) FROM respSample WHERE deviceId = ? AND ts >= ? AND ts < ?",
         (stream, lo, hi)).fetchone()[0]
