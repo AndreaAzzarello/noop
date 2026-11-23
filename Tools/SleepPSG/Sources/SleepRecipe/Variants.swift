@@ -202,15 +202,43 @@ public enum Variants {
                        note: "C3a plus LF/HF at weight 0.3 (a priori)", config: c)
     }
 
+    /// C5a — median / MAD instead of mean / sd for the continuous features. See `robustNormalisation`.
+    public static var c5aRobustNormalisation: Variant {
+        var c = RecipeConfig.shipped
+        c.robustNormalisation = true
+        return Variant(name: "C5a robust z (median/MAD)",
+                       note: "continuous features centred and scaled by median and 1.4826 x MAD", config: c)
+    }
+
+    /// C5b — statistics taken over the decoded sleep period only. See `onsetAnchoredStatistics`.
+    public static var c5bOnsetAnchoredStats: Variant {
+        var c = RecipeConfig.shipped
+        c.onsetAnchoredStatistics = true
+        return Variant(name: "C5b stats over sleep period",
+                       note: "z-score means/spreads and flatness percentile over onset..last sleep epoch, decoded again", config: c)
+    }
+
+    /// C5c — C5b plus the cycle prior's clock read inside the sleep period. Two changes, deliberately cumulative:
+    /// the clock only makes sense once the period is known, so it cannot be tried without C5b's anchoring.
+    public static var c5cAnchoredClock: Variant {
+        var c = RecipeConfig.shipped
+        c.onsetAnchoredStatistics = true
+        c.onsetAnchoredClock = true
+        return Variant(name: "C5c C5b + clock in period",
+                       note: "C5b, and the deep-early/REM-late prior follows the position inside the sleep period", config: c)
+    }
+
     /// The candidates, in the order the A/B table prints them (the incumbent comes first, as the baseline).
     public static var candidates: [Variant] {
-        [incumbent, c1MissingGravityNeutral, c3aRmssd, c3bRmssdLfHf]
+        [incumbent, c1MissingGravityNeutral, c3aRmssd, c3bRmssdLfHf,
+         c5aRobustNormalisation, c5bOnsetAnchoredStats, c5cAnchoredClock]
     }
 
     /// Short keys the command line uses for `--variant`.
     public static let keys: [String: () -> Variant] = [
         "incumbent": { incumbent }, "C1": { c1MissingGravityNeutral },
         "C3a": { c3aRmssd }, "C3b": { c3bRmssdLfHf },
+        "C5a": { c5aRobustNormalisation }, "C5b": { c5bOnsetAnchoredStats }, "C5c": { c5cAnchoredClock },
     ]
 
     public static func named(_ key: String) -> Variant? { keys[key]?() }

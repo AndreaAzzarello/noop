@@ -125,6 +125,73 @@ final class CandidateTests: XCTestCase {
     }
 }
 
+// MARK: - C5 window dependence
+
+extension CandidateTests {
+
+    /// A sleep period of 4 h flanked by 25 min of clear wake on each side (high heart rate, movement bursts).
+    private var flankedNight: (grav: [GravitySample], hr: [HRSample], lead: Int, sleep: Int) {
+        var g = SplitMix64(seed: 99)
+        let lead = 25 * 60, sleep = 4 * 3600
+        var hr: [HRSample] = [], grav: [GravitySample] = []
+        for s in 0..<(lead + sleep + lead) {
+            let asleep = s >= lead && s < lead + sleep
+            let bpm = asleep ? 52 + 5 * sin(Double(s - lead) / 5400 * 2 * .pi) + g.double(-1.5, 1.5)
+                             : 72 + g.double(-6, 6)
+            hr.append(HRSample(ts: s, bpm: Int(bpm.rounded())))
+            let burst = !asleep && s % 20 < 4
+            grav.append(GravitySample(ts: s, x: burst ? g.double(-0.5, 0.5) : 0.001 * g.double(-1, 1),
+                                      y: burst ? g.double(-0.5, 0.5) : 0.001 * g.double(-1, 1), z: 1))
+        }
+        return (grav, hr, lead, sleep)
+    }
+
+    /// Share of the sleep period's epochs that keep their label when the window is widened to include the wake
+    /// on both sides. This is INVARIANCE, not accuracy: the same property would hold for a recipe that labelled
+    /// everything light.
+    private func interiorAgreement(_ cfg: RecipeConfig) -> Double {
+        let n = flankedNight
+        func run(_ a: Int, _ b: Int) -> [String] {
+            V2Recipe.stageEpochsDetailed(start: a, end: b,
+                grav: n.grav.filter { $0.ts >= a - 400 && $0.ts < b + 400 },
+                hr: n.hr.filter { $0.ts >= a - 400 && $0.ts < b + 400 }, rr: [], resp: [], cfg: cfg).labels
+        }
+        let narrow = run(n.lead, n.lead + n.sleep), wide = run(0, n.lead * 2 + n.sleep)
+        let interior = Array(wide[(n.lead / 30)..<(n.lead / 30 + narrow.count)])
+        return Double(zip(narrow, interior).filter { $0 == $1 }.count) / Double(narrow.count)
+    }
+
+    /// Each C5 step takes one more window-dependent thing out of the labels, in order: robust centre and spread,
+    /// then statistics over the sleep period only, then the cycle prior's clock inside the period. On a night with
+    /// clear wake either side, the share of interior epochs that keep their label rises at every step, and with
+    /// both anchors the interior is untouched.
+    func testC5StepsRaiseWindowInvarianceInOrder() {
+        let shipped = interiorAgreement(.shipped)
+        let a = interiorAgreement(Variants.c5aRobustNormalisation.config)
+        let b = interiorAgreement(Variants.c5bOnsetAnchoredStats.config)
+        let c = interiorAgreement(Variants.c5cAnchoredClock.config)
+        XCTAssertLessThan(shipped, 0.9, "the shipped recipe must actually be window-dependent here, or the test shows nothing")
+        XCTAssertLessThan(shipped, a); XCTAssertLessThan(a, b); XCTAssertLessThan(b, c)
+        XCTAssertEqual(c, 1.0, accuracy: 1e-12)
+    }
+
+    /// Without a decodable sleep period there is nothing to anchor on, so the anchored variants must fall back
+    /// to the shipped labels rather than guess.
+    func testAnchoredVariantsFallBackToShippedWhenThereIsNoSleepPeriod() {
+        let n = PortValidation.degenerateNights().first { $0.name != "degenerate-no-coverage" }!
+        let base = labels(n, .shipped)
+        for v in [Variants.c5bOnsetAnchoredStats, Variants.c5cAnchoredClock] {
+            XCTAssertEqual(labels(n, v.config).count, base.count, v.name)
+        }
+        let awake = (0..<600).map { HRSample(ts: $0, bpm: 90) }
+        let moving = (0..<600).map { GravitySample(ts: $0, x: Double($0 % 7) * 0.2, y: 0, z: 1) }
+        let shippedLabels = V2Recipe.stageEpochsDetailed(start: 0, end: 600, grav: moving, hr: awake, rr: [], resp: [], cfg: .shipped).labels
+        let anchored = V2Recipe.stageEpochsDetailed(start: 0, end: 600, grav: moving, hr: awake, rr: [], resp: [],
+                                                    cfg: Variants.c5cAnchoredClock.config).labels
+        XCTAssertEqual(shippedLabels, anchored)
+    }
+}
+
 /// Synthetic streams, shared by the candidate tests.
 enum Synth {
     static func hr(_ from: Int, _ to: Int, bpm: Int) -> [HRSample] {

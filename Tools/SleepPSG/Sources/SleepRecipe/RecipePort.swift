@@ -107,6 +107,31 @@ public struct RecipeConfig: Equatable {
     /// sympathetic-leaning balance in REM, parasympathetic in N3). 0 = off (shipped).
     public var lfhfWeight: Double = 0
 
+    // MARK: Window-dependence candidates (C5). Neutral in `.shipped`, like the switches above.
+    //
+    // WHY: every normalisation in the shipped recipe is taken over the staged window — z-score means and spreads,
+    // the flatness percentile behind the deep gate, and the session fraction behind the cycle prior. So the same
+    // epoch can take a different label when the window moves by a few minutes (on one wearer's nights, extending
+    // the window by 15 / 30 min relabelled roughly 9 / 11 % of the interior epochs). These switches change WHAT the
+    // statistics are taken over. Invariance is a necessary property, not accuracy: a recipe can be perfectly
+    // window-invariant and wrong.
+
+    /// C5a. Centre and spread of the continuous features (heart rate, its spread, respiration regularity, the
+    /// R-R terms) are the median and 1.4826 x MAD instead of the mean and standard deviation, so the minutes at
+    /// the edges of a window (wake, getting up) carry less weight in them. Motion stays classical: it is zero for
+    /// most epochs, its MAD is zero, and a median centre would shift every motion z-score rather than steady it.
+    public var robustNormalisation: Bool = false
+
+    /// C5b. After the first decode finds the sleep period (sustained onset to the last non-wake epoch), the
+    /// z-score statistics and the flatness percentile are recomputed over THAT period only and the night is
+    /// decoded again, so the minutes before sleep and after waking no longer enter them. The window's edges stop
+    /// mattering as long as the sleep period inside it does not move.
+    public var onsetAnchoredStatistics: Bool = false
+
+    /// C5c. The cycle prior (deep early, REM late) reads the position inside the SLEEP PERIOD rather than inside
+    /// the window, so a longer window no longer slides the whole prior. Only meaningful with C5b's period.
+    public var onsetAnchoredClock: Bool = false
+
     /// The shipped recipe, as of `Packages/StrandAnalytics/Sources/StrandAnalytics/SleepStagerV2.swift`.
     public static let shipped = RecipeConfig(
         priorLight: log(0.50), priorDeep: log(0.15), priorRem: log(0.22), priorAwake: log(0.10),
@@ -471,72 +496,108 @@ public enum V2Recipe {
         if feats.isEmpty { return [] }
         let prior = cfg.baseLogPrior
 
-        func zfun(_ vals: [Double?]) -> (Double?) -> Double {
+        func zfun(_ vals: [Double?], robust: Bool = false) -> (Double?) -> Double {
             let present = vals.compactMap { $0 }
             if present.isEmpty { return { _ in 0.0 } }
+            if robust {
+                let sorted = present.sorted()
+                func med(_ a: [Double]) -> Double {
+                    a.count % 2 == 1 ? a[a.count / 2] : 0.5 * (a[a.count / 2 - 1] + a[a.count / 2])
+                }
+                let centre = med(sorted)
+                let mad = med(sorted.map { abs($0 - centre) }.sorted()) * 1.4826
+                if mad > 0 { return { v in v == nil ? 0.0 : (v! - centre) / mad } }
+                // A degenerate spread falls through to the classical statistics rather than dividing by zero.
+            }
             let m = present.reduce(0, +) / Double(present.count)
             let sd0 = (present.reduce(0.0) { $0 + ($1 - m) * ($1 - m) } / Double(present.count)).squareRoot()
             let sd = sd0 == 0 ? 1.0 : sd0
             return { v in v == nil ? 0.0 : (v! - m) / sd }
         }
-        let zhr = zfun(feats.map { $0.hr })
-        let zhv = zfun(feats.map { $0.hrVar })
         // C1: an epoch with no computable jerk is left out of the night's motion statistics.
         func motion(_ f: Epoch) -> Double? { cfg.missingGravityIsNeutral && !f.gravKnown ? nil : f.moveFrac }
-        let zmv = zfun(feats.map { motion($0) })
-        let zrg = zfun(feats.map { $0.respReg })
-        let zrm = zfun(feats.map { $0.lnRmssd })
-        let zlh = zfun(feats.map { $0.lnLfHf })
 
-        let fsorted = feats.compactMap { $0.hrFlat11 }.sorted()
-        func fpct(_ v: Double?) -> Double {
-            guard let v = v, !fsorted.isEmpty else { return 0.5 }
-            var lo = 0, hi = fsorted.count
-            while lo < hi { let mid = (lo + hi) / 2; if fsorted[mid] <= v { lo = mid + 1 } else { hi = mid } }
-            return Double(lo) / Double(fsorted.count)
+        /// Emissions for every epoch. The normalisation statistics are taken over `reference`, and the position
+        /// in the night the cycle prior reads comes from `clockOf`. With the C5 switches off the caller passes
+        /// the whole window and the epoch's own clock, which is exactly the shipped computation.
+        func emissions(reference: [Epoch], clockOf: (Epoch) -> Double) -> [[String: Double]] {
+            let zhr = zfun(reference.map { $0.hr }, robust: cfg.robustNormalisation)
+            let zhv = zfun(reference.map { $0.hrVar }, robust: cfg.robustNormalisation)
+            let zmv = zfun(reference.map { motion($0) })
+            let zrg = zfun(reference.map { $0.respReg }, robust: cfg.robustNormalisation)
+            let zrm = zfun(reference.map { $0.lnRmssd }, robust: cfg.robustNormalisation)
+            let zlh = zfun(reference.map { $0.lnLfHf }, robust: cfg.robustNormalisation)
+
+            let fsorted = reference.compactMap { $0.hrFlat11 }.sorted()
+            func fpct(_ v: Double?) -> Double {
+                guard let v = v, !fsorted.isEmpty else { return 0.5 }
+                var lo = 0, hi = fsorted.count
+                while lo < hi { let mid = (lo + hi) / 2; if fsorted[mid] <= v { lo = mid + 1 } else { hi = mid } }
+                return Double(lo) / Double(fsorted.count)
+            }
+
+            var seq: [[String: Double]] = []
+            seq.reserveCapacity(feats.count)
+            for f in feats {
+                let clock = clockOf(f)
+                let zhrv = zhr(f.hr), zhvv = zhv(f.hrVar), zmvv = zmv(motion(f))
+                let gate = cfg.deepGateSlope * max(0.0, fpct(f.hrFlat11) - cfg.deepGateThresh)
+                let awakeCardiac0 = cfg.awakeZhv * dz(zhvv, cfg.awakeDeadzone)
+                    + cfg.awakeZhr * dz(zhrv, cfg.awakeDeadzone)
+                let awakeCardiac = motionQuiescent(f, cfg) ? min(0.0, awakeCardiac0) : awakeCardiac0
+                var em: [String: Double] = [
+                    "deep": cfg.deepZhv * zhvv + cfg.deepZhr * zhrv + cfg.deepZmv * zmvv - gate + prior["deep"]!,
+                    "rem": cfg.remZhv * zhvv + cfg.remZmv * zmvv + cfg.remZhr * zhrv + prior["rem"]!,
+                    "light": prior["light"]!,
+                    "awake": cfg.awakeZmv * zmvv + awakeCardiac + prior["awake"]!,
+                ]
+                // In `.gradedFromOnset` the guard is DISABLED here (`.infinity` ⇒ guard = 0) and added by pass 2
+                // once onset is known. In `.preNine30FractionStep` there is no onset to wait for — the step is
+                // a function of the session fraction alone — so it goes in now and there is no second pass.
+                let pr: [String: Double]
+                switch cfg.remLatencyMode {
+                case .gradedFromOnset:
+                    pr = cyclePrior(clock, .infinity, cfg)
+                case .preNine30FractionStep:
+                    pr = ["deep": 1.2 * max(0.0, 1.0 - clock / 0.55),
+                          "rem": 1.0 * clock - (clock < 0.12 ? cfg.remLatencyPenalty : 0.0),
+                          "light": 0.0, "awake": 0.0]
+                }
+                for s in stageNames { em[s]! += pr[s]! }
+                if f.jerkMax > f.jerkScale * cfg.jerkFloorGateMult { em["awake"]! += cfg.motionGateBoost }
+                if let rg = f.respReg { let z = zrg(rg); em["deep"]! += cfg.respWeight * z; em["rem"]! -= cfg.respWeight * z }
+                if cfg.rmssdWeight != 0, let v = f.lnRmssd {
+                    let z = zrm(v); em["deep"]! += cfg.rmssdWeight * z; em["rem"]! -= cfg.rmssdWeight * z
+                }
+                if cfg.lfhfWeight != 0, let v = f.lnLfHf {
+                    let z = zlh(v); em["deep"]! -= cfg.lfhfWeight * z; em["rem"]! += cfg.lfhfWeight * z
+                }
+                seq.append(em)
+            }
+            return seq
         }
 
-        var seq: [[String: Double]] = []
-        seq.reserveCapacity(feats.count)
-        for f in feats {
-            let zhrv = zhr(f.hr), zhvv = zhv(f.hrVar), zmvv = zmv(motion(f))
-            let gate = cfg.deepGateSlope * max(0.0, fpct(f.hrFlat11) - cfg.deepGateThresh)
-            let awakeCardiac0 = cfg.awakeZhv * dz(zhvv, cfg.awakeDeadzone)
-                + cfg.awakeZhr * dz(zhrv, cfg.awakeDeadzone)
-            let awakeCardiac = motionQuiescent(f, cfg) ? min(0.0, awakeCardiac0) : awakeCardiac0
-            var em: [String: Double] = [
-                "deep": cfg.deepZhv * zhvv + cfg.deepZhr * zhrv + cfg.deepZmv * zmvv - gate + prior["deep"]!,
-                "rem": cfg.remZhv * zhvv + cfg.remZmv * zmvv + cfg.remZhr * zhrv + prior["rem"]!,
-                "light": prior["light"]!,
-                "awake": cfg.awakeZmv * zmvv + awakeCardiac + prior["awake"]!,
-            ]
-            // In `.gradedFromOnset` the guard is DISABLED here (`.infinity` ⇒ guard = 0) and added by pass 2
-            // once onset is known. In `.preNine30FractionStep` there is no onset to wait for — the step is
-            // a function of the session fraction alone — so it goes in now and there is no second pass.
-            let pr: [String: Double]
-            switch cfg.remLatencyMode {
-            case .gradedFromOnset:
-                pr = cyclePrior(f.clock, .infinity, cfg)
-            case .preNine30FractionStep:
-                pr = ["deep": 1.2 * max(0.0, 1.0 - f.clock / 0.55),
-                      "rem": 1.0 * f.clock - (f.clock < 0.12 ? cfg.remLatencyPenalty : 0.0),
-                      "light": 0.0, "awake": 0.0]
-            }
-            for s in stageNames { em[s]! += pr[s]! }
-            if f.jerkMax > f.jerkScale * cfg.jerkFloorGateMult { em["awake"]! += cfg.motionGateBoost }
-            if let rg = f.respReg { let z = zrg(rg); em["deep"]! += cfg.respWeight * z; em["rem"]! -= cfg.respWeight * z }
-            if cfg.rmssdWeight != 0, let v = f.lnRmssd {
-                let z = zrm(v); em["deep"]! += cfg.rmssdWeight * z; em["rem"]! -= cfg.rmssdWeight * z
-            }
-            if cfg.lfhfWeight != 0, let v = f.lnLfHf {
-                let z = zlh(v); em["deep"]! -= cfg.lfhfWeight * z; em["rem"]! += cfg.lfhfWeight * z
-            }
-            seq.append(em)
-        }
+        var seq = emissions(reference: feats, clockOf: { $0.clock })
 
         if cfg.remLatencyMode == .preNine30FractionStep { return viterbi(seq, cfg) }
 
-        let provisional = viterbi(seq, cfg)
+        var provisional = viterbi(seq, cfg)
+
+        // C5b / C5c: find the sleep period in the first decode, then take the statistics (and, for C5c, the
+        // clock) from that period alone and decode again.
+        if cfg.onsetAnchoredStatistics || cfg.onsetAnchoredClock,
+           let onset = sustainedSleepOnset(provisional, cfg),
+           let final = provisional.lastIndex(where: { $0 != "awake" }), final > onset {
+            let period = Array(feats[onset...final])
+            let reference = cfg.onsetAnchoredStatistics ? period : feats
+            let t0 = feats[onset].minutesSinceOnset, t1 = feats[final].minutesSinceOnset
+            let clockOf: (Epoch) -> Double = cfg.onsetAnchoredClock && t1 > t0
+                ? { min(1.0, max(0.0, ($0.minutesSinceOnset - t0) / (t1 - t0))) }
+                : { $0.clock }
+            seq = emissions(reference: reference, clockOf: clockOf)
+            provisional = viterbi(seq, cfg)
+        }
+
         let originMin = sustainedSleepOnset(provisional, cfg).map { feats[$0].minutesSinceOnset } ?? 0.0
         for i in feats.indices {
             seq[i]["rem"]! -= remLatencyGuard(feats[i].minutesSinceOnset - originMin, cfg)
