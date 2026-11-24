@@ -48,6 +48,9 @@ final class ForkEnergyCounters: @unchecked Sendable {
         // that asked for none, and the reloads that do not go through `widgetReload` (NOOP+ widget, coach brief).
         case widgetReloadLive, widgetReloadScore, widgetReloadStress, widgetReloadBonded, widgetReloadLowBatt
         case widgetSavedNoReload, widgetReloadFork, widgetReloadCoach
+        // NOOP+ reloads (`widgetReloadFork`) by reason, and the saves whose reload the background interval held back.
+        case widgetReloadForkFirst, widgetReloadForkSmartWake, widgetReloadForkFormat, widgetReloadForkDay
+        case widgetReloadForkContent, widgetReloadForkStale, widgetReloadForkOwed, widgetReloadForkDeferred
         // Widget publishes by call site: every full publish, every live-only publish, and the three background callers.
         case widgetPublishTotal, widgetPublishLive, widgetPublishPostOffload, widgetPublishResume, widgetPublishBackground
         // Re-score passes that ran, by trigger, with the process CPU each took (Resume = the deferred background pass).

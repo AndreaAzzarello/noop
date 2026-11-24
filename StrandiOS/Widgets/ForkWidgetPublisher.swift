@@ -3,6 +3,7 @@ import Foundation
 import OSLog
 import StrandAnalytics
 import StrandDesign
+import UIKit
 import WhoopStore
 import WidgetKit
 
@@ -212,21 +213,51 @@ enum ForkWidgetPublisher {
 
     // MARK: Shared
 
+    /// When this process last asked WidgetKit to reload the NOOP+ widget. In memory: a relaunch reloads once, the safe side.
+    private static var lastReload: Date?
+    /// A background save held its reload back; the next foreground publish reloads once.
+    private static var reloadOwed = false
+
     /// Persist and reload the NOOP+ widget only when something it renders changed, or when the last
     /// confirmation is old enough that the "data is old" hint could otherwise appear for fresh data.
+    /// In the background only the events `ForkWidgetSnapshot.commitDecision` names reload at once (the Smart Wake
+    /// schedule above all); the rest is saved and reloads at most every `backgroundReloadInterval`.
     private static func commit(_ next: ForkWidgetSnapshot, previous: ForkWidgetSnapshot, now: Date) {
-        let decision = ForkWidgetSnapshot.commitDecision(next: next, previous: previous, now: now)
-        guard decision.save else { return }
-        var out = next
-        out.publishedAt = now
-        guard out.save() else {
-            log.error("fork widget snapshot not saved (App Group unavailable or encode failed)")
-            return
+        let background = UIApplication.shared.applicationState != .active
+        let decision = ForkWidgetSnapshot.commitDecision(next: next, previous: previous, now: now,
+                                                         background: background, lastReload: lastReload,
+                                                         reloadOwed: reloadOwed)
+        if decision.save {
+            var out = next
+            out.publishedAt = now
+            guard out.save() else {
+                log.error("fork widget snapshot not saved (App Group unavailable or encode failed)")
+                return
+            }
         }
-        if decision.reload {
-            WidgetCenter.shared.reloadTimelines(ofKind: ForkWidgetSnapshot.kind)
-            ForkEnergyCounters.shared.note(.widgetReload) // fork-perf: TEMP (every reload, whoever asks)
-            ForkEnergyCounters.shared.note(.widgetReloadFork) // fork-perf: TEMP
+        if decision.deferred {
+            reloadOwed = true
+            ForkEnergyCounters.shared.note(.widgetReloadForkDeferred) // fork-perf: TEMP
+        }
+        guard decision.reload, let reason = decision.reason else { return }
+        WidgetCenter.shared.reloadTimelines(ofKind: ForkWidgetSnapshot.kind)
+        lastReload = now
+        reloadOwed = false
+        ForkEnergyCounters.shared.note(.widgetReload) // fork-perf: TEMP (every reload, whoever asks)
+        ForkEnergyCounters.shared.note(.widgetReloadFork) // fork-perf: TEMP
+        ForkEnergyCounters.shared.note(forkReloadCounter(reason)) // fork-perf: TEMP
+    }
+
+    /// fork-perf: TEMP. The counter a reload is booked to.
+    private static func forkReloadCounter(_ reason: ForkWidgetSnapshot.ReloadReason) -> ForkEnergyCounters.Counter {
+        switch reason {
+        case .first: return .widgetReloadForkFirst
+        case .smartWake: return .widgetReloadForkSmartWake
+        case .format: return .widgetReloadForkFormat
+        case .dayRolled: return .widgetReloadForkDay
+        case .content: return .widgetReloadForkContent
+        case .staleRefresh: return .widgetReloadForkStale
+        case .owed: return .widgetReloadForkOwed
         }
     }
 

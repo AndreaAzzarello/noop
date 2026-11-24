@@ -197,13 +197,81 @@ struct ForkWidgetSnapshot: Codable, Equatable {
         return next
     }
 
+    /// Longest a background change that is not time-critical may wait for its WidgetKit reload. The snapshot is saved
+    /// at once either way, and the widget's own 15-minute timeline reads it, so a reload here only buys speed. Equal to
+    /// `republishAfter`, so the "data is old" hint cannot appear for data the app has just confirmed.
+    static let backgroundReloadInterval: TimeInterval = republishAfter
+
+    /// Why a reload was asked for (one reason per reload, first match in this order).
+    enum ReloadReason: String, Equatable {
+        /// No snapshot existed yet.
+        case first
+        /// The Smart Wake schedule, its toggle or the recorded skip changed: the next alarm the widget names.
+        case smartWake
+        /// The on-disk text format changed.
+        case format
+        /// The day the curve or the sleep figure belongs to changed.
+        case dayRolled
+        /// Anything else the widget renders changed (heart-rate curve, vitals, stages, workout, trend).
+        case content
+        /// Nothing changed, but the last confirmation is old.
+        case staleRefresh
+        /// A background save skipped its reload; the next foreground publish pays it once.
+        case owed
+    }
+
+    struct CommitDecision: Equatable {
+        let save: Bool
+        let reload: Bool
+        /// Set exactly when `reload` is true.
+        let reason: ReloadReason?
+        /// Saved, and a reload was wanted but held back by the background interval (the debt is `reloadOwed`).
+        let deferred: Bool
+    }
+
     /// Whether `next` must be written, and whether the widget must be reloaded for it.
-    static func commitDecision(next: ForkWidgetSnapshot, previous: ForkWidgetSnapshot,
-                               now: Date) -> (save: Bool, reload: Bool) {
+    ///
+    /// Reloads that are never held back, in the background either: the first snapshot, a Smart Wake change, a format
+    /// change and a day roll-over. Everything else the widget renders, and the freshness refresh, reloads in the
+    /// background at most every `interval`; a held-back reload is owed and paid by the next foreground publish.
+    /// The defaults reproduce the foreground behaviour exactly.
+    /// - Parameters:
+    ///   - background: the app is not active.
+    ///   - lastReload: when this process last asked WidgetKit for a reload (nil: never, so reload).
+    ///   - reloadOwed: a background save skipped its reload.
+    static func commitDecision(next: ForkWidgetSnapshot, previous: ForkWidgetSnapshot, now: Date,
+                               background: Bool = false, lastReload: Date? = nil, reloadOwed: Bool = false,
+                               interval: TimeInterval = backgroundReloadInterval) -> CommitDecision {
         let unchanged = next.contentEquals(previous)
         let fresh = now.timeIntervalSince(previous.publishedAt) < republishAfter
-        if unchanged && fresh && next.hrFingerprint == previous.hrFingerprint { return (false, false) }
-        return (true, !unchanged || !fresh)
+        if unchanged && fresh && next.hrFingerprint == previous.hrFingerprint {
+            // Nothing to write. Only a reload owed by an earlier background save is still due, and only in the foreground.
+            if reloadOwed && !background { return CommitDecision(save: false, reload: true, reason: .owed, deferred: false) }
+            return CommitDecision(save: false, reload: false, reason: nil, deferred: false)
+        }
+        guard !unchanged || !fresh else {
+            // Only the publisher's own gate moved: save it, render nothing new.
+            if reloadOwed && !background { return CommitDecision(save: true, reload: true, reason: .owed, deferred: false) }
+            return CommitDecision(save: true, reload: false, reason: nil, deferred: false)
+        }
+
+        if previous.publishedAt == .distantPast { return CommitDecision(save: true, reload: true, reason: .first, deferred: false) }
+        if next.smartWake != previous.smartWake || next.smartWakeSkipUntil != previous.smartWakeSkipUntil {
+            return CommitDecision(save: true, reload: true, reason: .smartWake, deferred: false)
+        }
+        if next.formatVersion != previous.formatVersion {
+            return CommitDecision(save: true, reload: true, reason: .format, deferred: false)
+        }
+        if next.hrDay?.day != previous.hrDay?.day || next.sleepDay != previous.sleepDay {
+            return CommitDecision(save: true, reload: true, reason: .dayRolled, deferred: false)
+        }
+
+        let reason: ReloadReason = unchanged ? .staleRefresh : .content
+        guard background else { return CommitDecision(save: true, reload: true, reason: reason, deferred: false) }
+        // A clock that moved back reloads, like `WidgetReloadThrottle.shouldReload`.
+        let due = lastReload.map { now.timeIntervalSince($0) >= interval || now < $0 } ?? true
+        return due ? CommitDecision(save: true, reload: true, reason: reason, deferred: false)
+                   : CommitDecision(save: true, reload: false, reason: nil, deferred: true)
     }
 
     // MARK: Resolved on read (nothing runs at midnight to tidy the App Group)
