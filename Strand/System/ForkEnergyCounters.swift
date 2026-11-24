@@ -65,6 +65,15 @@ final class ForkEnergyCounters: @unchecked Sendable {
         // the process did meanwhile. `rescoreWallMs` is the wall time of the passes (uptime, gates included).
         case rescorePreMs, rescoreKeyMs, rescorePrepMs, rescoreScoreMs, rescoreScoreThrMs
         case rescoreLoopRestMs, rescorePaceMs, rescorePostMs, rescoreWallMs
+        // Main-thread CPU by call site (`ForkMainCPU`), thread-CPU ms, EXCLUSIVE: a point's figure leaves out the points it
+        // called, so they add up. `cpuThrMainMs` minus their sum is what no point explains.
+        case mainBleNotifyMs, mainBleRouterMs, mainBleStdHRMs, mainBleCollectorMs, mainBleSmartWakeMs
+        case mainIngestHRMs, mainLogMs, mainOffloadMs, mainSinksMs
+        // Inbound BLE frames by class, count and bytes: standard heart rate (per notification), raw type 43, realtime
+        // type 40, history offload (types 47/48/49/50/56) and the rest (per complete frame).
+        case bleFrameStdHR, bleFrameStdHRBytes, bleFrameRaw43, bleFrameRaw43Bytes
+        case bleFrameRealtime40, bleFrameRealtime40Bytes, bleFrameOffload, bleFrameOffloadBytes
+        case bleFrameOther, bleFrameOtherBytes
         // Live heart rate on the main thread: samples ingested, smoothed values published, LiveState change notices.
         case hrSamples, bpmPublished, liveWillChange
         // SwiftUI body evaluations of the main screens while the app was not active.
@@ -347,12 +356,34 @@ final class ForkEnergyCounters: @unchecked Sendable {
         }
         for day in perDay.keys.sorted() {
             lines.append("\(day) total: " + Self.format(perDay[day] ?? [:]))
+            if let split = Self.mainSplitLine(perDay[day] ?? [:]) { lines.append("\(day) " + split) }
         }
         lines.append("— last \(lastHours) h —")
         for hour in data.keys.sorted().suffix(lastHours) {
             lines.append("\(hour)h: " + Self.format(data[hour] ?? [:]))
+            if let split = Self.mainSplitLine(data[hour] ?? [:]) { lines.append("\(hour)h " + split) }
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// The counters that book main-thread call sites (`ForkMainCPU`), in the order the split line names them.
+    private static let mainPoints: [(label: String, counter: Counter)] = [
+        ("notify", .mainBleNotifyMs), ("router", .mainBleRouterMs), ("stdHR", .mainBleStdHRMs),
+        ("collector", .mainBleCollectorMs), ("smartWake", .mainBleSmartWakeMs), ("ingestHR", .mainIngestHRMs),
+        ("log", .mainLogMs), ("offload", .mainOffloadMs), ("sinks", .mainSinksMs)]
+
+    /// "main split: main=… attributed=… (notify=… …) unattributed=… (n%)": the sampled main-thread CPU, what the call sites
+    /// explain, and the rest. nil when nothing was sampled or no call site booked anything. The two come from different
+    /// clocks (a 5-minute thread sample and the call sites' own flushes), so a single hour can be off at its edges; read days.
+    static func mainSplitLine(_ counts: [String: Int]) -> String? {
+        let main = counts[Counter.cpuThrMainMs.rawValue] ?? 0
+        let parts = mainPoints.map { ($0.label, counts[$0.counter.rawValue] ?? 0) }
+        let attributed = parts.reduce(0) { $0 + $1.1 }
+        guard main > 0, attributed > 0 else { return nil }
+        let rest = max(0, main - attributed)
+        let share = Int((Double(rest) / Double(main) * 100).rounded())
+        let named = parts.filter { $0.1 > 0 }.map { "\($0.0)=\($0.1)" }.joined(separator: " ")
+        return "main split: main=\(main)ms attributed=\(attributed)ms (\(named)) unattributed=\(rest)ms (\(share)%)"
     }
 
     static func format(_ counts: [String: Int]) -> String {

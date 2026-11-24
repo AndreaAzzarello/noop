@@ -5697,6 +5697,7 @@ public final class BLEManager: NSObject, ObservableObject {
 
     /// Parse a standard BLE Heart Rate Measurement (0x2A37) via the pure StandardHeartRate parser.
     private func parseStandardHR(_ data: [UInt8]) {
+        let forkStdHR = ForkMainCPU.begin(.bleStdHR); defer { ForkMainCPU.end(forkStdHR) } // fork-perf: TEMP
         guard let m = StandardHeartRate.parse(data) else {
             log("HR notify parse failed: \(hex(data))")
             return
@@ -5733,14 +5734,18 @@ public final class BLEManager: NSObject, ObservableObject {
         // live perf: only publish on a real change so a steady resting HR doesn't re-render the whole
         // Live console every second.
         if readable {
+            let forkSmartWake = ForkMainCPU.begin(.bleSmartWake) // fork-perf: TEMP
             if router.family == .whoop5 { state.onSmartWakeHeartRateSample?(m.hr, now) }
+            ForkMainCPU.end(forkSmartWake) // fork-perf: TEMP
             state.noteReadableHeartRate()
             if state.heartRate != m.hr { state.heartRate = m.hr }
         }
         // Record it continuously — independent of the realtime stream or the open screen.
+        let forkStdCollector = ForkMainCPU.begin(.bleCollector) // fork-perf: TEMP
         collector?.ingestStandardHR(hr: m.hr, rr: rr, contact: m.contact,
                                     family: router.family,
                                     at: Int(Date().timeIntervalSince1970))
+        ForkMainCPU.end(forkStdCollector) // fork-perf: TEMP
     }
 }
 
@@ -7325,6 +7330,7 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
     public func peripheral(_ peripheral: CBPeripheral,
                            didUpdateValueFor characteristic: CBCharacteristic,
                            error: Error?) {
+        let forkNotify = ForkMainCPU.begin(.bleNotify); defer { ForkMainCPU.end(forkNotify) } // fork-perf: TEMP
         if let error {
             // A DIS refusal is a FINDING, not noise — report it specifically and latch it, or a capture
             // cannot tell a refusal from a read that was never issued (#490, #1635).
@@ -7344,6 +7350,7 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
 
         switch characteristic.uuid {
         case BLEManager.heartRateChar:
+            ForkMainCPU.noteStdHR(bytes: bytes.count) // fork-perf: TEMP
             parseStandardHR(bytes)
             // EXPERIMENTAL WHOOP 5.0/MG: there is no confirmed-write bond for a 5/MG strap, so once
             // live HR actually streams over the standard profile we treat the link as established —
@@ -7416,6 +7423,7 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
             router.noteReassemblerDrops(reassembler.belowMinimumLengthDrops)
             router.noteReassemblerHeaderDrops(reassembler.headerChecksumDrops)
             for frame in completedFrames {
+                ForkMainCPU.noteFrame(frame, family: .whoop4) // fork-perf: TEMP
                 if backfilling, BLEManager.isOffloadFrame(frame, family: .whoop4) {
                     // Historical replay is bulk sync traffic, not live UI traffic. Feed it only to
                     // the Backfiller; parsing every record through FrameRouter updates SwiftUI for
@@ -7443,7 +7451,9 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
                 // collector.family / the no-family clock parse all resolve to .whoop4 here; a DEBUG assert in
                 // the router + collector re-checks the invariant).
                 let parsed = parseFrame(frame, family: .whoop4)
+                let forkRouter = ForkMainCPU.begin(.bleRouter) // fork-perf: TEMP
                 router.handle(parsed: parsed, frame: frame)       // live/UI path
+                ForkMainCPU.end(forkRouter) // fork-perf: TEMP
                 //
                 // WHAT IS AND IS NOT GATED BELOW (standing risk, recorded rather than fixed here).
                 //
@@ -7528,7 +7538,9 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
                 if !backfilling {
                     // Live path: synchronous ingest preserves delegate arrival order. #47: thread the
                     // single parse so the collector's flush doesn't re-decode the batch.
+                    let forkCollector = ForkMainCPU.begin(.bleCollector) // fork-perf: TEMP
                     collector?.ingest(frame: frame, parsed: parsed)
+                    ForkMainCPU.end(forkCollector) // fork-perf: TEMP
                 }
             }
         default:
@@ -7545,6 +7557,7 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
                 router.noteReassemblerDrops(reassembler.belowMinimumLengthDrops)
                 router.noteReassemblerHeaderDrops(reassembler.headerChecksumDrops)
                 for frame in completedFrames {
+                    ForkMainCPU.noteFrame(frame, family: .whoop5) // fork-perf: TEMP
                     let isOffload = backfilling && BLEManager.isOffloadFrame(frame, family: .whoop5)
                     noteWhoop5R22Telemetry(frame, duringOffload: isOffload)   // #174 deep-data telemetry
                     // Durable EVENT-frame log for deep-data research (#103) — BEFORE the offload
@@ -7575,7 +7588,9 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
                         router.mirrorStrapConsoleIfPresent(frame: frame)
                         continue
                     }
+                    let forkRouter5 = ForkMainCPU.begin(.bleRouter) // fork-perf: TEMP
                     router.handle(frame: frame)
+                    ForkMainCPU.end(forkRouter5) // fork-perf: TEMP
                     // The same split as the WHOOP 4.0 loop above, and for the same reasons: the probe
                     // dispatches below branch on a raw opcode compare; the ones that verify do it inside
                     // their own decoder, the extended-battery / body-location probes and the write-ack

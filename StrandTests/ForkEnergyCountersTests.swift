@@ -224,4 +224,117 @@ final class ForkEnergyCountersTests: XCTestCase {
         XCTAssertGreaterThan(ForkEnergyCounters.threadCPUNanos(), t0)
         XCTAssertGreaterThanOrEqual(tally.lap(), 0)
     }
+
+    // MARK: Main-thread call sites
+
+    private func ms(_ n: UInt64) -> UInt64 { n * 1_000_000 }
+
+    private func drained(_ meter: inout ForkMainCPU.Meter) -> [ForkMainCPU.Point: Int] {
+        Dictionary(uniqueKeysWithValues: meter.drainMillis().map { ($0.point, $0.ms) })
+    }
+
+    func testNestedPointsBookExclusiveTimeSoTheyAddUp() {
+        var m = ForkMainCPU.Meter()
+        let notify = m.begin(.bleNotify, at: 0)
+        let router = m.begin(.bleRouter, at: ms(2))          // 2 ms of the handler's own work first
+        let log = m.begin(.log, at: ms(3))
+        m.end(log, at: ms(4))                                  // log: 1 ms
+        m.end(router, at: ms(10))                              // router: 8 ms inclusive, 7 exclusive
+        m.end(notify, at: ms(12))                              // notify: 12 inclusive, 12 - 8 = 4 exclusive
+        let out = drained(&m)
+        XCTAssertEqual(out[.log], 1)
+        XCTAssertEqual(out[.bleRouter], 7)
+        XCTAssertEqual(out[.bleNotify], 4)
+        XCTAssertEqual(out.values.reduce(0, +), 12)            // = the outermost point's elapsed time
+        XCTAssertTrue(m.isIdle)
+    }
+
+    func testAnEndIsIdempotentAndALateTokenNeverClosesAnotherPoint() {
+        var m = ForkMainCPU.Meter()
+        let first = m.begin(.offload, at: 0)
+        m.end(first, at: ms(5))
+        let second = m.begin(.sinks, at: ms(6))               // opened after the first one closed
+        m.end(first, at: ms(9))                                // a late `end` of the first (after an await): no effect
+        XCTAssertFalse(m.isIdle)
+        m.end(second, at: ms(11))
+        let out = drained(&m)
+        XCTAssertEqual(out[.offload], 5)
+        XCTAssertEqual(out[.sinks], 5)
+    }
+
+    func testAnOuterEndClosesAnInnerPointThatWasLeftOpen() {
+        var m = ForkMainCPU.Meter()
+        let outer = m.begin(.bleNotify, at: 0)
+        _ = m.begin(.bleCollector, at: ms(1))                  // never ended
+        m.end(outer, at: ms(6))
+        XCTAssertTrue(m.isIdle)
+        let out = drained(&m)
+        XCTAssertEqual(out[.bleCollector], 5)
+        XCTAssertEqual(out[.bleNotify], 1)
+    }
+
+    func testSubMillisecondRemaindersCarryToTheNextDrain() {
+        var m = ForkMainCPU.Meter()
+        for _ in 0..<4 {
+            let t = m.begin(.ingestHR, at: 0)
+            m.end(t, at: 400_000)                              // 0.4 ms each
+        }
+        XCTAssertEqual(drained(&m)[.ingestHR], 1)              // 1.6 ms booked as 1 ms, 0.6 ms kept
+        let t = m.begin(.ingestHR, at: 0)
+        m.end(t, at: 500_000)
+        XCTAssertEqual(drained(&m)[.ingestHR], 1)              // 0.6 + 0.5 = 1.1 ms
+    }
+
+    func testNothingBookedBeforeAMillisecondAccumulates() {
+        var m = ForkMainCPU.Meter()
+        let t = m.begin(.log, at: 0)
+        m.end(t, at: 900_000)
+        XCTAssertTrue(m.drainMillis().isEmpty)
+    }
+
+    func testFramesAreClassifiedByTheTypeByteOfTheirFamily() {
+        func frame(type: UInt8, at index: Int, count: Int = 12) -> [UInt8] {
+            var f = [UInt8](repeating: 0, count: count); f[index] = type; return f
+        }
+        typealias C = ForkMainCPU.FrameClass
+        XCTAssertEqual(C.classify(frame: frame(type: 43, at: 4), family: .whoop4), .raw43)
+        XCTAssertEqual(C.classify(frame: frame(type: 40, at: 4), family: .whoop4), .realtime40)
+        for offload: UInt8 in [47, 48, 49, 50, 56] {
+            XCTAssertEqual(C.classify(frame: frame(type: offload, at: 4), family: .whoop4), .offload)
+            XCTAssertEqual(C.classify(frame: frame(type: offload, at: 8), family: .whoop5), .offload)
+        }
+        XCTAssertEqual(C.classify(frame: frame(type: 43, at: 8), family: .whoop5), .raw43)
+        // The 4.0 offset is not read on a 5/MG, and vice versa.
+        XCTAssertEqual(C.classify(frame: frame(type: 43, at: 4), family: .whoop5), .other)
+        XCTAssertEqual(C.classify(frame: frame(type: 43, at: 8), family: .whoop4), .other)
+        XCTAssertEqual(C.classify(frame: [1, 2, 3], family: .whoop5), .other)
+        XCTAssertEqual(Set(C.allCases.map { $0.counters.count }).count, C.allCases.count)
+        XCTAssertEqual(Set(C.allCases.map { $0.counters.bytes }).count, C.allCases.count)
+    }
+
+    func testEveryPointHasItsOwnCounter() {
+        let counters = ForkMainCPU.Point.allCases.map(\.counter)
+        XCTAssertEqual(Set(counters).count, counters.count)
+    }
+
+    func testMainSplitLineNamesWhatIsAttributedAndWhatIsNot() {
+        var counts: [String: Int] = [ForkEnergyCounters.Counter.cpuThrMainMs.rawValue: 1_000]
+        XCTAssertNil(ForkEnergyCounters.mainSplitLine(counts))                    // nothing booked by a call site
+        counts[ForkEnergyCounters.Counter.mainBleNotifyMs.rawValue] = 300
+        counts[ForkEnergyCounters.Counter.mainBleRouterMs.rawValue] = 100
+        counts[ForkEnergyCounters.Counter.mainLogMs.rawValue] = 50
+        XCTAssertEqual(ForkEnergyCounters.mainSplitLine(counts),
+                       "main split: main=1000ms attributed=450ms (notify=300 router=100 log=50) unattributed=550ms (55%)")
+        counts[ForkEnergyCounters.Counter.mainSinksMs.rawValue] = 900             // more than the sampled main: floors at 0
+        XCTAssertTrue(ForkEnergyCounters.mainSplitLine(counts)?.hasSuffix("unattributed=0ms (0%)") == true)
+        XCTAssertNil(ForkEnergyCounters.mainSplitLine([ForkEnergyCounters.Counter.mainLogMs.rawValue: 5]))  // no main sample
+    }
+
+    func testReportCarriesTheSplitLineBesideTheHour() {
+        let c = ForkEnergyCounters(fileURL: nil, timeZone: utc)
+        let now = date("2026-11-24T09:00:00Z")
+        c.note(.cpuThrMainMs, by: 500, at: now)
+        c.note(.mainBleNotifyMs, by: 200, at: now)
+        XCTAssertTrue(c.report().contains("main split: main=500ms attributed=200ms (notify=200) unattributed=300ms (60%)"))
+    }
 }

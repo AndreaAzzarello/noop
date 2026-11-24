@@ -359,6 +359,7 @@ final class AppModel: ObservableObject {
         $bpm.sink { [weak self] hr in self?.coachZone(hr) }.store(in: &hrCancellables)
         // Illness/strain early-warning recomputes when the daily history changes.
         repo.$days.sink { [weak self] days in
+            let forkSink = ForkMainCPU.begin(.sinks); defer { ForkMainCPU.end(forkSink) } // fork-perf: TEMP
             self?.evaluateIllness(days)
             self?.evaluateStrainTarget()
             // Keep the battery night-guard's learned bedtime warm off the same signal (throttled inside).
@@ -801,6 +802,7 @@ final class AppModel: ObservableObject {
     /// Prefers the strap's reported HR; falls back to 60000/R-R. Clamps to a plausible
     /// 30–220 range (rejects 0 / garbage spikes) and publishes the window MEDIAN.
     private func ingestHR(heartRate: Int?, rr: [Int]) {
+        let forkIngest = ForkMainCPU.begin(.ingestHR); defer { ForkMainCPU.end(forkIngest) } // fork-perf: TEMP
         var inst: Double?
         if let hr = heartRate, hr >= 30, hr <= 220 {
             inst = Double(hr)

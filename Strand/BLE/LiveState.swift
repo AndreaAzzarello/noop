@@ -810,6 +810,7 @@ public final class LiveState: ObservableObject {
 
     public func append(log line: String, domain: TestDomain? = nil) {
         let forkLogT0 = DispatchTime.now().uptimeNanoseconds; defer { ForkEnergyCounters.shared.noteLogLine(sinceNanos: forkLogT0) } // fork-perf: TEMP
+        let forkLogScope = ForkMainCPU.begin(.log); defer { ForkMainCPU.end(forkLogScope) } // fork-perf: TEMP
         // Tag inert when nil (today's behaviour, byte-identical). When tagged, prefix a compact,
         // parseable marker the export filters on. Redaction is STILL the only scrub point
         // (redactPii below); tagging happens BEFORE redaction so the scrub covers the whole line.

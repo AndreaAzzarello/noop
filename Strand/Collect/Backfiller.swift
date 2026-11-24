@@ -365,12 +365,14 @@ final class Backfiller {
 
     /// Feed one raw BLE frame into the state machine. May trigger async store operations.
     func ingest(_ frame: [UInt8]) async {
+        let forkIngest = ForkMainCPU.begin(.offload); defer { ForkMainCPU.end(forkIngest) } // fork-perf: TEMP (closed before the await below)
         switch classifyHistoricalMeta(parseFrame(frame, family: family)) {
         case .start:
             isBackfilling = true
             chunk.removeAll(keepingCapacity: true)
             chunkOpen = true
         case .end(let unix, let trim):
+            ForkMainCPU.end(forkIngest) // fork-perf: TEMP (not open across an await)
             await finishChunk(unix: unix, trim: trim, endFrame: frame)
         case .complete:
             isBackfilling = false
@@ -638,6 +640,7 @@ final class Backfiller {
                 return DecodedChunk(parsed: parsed, decoded: decoded, rejected: rejected)
             }.value
             let parsed = d.parsed
+            let forkChunk = ForkMainCPU.begin(.offload) // fork-perf: TEMP (post-decode stretch, closed before the store insert)
             // #1008: per-chunk clock basis + R-R packing. The session summary logs only the FIRST chunk's
             // correlation, which cannot show the offset moving across a long offload nor separate "the same
             // beats arrived twice" from "one record stamped 8 intervals on one second". Log-only.
@@ -873,6 +876,7 @@ final class Backfiller {
             // emission can be measured, since every existing R-R number is taken after the ON CONFLICT key
             // has already absorbed part of it.
             let rrCensus = RrEmissionStats.compute(decoded.rr.map { (ts: $0.ts, rrMs: $0.rrMs) })
+            ForkMainCPU.end(forkChunk) // fork-perf: TEMP
             do {
                 counts = try await store.insert(decoded, deviceId: deviceId)
                 onBankedOffload(counts)
