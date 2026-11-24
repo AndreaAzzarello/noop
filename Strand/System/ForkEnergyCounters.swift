@@ -58,6 +58,13 @@ final class ForkEnergyCounters: @unchecked Sendable {
         case rescoreForced, rescoreForcedMs, rescoreResume, rescoreResumeMs
         // Days of those passes served from the per-day cache versus scored again.
         case rescoreDaysCached, rescoreDaysScored
+        // Where a re-score pass that worked spent its time. Process CPU ms, so concurrent work of other threads is in each
+        // figure: before the day loop; per day, the owner and cache-key reads, the stream reads (prep) and `analyzeDay`
+        // (score); the loop's remainder and the CPU spent while it paced itself in the background (all other threads); after
+        // the loop. `rescoreScoreThrMs` is the CPU of the thread that ran `analyzeDay`, so score minus it is what the rest of
+        // the process did meanwhile. `rescoreWallMs` is the wall time of the passes (uptime, gates included).
+        case rescorePreMs, rescoreKeyMs, rescorePrepMs, rescoreScoreMs, rescoreScoreThrMs
+        case rescoreLoopRestMs, rescorePaceMs, rescorePostMs, rescoreWallMs
         // Live heart rate on the main thread: samples ingested, smoothed values published, LiveState change notices.
         case hrSamples, bpmPublished, liveWillChange
         // SwiftUI body evaluations of the main screens while the app was not active.
@@ -156,6 +163,34 @@ final class ForkEnergyCounters: @unchecked Sendable {
                                    cpuMs: ms(basic.user_time) + ms(basic.system_time), isMain: index == 0))
         }
         return out
+    }
+
+    /// CPU time of the calling thread so far, nanoseconds (0 when the clock is unavailable).
+    static func threadCPUNanos() -> UInt64 {
+        clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+    }
+
+    /// Process-CPU laps through the day loop of a re-score pass: every `lap()` returns the CPU since the previous one,
+    /// and the caller books it to the bucket that just ended.
+    struct RescorePhaseTally {
+        var keyMs = 0, prepMs = 0, scoreMs = 0, scoreThreadUs = 0, restMs = 0, paceMs = 0
+        private var mark = ForkEnergyCounters.cpuNowMillis()
+        mutating func lap() -> Int {
+            let now = ForkEnergyCounters.cpuNowMillis()
+            defer { mark = now }
+            return max(0, now - mark)
+        }
+    }
+
+    /// Book a finished re-score pass's phases (the loop's, plus the part before it).
+    func noteRescorePhases(preMs: Int, _ tally: RescorePhaseTally, at now: Date = Date()) {
+        note(.rescorePreMs, by: preMs, at: now)
+        note(.rescoreKeyMs, by: tally.keyMs, at: now)
+        note(.rescorePrepMs, by: tally.prepMs, at: now)
+        note(.rescoreScoreMs, by: tally.scoreMs, at: now)
+        note(.rescoreScoreThrMs, by: tally.scoreThreadUs / 1000, at: now)
+        note(.rescoreLoopRestMs, by: tally.restMs, at: now)
+        note(.rescorePaceMs, by: tally.paceMs, at: now)
     }
 
     /// Add the CPU spent since `startMillis` to a phase counter.

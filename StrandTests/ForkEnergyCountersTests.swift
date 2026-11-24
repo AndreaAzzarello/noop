@@ -194,4 +194,34 @@ final class ForkEnergyCountersTests: XCTestCase {
         XCTAssertEqual(ForkEnergyCounters.bucket(threadName: "x.cooperative", isMain: false), .cpuThrWorkersMs)
         XCTAssertNil(ForkEnergyCounters.Counter(rawValue: "cpuThrCoopMs"))
     }
+
+    // MARK: Re-score phases
+
+    func testRescorePhasesBookEachBucketOnceAndThreadMicrosecondsAsMillis() {
+        let c = ForkEnergyCounters(fileURL: nil, timeZone: utc)
+        var tally = ForkEnergyCounters.RescorePhaseTally()
+        tally.keyMs = 40; tally.prepMs = 900; tally.scoreMs = 300; tally.scoreThreadUs = 250_900
+        tally.restMs = 60; tally.paceMs = 1_200
+        let now = date("2026-11-24T09:00:00Z")
+        c.noteRescorePhases(preMs: 75, tally, at: now)
+        let hour = c.snapshot()["2026-11-24 09"]
+        XCTAssertEqual(hour?["rescorePreMs"], 75)
+        XCTAssertEqual(hour?["rescoreKeyMs"], 40)
+        XCTAssertEqual(hour?["rescorePrepMs"], 900)
+        XCTAssertEqual(hour?["rescoreScoreMs"], 300)
+        XCTAssertEqual(hour?["rescoreScoreThrMs"], 250)
+        XCTAssertEqual(hour?["rescoreLoopRestMs"], 60)
+        XCTAssertEqual(hour?["rescorePaceMs"], 1_200)
+    }
+
+    func testRescoreLapsAreNonNegativeAndThreadClockAdvances() {
+        var tally = ForkEnergyCounters.RescorePhaseTally()
+        XCTAssertGreaterThanOrEqual(tally.lap(), 0)
+        let t0 = ForkEnergyCounters.threadCPUNanos()
+        var x = 0.0
+        for i in 0..<2_000_000 { x += Double(i).squareRoot() }
+        XCTAssertGreaterThan(x, 0)
+        XCTAssertGreaterThan(ForkEnergyCounters.threadCPUNanos(), t0)
+        XCTAssertGreaterThanOrEqual(tally.lap(), 0)
+    }
 }

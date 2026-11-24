@@ -785,7 +785,11 @@ final class IntelligenceEngine: ObservableObject {
         runningPassDays = maxDays
         var forkCPU: Int? = ForkEnergyCounters.cpuNowMillis() // fork-perf: TEMP
         var forkTrigger: String? // fork-perf: TEMP
+        var forkPre0 = 0 // fork-perf: TEMP (CPU when the pass cleared its gates)
+        var forkPost0: Int? // fork-perf: TEMP (CPU when the day loop returned)
         defer {
+            if forkTrigger != nil, let started = runningPassStart { ForkEnergyCounters.shared.note(.rescoreWallMs, by: Int((DispatchTime.now().uptimeNanoseconds &- started) / 1_000_000)) } // fork-perf: TEMP
+            if let forkPost0 { ForkEnergyCounters.shared.noteCPU(.rescorePostMs, since: forkPost0) } // fork-perf: TEMP
             if let forkCPU { ForkEnergyCounters.shared.noteCPU(.cpuRescoreMs, since: forkCPU) } // fork-perf: TEMP
             if let forkCPU, let forkTrigger { ForkEnergyCounters.shared.noteRescore(trigger: forkTrigger, cpuSince: forkCPU) } // fork-perf: TEMP
             computing = false
@@ -871,6 +875,7 @@ final class IntelligenceEngine: ObservableObject {
         // the second time in this area.
         let trigger = triggerLabel ?? (!force ? "idle" : (skipIfUnchanged ? "post-offload" : "forced"))
         forkTrigger = trigger // fork-perf: TEMP
+        forkPre0 = ForkEnergyCounters.cpuNowMillis() // fork-perf: TEMP
         let hadNew = wmKey.isEmpty || storedWatermark != wmKey
         diagnosticSink?("re-score: trigger=\(trigger) "
                         + "newData=\(hadNew ? "yes" : "no (nothing changed since last run)")", nil)
@@ -1131,6 +1136,7 @@ final class IntelligenceEngine: ObservableObject {
         }
         let inDayScanCache = dayScanCache
 
+        let forkPreMs = max(0, ForkEnergyCounters.cpuNowMillis() - forkPre0) // fork-perf: TEMP
         let (scanned, skippedDayLines, updatedDayScanCache):
             ([DayScan], [String], [String: (key: String, scan: DayScan)]) = await Task.detached(priority: .utility) {
             var out: [DayScan] = []
@@ -1196,8 +1202,11 @@ final class IntelligenceEngine: ObservableObject {
                                             unlabelledAliasOfWhoop5: activeWhoop5RR && o == Repository.whoopSource)
             }
             var paceMark = DispatchTime.now().uptimeNanoseconds
+            var forkTally = ForkEnergyCounters.RescorePhaseTally() // fork-perf: TEMP
             for offset in 0..<maxDays {
+                forkTally.restMs += forkTally.lap() // fork-perf: TEMP
                 if offset > 0 { await RescoreBackgroundScheduler.paceIfBackgrounded(since: &paceMark) }
+                forkTally.paceMs += forkTally.lap() // fork-perf: TEMP
                 let dayStart = nowLocalMidnight - offset * 86_400
                 let day = AnalyticsEngine.dayString(dayStart, offsetSec: tzOffset)
                 // #2517: the day window is a fixed 86,400 seconds and a transition day is not, so the
@@ -1288,6 +1297,7 @@ final class IntelligenceEngine: ObservableObject {
                             if cached.key == key {
                                 out.append(cached.scan)
                                 dayCacheReused += 1
+                                forkTally.keyMs += forkTally.lap() // fork-perf: TEMP
                                 continue
                             }
                             let why = AnalyzeRecentDayCache.missReason(cachedKey: cached.key, freshKey: key)
@@ -1301,12 +1311,14 @@ final class IntelligenceEngine: ObservableObject {
                 // ~2.25 windows' worth of rows or inside `analyzeDay` is unmeasured — and that split is
                 // what decides whether narrowing the read windows is worth building at all. Measured, not
                 // guessed, for the same reason the day-cache duration is.
+                forkTally.keyMs += forkTally.lap() // fork-perf: TEMP
                 let tPrep0 = Date()
                 let hr = await hrWindow.rows(owner: owner, from: from, to: to)
                 guard hr.count >= IntelligenceEngine.minHrSamples else {
                     // This day still paid for its read; count it, or the tally under-reports exactly the
                     // sparse-history installs where reads dominate most.
                     dayPrepSeconds += Date().timeIntervalSince(tPrep0)
+                    forkTally.prepMs += forkTally.lap() // fork-perf: TEMP
                     skippedSleepDays.append((day: day, hrSamples: hr.count))
                     continue
                 }
@@ -1522,6 +1534,8 @@ final class IntelligenceEngine: ObservableObject {
 
                 let tScore0 = Date()
                 dayPrepSeconds += tScore0.timeIntervalSince(tPrep0)
+                forkTally.prepMs += forkTally.lap() // fork-perf: TEMP
+                let forkScoreThr0 = ForkEnergyCounters.threadCPUNanos() // fork-perf: TEMP (analyzeDay is synchronous: one thread)
                 // #1770 follow-up: the Effort ring's funnel. Collected here rather than sent straight
                 // to `diagnosticSink`, because that sink is main-actor isolated and this loop is not —
                 // the same reason `hrvDiag` is carried on the scan and replayed below. A local buffer
@@ -1562,6 +1576,8 @@ final class IntelligenceEngine: ObservableObject {
                                                      deepHrvWindow: deepHrvWindow,
                                                      effortMethod: effortMethodGlobal)
                 dayScoreSeconds += Date().timeIntervalSince(tScore0)
+                forkTally.scoreMs += forkTally.lap() // fork-perf: TEMP
+                forkTally.scoreThreadUs += Int(ForkEnergyCounters.threadCPUNanos() &- forkScoreThr0) / 1000 // fork-perf: TEMP
                 // #195: whole-night HRV cleaning-pipeline summary for the always-on strap log, so a "reads ~2x
                 // too high" report is triageable without the HRV test mode: RMSSD vs SDNN (rmssd >> sdnn =
                 // beat-to-beat jitter surviving the ectopic filter, not real HRV), meanNN as an HR sanity-check,
@@ -1856,6 +1872,8 @@ final class IntelligenceEngine: ObservableObject {
                 }
                 out.append(scan)
             }
+            forkTally.restMs += forkTally.lap() // fork-perf: TEMP
+            ForkEnergyCounters.shared.noteRescorePhases(preMs: forkPreMs, forkTally) // fork-perf: TEMP
             // #1005: prune the reuse cache to the current 21-day window (the oldest day ages out at
             // midnight) and carry a one-line reuse diagnostic on the same channel as the skipped-day lines.
             let dayCacheWindow = Set((0..<maxDays).map {
@@ -1906,6 +1924,7 @@ final class IntelligenceEngine: ObservableObject {
         // #1005: write the loop's updated reuse cache back to the (main-actor) stored property. The pass ran
         // to completion above (`.value` awaited), so there is no concurrent access.
         dayScanCache = updatedDayScanCache
+        forkPost0 = ForkEnergyCounters.cpuNowMillis() // fork-perf: TEMP
         // #1538: the pass after the day loop was never measured. The cost line above brackets the loop and
         // is emitted the moment it returns, so a pass whose time went somewhere later reported a small
         // prep/score and no account of the rest — which is where the steps calibration was re-folding sixty
