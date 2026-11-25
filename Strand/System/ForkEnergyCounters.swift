@@ -38,6 +38,10 @@ final class ForkEnergyCounters: @unchecked Sendable {
         // "cooperative" (workers), other GCD root-queue threads, other named threads, unnamed threads, and threads that ended between two samples.
         // They add up to cpuProcessMs, so the part the phases above do not explain is read off these.
         case cpuThrMainMs, cpuThrWorkersMs, cpuThrDispatchMs, cpuThrNamedMs, cpuThrUnnamedMs, cpuThrExitedMs
+        // The same sample read against the REAL main thread (the mach port captured on the main thread itself), not
+        // "the first thread of task_threads": its CPU, the samples where the first thread was not the main one, and
+        // the samples taken before the main thread was captured. `cpuThrMainMs` stays as it was, to compare a day.
+        case cpuThrMainRealMs, mainThreadMismatch, mainThreadUnknown
         // Re-score passes that returned at a gate (nothing new since the last run); their CPU is not in cpuRescoreMs.
         case rescoreGateSkipped
         // The Night card: its load task started, its load finished, its content appeared on screen.
@@ -97,6 +101,27 @@ final class ForkEnergyCounters: @unchecked Sendable {
         let name: String
         let cpuMs: Int
         let isMain: Bool
+        /// This thread's port is the one captured on the main thread. false until it is captured.
+        var isRealMain: Bool = false
+    }
+
+    // The main thread, captured once on the main thread itself (`mach_thread_self`, kept for the process lifetime).
+    // Written and read under `lock` only (`note`), so no further synchronisation is needed.
+    private static var mainPort: mach_port_t = 0
+    private static var mainThreadCaptured: Bool { mainPort != 0 }
+
+    /// Remember the main thread's port. A no-op off the main thread or once captured.
+    static func captureMainThreadIfNeeded() {
+        guard mainPort == 0, pthread_main_np() != 0 else { return }
+        mainPort = mach_thread_self()
+    }
+
+    /// What one sample says about the "first thread is main" assumption: `.mainThreadUnknown` before the capture,
+    /// `.mainThreadMismatch` when the first listed thread is not the captured main thread, nil when they agree.
+    static func mainCheck(slices: [ThreadSlice], captured: Bool) -> Counter? {
+        guard captured else { return .mainThreadUnknown }
+        guard let first = slices.first else { return nil }
+        return first.isRealMain ? nil : .mainThreadMismatch
     }
 
     /// The bucket a thread's CPU is booked to. Names only: no memory of a dispatch queue is dereferenced.
@@ -118,6 +143,7 @@ final class ForkEnergyCounters: @unchecked Sendable {
             let delta = max(0, slice.cpuMs - (previous[slice.id] ?? 0))
             live += delta
             byBucket[bucket(threadName: slice.name, isMain: slice.isMain), default: 0] += delta
+            if slice.isRealMain { byBucket[.cpuThrMainRealMs, default: 0] += delta }
         }
         return (byBucket, max(0, processDelta - live))
     }
@@ -169,7 +195,8 @@ final class ForkEnergyCounters: @unchecked Sendable {
                 }
             }
             out.append(ThreadSlice(id: ident.thread_id, name: name,
-                                   cpuMs: ms(basic.user_time) + ms(basic.system_time), isMain: index == 0))
+                                   cpuMs: ms(basic.user_time) + ms(basic.system_time), isMain: index == 0,
+                                   isRealMain: mainThreadCaptured && thread == mainPort))
         }
         return out
     }
@@ -295,6 +322,7 @@ final class ForkEnergyCounters: @unchecked Sendable {
         guard amount != 0 else { return }
         lock.lock()
         loadIfNeeded()
+        Self.captureMainThreadIfNeeded()
         let key = Self.bucket(for: now, timeZone: timeZone)
         hours[key, default: [:]][counter.rawValue, default: 0] += amount
         // The process CPU total is sampled at most every 5 minutes and booked to the hour of the sample.
@@ -306,6 +334,9 @@ final class ForkEnergyCounters: @unchecked Sendable {
                 let split = Self.attribute(slices: slices, previous: lastThreadCPU, processDelta: cpu - lastCPUMillis)
                 for (counter, ms) in split.byBucket where ms > 0 {
                     hours[key, default: [:]][counter.rawValue, default: 0] += ms
+                }
+                if let check = Self.mainCheck(slices: slices, captured: Self.mainThreadCaptured) {
+                    hours[key, default: [:]][check.rawValue, default: 0] += 1
                 }
                 if split.exited > 0 { hours[key, default: [:]][Counter.cpuThrExitedMs.rawValue, default: 0] += split.exited }
             }
@@ -357,6 +388,7 @@ final class ForkEnergyCounters: @unchecked Sendable {
         for day in perDay.keys.sorted() {
             lines.append("\(day) total: " + Self.format(perDay[day] ?? [:]))
             if let split = Self.mainSplitLine(perDay[day] ?? [:]) { lines.append("\(day) " + split) }
+            if let check = Self.mainCheckLine(perDay[day] ?? [:]) { lines.append("\(day) " + check) }
         }
         lines.append("— last \(lastHours) h —")
         for hour in data.keys.sorted().suffix(lastHours) {
@@ -384,6 +416,18 @@ final class ForkEnergyCounters: @unchecked Sendable {
         let share = Int((Double(rest) / Double(main) * 100).rounded())
         let named = parts.filter { $0.1 > 0 }.map { "\($0.0)=\($0.1)" }.joined(separator: " ")
         return "main split: main=\(main)ms attributed=\(attributed)ms (\(named)) unattributed=\(rest)ms (\(share)%)"
+    }
+
+    /// "main check: first=… real=… mismatch=… unknown=…": the CPU booked to the first listed thread against the captured
+    /// main thread, and how many samples disagreed. nil when neither was sampled. When `real` differs from `first`
+    /// the premise of the main split changes, and the figure to trust is `real`.
+    static func mainCheckLine(_ counts: [String: Int]) -> String? {
+        let first = counts[Counter.cpuThrMainMs.rawValue] ?? 0
+        let real = counts[Counter.cpuThrMainRealMs.rawValue] ?? 0
+        let mismatch = counts[Counter.mainThreadMismatch.rawValue] ?? 0
+        let unknown = counts[Counter.mainThreadUnknown.rawValue] ?? 0
+        guard first > 0 || real > 0 else { return nil }
+        return "main check: first=\(first)ms real=\(real)ms mismatch=\(mismatch) unknown=\(unknown)"
     }
 
     static func format(_ counts: [String: Int]) -> String {

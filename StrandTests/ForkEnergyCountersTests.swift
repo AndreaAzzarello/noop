@@ -337,4 +337,47 @@ final class ForkEnergyCountersTests: XCTestCase {
         c.note(.mainBleNotifyMs, by: 200, at: now)
         XCTAssertTrue(c.report().contains("main split: main=500ms attributed=200ms (notify=200) unattributed=300ms (60%)"))
     }
+
+    // MARK: - Real main thread against "the first listed thread"
+
+    func testAttributeBooksTheCapturedMainThreadEvenWhenItIsNotListedFirst() {
+        typealias C = ForkEnergyCounters
+        let slices = [
+            C.ThreadSlice(id: 1, name: "", cpuMs: 900, isMain: true),                    // listed first, not the real main
+            C.ThreadSlice(id: 2, name: "", cpuMs: 100, isMain: false, isRealMain: true)]
+        let split = C.attribute(slices: slices, previous: [:], processDelta: 1_000)
+        XCTAssertEqual(split.byBucket[.cpuThrMainMs], 900)
+        XCTAssertEqual(split.byBucket[.cpuThrMainRealMs], 100)
+    }
+
+    func testMainCheckSaysUnknownMismatchOrNothing() {
+        typealias C = ForkEnergyCounters
+        let agree = [C.ThreadSlice(id: 1, name: "", cpuMs: 1, isMain: true, isRealMain: true)]
+        let differ = [C.ThreadSlice(id: 1, name: "", cpuMs: 1, isMain: true),
+                      C.ThreadSlice(id: 2, name: "", cpuMs: 1, isMain: false, isRealMain: true)]
+        XCTAssertEqual(C.mainCheck(slices: agree, captured: false), .mainThreadUnknown)
+        XCTAssertNil(C.mainCheck(slices: agree, captured: true))
+        XCTAssertEqual(C.mainCheck(slices: differ, captured: true), .mainThreadMismatch)
+    }
+
+    func testMainCheckLineComparesTheTwoFigures() {
+        var counts: [String: Int] = [:]
+        XCTAssertNil(ForkEnergyCounters.mainCheckLine(counts))
+        counts[ForkEnergyCounters.Counter.cpuThrMainMs.rawValue] = 6_900
+        counts[ForkEnergyCounters.Counter.cpuThrMainRealMs.rawValue] = 120
+        counts[ForkEnergyCounters.Counter.mainThreadMismatch.rawValue] = 288
+        XCTAssertEqual(ForkEnergyCounters.mainCheckLine(counts),
+                       "main check: first=6900ms real=120ms mismatch=288 unknown=0")
+    }
+
+    func testTheRealMainThreadIsCapturedOnTheMainThreadAndFoundInTheLiveList() {
+        let done = expectation(description: "main")
+        DispatchQueue.main.async {
+            ForkEnergyCounters.captureMainThreadIfNeeded()
+            let slices = ForkEnergyCounters.threadSlices()
+            XCTAssertEqual(slices.filter(\.isRealMain).count, 1)
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 5)
+    }
 }
