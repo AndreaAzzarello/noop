@@ -26,6 +26,9 @@ struct SmartWakeAlarmsScreen: View {
     @State private var isNew = false
     @State private var pending: PendingConflict?
     @State private var showInfo = false
+    @State private var swipeOpenID: UUID?
+    @State private var lastSwipeActivity: Date?
+    @State private var deleteTick = 0
     @State private var smartWakeFailure: String?
     @State private var windDownOn = WindDownNudge.isEnabled
     @State private var usualWake = WindDownNudge.wakeMinutes
@@ -37,6 +40,7 @@ struct SmartWakeAlarmsScreen: View {
             alarmsPanel
             eveningPanel
         }
+        .liquidMediumHaptic(trigger: deleteTick)
         .sheet(item: $editing) { alarm in
             SmartWakeAlarmEditor(original: alarm, isNew: isNew, onSave: { attemptSave($0) }, onDelete: { store.delete(id: $0) })
         }
@@ -74,6 +78,7 @@ struct SmartWakeAlarmsScreen: View {
                     Button { showInfo = true } label: { Image(systemName: "info.circle") }
                         .accessibilityLabel(Text(verbatim: Self.informationTitle))
                     Button {
+                        swipeOpenID = nil
                         isNew = true
                         editing = SmartWakeAlarm(windowMinutes: behavior.smartWakeWindowMinutes)
                     } label: { Image(systemName: "plus") }
@@ -93,10 +98,13 @@ struct SmartWakeAlarmsScreen: View {
                         ForEach(Array(store.book.alarms.enumerated()), id: \.element.id) { index, alarm in
                             if index > 0 { Divider().overlay(StrandPalette.hairline) }
                             SmartWakeAlarmRow(alarm: alarm,
-                                              onEdit: { isNew = false; editing = alarm },
+                                              onEdit: { tapRow(alarm) },
                                               onToggle: { setEnabled(alarm, $0) },
-                                              onDelete: { store.delete(id: alarm.id) })
-                                .modifier(SmartWakeSwipeToDelete(onDelete: { store.delete(id: alarm.id) }))
+                                              onDelete: { delete(alarm) },
+                                              onAccessibilityEdit: { openEditor(alarm) })
+                                .modifier(SmartWakeSwipeToDelete(rowID: alarm.id, openID: $swipeOpenID,
+                                                                 lastDragActivity: $lastSwipeActivity,
+                                                                 onDelete: { delete(alarm) }))
                         }
                     }
                 }
@@ -246,6 +254,27 @@ struct SmartWakeAlarmsScreen: View {
             if outcome == .notAuthorized { behavior.smartWakeEnabled = false }
             if outcome == .enabled { model.applySmartWakeSchedule() }
         }
+    }
+
+    /// A tap on a row body: opens the editor, unless it is the tail of a swipe or a row is open (then it only closes).
+    private func tapRow(_ alarm: SmartWakeAlarm) {
+        switch SmartWakeSwipe.tap(openID: swipeOpenID, lastDragActivity: lastSwipeActivity, now: Date()) {
+        case .edit: openEditor(alarm)
+        case .close: withAnimation(.easeOut(duration: 0.2)) { swipeOpenID = nil }
+        case .ignore: break
+        }
+    }
+
+    private func openEditor(_ alarm: SmartWakeAlarm) {
+        swipeOpenID = nil
+        isNew = false
+        editing = alarm
+    }
+
+    private func delete(_ alarm: SmartWakeAlarm) {
+        swipeOpenID = nil
+        deleteTick += 1
+        store.delete(id: alarm.id)
     }
 
     private func setEnabled(_ alarm: SmartWakeAlarm, _ on: Bool) {

@@ -10,6 +10,8 @@ struct SmartWakeAlarmRow: View {
     let onEdit: () -> Void
     let onToggle: (Bool) -> Void
     let onDelete: () -> Void
+    /// VoiceOver's "Edit" action; defaults to `onEdit`. Separate so a tap guard on `onEdit` never swallows it.
+    var onAccessibilityEdit: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -38,52 +40,87 @@ struct SmartWakeAlarmRow: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(SmartWakeAlarmText.spoken(alarm)))
-        .accessibilityAction(named: Text("Edit", tableName: "Fork"), onEdit)
+        .accessibilityAction(named: Text("Edit", tableName: "Fork"), onAccessibilityEdit ?? onEdit)
         .accessibilityAction(named: Text("Delete", tableName: "Fork"), onDelete)
     }
 }
 
-/// Swipe left to reveal Delete, for rows that are not inside a `List` (which has `swipeActions`). The row also offers
-/// Delete as an accessibility action and a context menu, so nothing depends on the gesture.
+/// Swipe left to reveal Delete, for rows that are not inside a `List` (which has `swipeActions`). The row shrinks from the
+/// right by the button width, so the time and the switch move together and nothing is clipped. One row is open at a time
+/// (`openID`, owned by the screen); drag and tap are arbitrated by `SmartWakeSwipe`. The row also offers Delete as an
+/// accessibility action, so nothing depends on the gesture.
 struct SmartWakeSwipeToDelete: ViewModifier {
+    let rowID: UUID
+    @Binding var openID: UUID?
+    @Binding var lastDragActivity: Date?
     let onDelete: () -> Void
-    @State private var offset: CGFloat = 0
-    private let reveal: CGFloat = 84
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var live: CGFloat?
+    @State private var horizontal: Bool?
+
+    private var isOpen: Bool { openID == rowID }
+    private var base: CGFloat { isOpen ? SmartWakeSwipe.buttonWidth : 0 }
+    private var reveal: CGFloat { live ?? base }
+    private var animation: Animation {
+        reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.35, dampingFraction: 0.85)
+    }
 
     func body(content: Content) -> some View {
         content
-            .offset(x: offset)
-            .background(alignment: .trailing) {
-                Button(role: .destructive) {
-                    withAnimation { offset = 0 }
-                    onDelete()
-                } label: {
-                    Text("Delete", tableName: "Fork")
-                        .font(StrandFont.footnote.weight(.semibold))
-                        .foregroundStyle(StrandPalette.surfaceBase)
-                        .frame(width: reveal)
-                        .frame(maxHeight: .infinity)
-                        .background(StrandPalette.statusCritical)
-                }
-                .opacity(offset < -4 ? 1 : 0)
-                .allowsHitTesting(offset < -4)
-                .accessibilityHidden(true)
-            }
+            .padding(.trailing, reveal > 0 ? reveal + NoopMetrics.space2 : 0)
+            .background(alignment: .trailing) { deleteButton }
             .contentShape(Rectangle())
             .simultaneousGesture(
-                DragGesture(minimumDistance: 24)
+                DragGesture(minimumDistance: 12)
                     .onChanged { value in
-                        guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                        offset = min(0, max(-reveal, value.translation.width))
+                        if horizontal == nil {
+                            horizontal = SmartWakeSwipe.isHorizontal(value.translation)
+                            if horizontal == true, let open = openID, open != rowID {
+                                withAnimation(animation) { openID = nil }
+                            }
+                        }
+                        guard horizontal == true else { return }
+                        lastDragActivity = Date()
+                        live = SmartWakeSwipe.liveReveal(start: base, translation: value.translation.width,
+                                                         rubberBand: !reduceMotion)
                     }
                     .onEnded { value in
-                        withAnimation(.easeOut(duration: 0.15)) {
-                            offset = value.translation.width < -reveal / 2 ? -reveal : 0
+                        defer { horizontal = nil }
+                        guard horizontal == true else { return }
+                        lastDragActivity = Date()
+                        let open = SmartWakeSwipe.settle(
+                            reveal: live ?? base,
+                            projectedDelta: value.predictedEndTranslation.width - value.translation.width,
+                            wasOpen: isOpen)
+                        withAnimation(animation) {
+                            if open { openID = rowID } else if openID == rowID { openID = nil }
+                            live = nil
                         }
                     })
-            // The switch paints its thumb/glow past its layout frame, so a plain `.clipped()` cut it at the right edge.
-            // Only the left side needs hiding (the row slides out that way): widen the mask on the other three sides.
-            .mask { Rectangle().padding(.trailing, -16).padding(.vertical, -8) }
+    }
+
+    private var deleteButton: some View {
+        let progress = min(1, reveal / (SmartWakeSwipe.buttonWidth * 0.6))
+        return Button(role: .destructive) {
+            withAnimation(animation) { openID = nil }
+            onDelete()
+        } label: {
+            VStack(spacing: NoopMetrics.space1) {
+                Image(systemName: "trash.fill")
+                Text("Delete", tableName: "Fork").lineLimit(1).minimumScaleFactor(0.7)
+            }
+            .font(StrandFont.footnote.weight(.semibold))
+            .foregroundStyle(StrandPalette.surfaceBase)
+            .opacity(progress)
+            .frame(width: max(reveal, 0))
+            .frame(maxHeight: .infinity)
+            .background(StrandPalette.statusCritical, in: RoundedRectangle(cornerRadius: NoopMetrics.cardRadius * 0.6, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .opacity(reveal > 1 ? 1 : 0)
+        .allowsHitTesting(reveal > 1)
+        .accessibilityHidden(true)
     }
 }
 #endif
