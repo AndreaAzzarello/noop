@@ -3235,34 +3235,56 @@ final class IntelligenceEngine: ObservableObject {
                                        effortMethod: StrainScorer.Method = .edwards) async {
         let now = Int(Date().timeIntervalSince1970)
         let since = now - 14 * 86_400
-        guard let rows = try? await store.workouts(deviceId: deviceId, from: since, to: now, limit: 200)
-        else { return }
+        // A manual workout is saved under the ACTIVE strap's id (`Repository.saveManualWorkout`) and a 5/MG banks
+        // its HR there too, while this engine's `deviceId` is the canonical "my-whoop". Reading only the canonical
+        // id never found such a row or its HR, so its kcal stayed nil while the detail view (which reads the
+        // union) showed the HR. Read both, active first, and write each row back under its own id.
+        let ids = ManualWorkoutRescore.readIds(active: repo.deviceId, canonical: deviceId)
+        var candidates: [(row: WorkoutRow, owner: String)] = []
+        var seenKeys = Set<String>()
+        for id in ids {
+            guard let rows = try? await store.workouts(deviceId: id, from: since, to: now, limit: 200) else { continue }
+            for row in rows where row.source == "manual" && seenKeys.insert("\(row.startTs)|\(row.sport)").inserted {
+                candidates.append((row, id))
+            }
+        }
         let hrMax = Double(profile.hrMax)
-        var updated: [WorkoutRow] = []
-        // A manual row is eligible when it looks under-scored (negligible kcal, #137) OR it's missing
-        // strain (the merged-workout case, where kcal is the SUM of inputs so it never looks under-scored
-        // yet Effort stays blank forever). `improves` then accepts a strain-only gain for the latter.
-        for row in rows where row.source == "manual"
-            && (ManualWorkoutRescore.looksUnderScored(currentKcal: row.energyKcal) || row.strain == nil) {
-            guard let samples = try? await store.hrSamples(deviceId: deviceId, from: row.startTs,
-                                                           to: row.endTs, limit: 20_000),
-                  let s = ManualWorkoutRescore.scored(windowSamples: samples, profile: up, hrMax: hrMax,
+        var updated: [String: [WorkoutRow]] = [:]
+        var eligible = 0, scoredCount = 0
+        // A manual row is eligible when it looks under-scored (negligible kcal, #137) OR it's missing strain (the
+        // merged-workout case, where kcal is the SUM of inputs so it never looks under-scored, yet Effort stays
+        // blank forever). `improves` then accepts a strain-only gain for the latter.
+        for (row, owner) in candidates
+            where ManualWorkoutRescore.looksUnderScored(currentKcal: row.energyKcal) || row.strain == nil {
+            eligible += 1
+            var lists: [[HRSample]] = []
+            for id in ids {
+                lists.append((try? await store.hrSamples(deviceId: id, from: row.startTs, to: row.endTs, limit: 20_000)) ?? [])
+            }
+            let samples = ManualWorkoutRescore.mergeFirstWins(lists)
+            guard let s = ManualWorkoutRescore.scored(windowSamples: samples, profile: up, hrMax: hrMax,
                                                       restingHR: restingHR,
                                                       effortMethod: effortMethod),
                   ManualWorkoutRescore.improves(s, over: row.energyKcal, currentStrain: row.strain,
                                                 allowStrainOnlyFill: true)
             else { continue }
+            scoredCount += 1
             // Never lower a summed kcal: only take the recomputed kcal when it genuinely beats the stored
             // value; a strain-only fill (merged row) keeps the existing summed energyKcal.
             let kcalBeatsStored = (s.kcal ?? 0) > (row.energyKcal ?? 0) + ManualWorkoutRescore.improvementMarginKcal
             let energyKcal = kcalBeatsStored ? s.kcal : row.energyKcal
-            updated.append(WorkoutRow(
+            updated[owner, default: []].append(WorkoutRow(
                 startTs: row.startTs, endTs: row.endTs, sport: row.sport, source: row.source,
                 durationS: row.durationS, energyKcal: energyKcal, avgHr: s.avgHr, maxHr: s.maxHr,
                 strain: s.strain, distanceM: row.distanceM, zonesJSON: row.zonesJSON, notes: row.notes,
                 steps: row.steps))
         }
-        if !updated.isEmpty { _ = try? await store.upsertWorkouts(updated, deviceId: deviceId) }
+        for (owner, rows) in updated { _ = try? await store.upsertWorkouts(rows, deviceId: owner) }
+        // Rare-event evidence, always on and counts only: what the pass found and wrote, so a manual workout that
+        // keeps no calories can be told apart from one the pass never saw.
+        if eligible > 0 {
+            diagnosticSink?("manual rescore: rows=\(candidates.count) eligible=\(eligible) scored=\(scoredCount) ids=\(ids.count)", .workouts)
+        }
     }
 
     /// Pass 1 has no seeded skin baseline. Attach the deviation before scoring so the score,

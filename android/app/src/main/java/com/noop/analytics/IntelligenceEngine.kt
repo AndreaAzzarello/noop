@@ -2347,16 +2347,26 @@ object IntelligenceEngine {
         effortMethod: StrainScorer.Method = StrainScorer.Method.EDWARDS,
     ) {
         val since = nowSeconds - 14L * 86_400L
-        val rows = runCatching { repo.workouts(deviceId, since, nowSeconds) }.getOrNull() ?: return
         val hrMax = maxHROverride ?: (208.0 - 0.7 * profile.age)   // Tanaka, matching endWorkout
+        // A manual workout is saved under the ACTIVE strap's id and a 5/MG banks its HR there too, while the
+        // detail view reads active ∪ canonical. Read the same union (active first) so the rescore finds the row
+        // and its HR, and write each row back under its own id. Twin of Swift `rescoreManualWorkouts`.
+        val ids = ManualWorkoutRescore.readIds(deviceId, WhoopRepository.WHOOP_SOURCE)
+        val seen = HashSet<String>()
+        val candidates = ArrayList<WorkoutRow>()
+        for (id in ids) {
+            val rows = runCatching { repo.workouts(id, since, nowSeconds) }.getOrNull() ?: continue
+            for (row in rows) {
+                if (row.source == "manual" && seen.add("${row.startTs}|${row.sport}")) candidates.add(row)
+            }
+        }
         val updated = ArrayList<WorkoutRow>()
-        for (row in rows) {
-            if (row.source != "manual") continue
+        for (row in candidates) {
             // Eligible when it looks under-scored (negligible kcal, #137) OR it's missing strain (the
             // merged-workout case, where kcal is the SUM of inputs so it never looks under-scored yet
             // Effort stays blank forever). improves() then accepts a strain-only gain for the latter.
             if (!ManualWorkoutRescore.looksUnderScored(row.energyKcal) && row.strain != null) continue
-            val samples = runCatching { repo.hrSamplesForDevice(deviceId, row.startTs, row.endTs, 20_000) }
+            val samples = runCatching { repo.hrSamplesFor(ids, row.startTs, row.endTs, 20_000) }
                 .getOrNull() ?: continue
             val s = ManualWorkoutRescore.scored(
                 samples, profile, hrMax, restingHR, effortMethod) ?: continue

@@ -32,6 +32,23 @@ public enum ManualWorkoutRescore {
     /// still-sparse window (recompute ≈ current) is a no-op and the pass is idempotent.
     public static let improvementMarginKcal = 1.0
 
+    /// The device ids a manual workout's row and HR can live under: the ACTIVE strap first (a manual workout is
+    /// saved under it, and a re-added or 5/MG strap banks its HR there), then the canonical id. A single-strap
+    /// install where the two coincide gets one id. Twin of `WhoopRepository.importedSourceIdsFor`.
+    public static func readIds(active: String, canonical: String) -> [String] {
+        active == canonical ? [canonical] : [active, canonical]
+    }
+
+    /// Merge HR reads from several ids into one series by timestamp, the earlier list winning a shared second,
+    /// ascending by ts. One list is returned as read. Twin of `WhoopRepository.mergeHrByTs`.
+    public static func mergeFirstWins(_ lists: [[HRSample]]) -> [HRSample] {
+        if lists.count == 1 { return lists[0] }
+        var seen = Set<Int>()
+        var out: [HRSample] = []
+        for list in lists { for s in list where seen.insert(s.ts).inserted { out.append(s) } }
+        return out.sorted { $0.ts < $1.ts }
+    }
+
     /// Does this manual workout currently look under-scored (missing/negligible calories)? The gate the
     /// post-sync pass uses to decide whether to attempt a rescore at all — so well-scored workouts
     /// (a 4.0's dense live HR) are never touched.

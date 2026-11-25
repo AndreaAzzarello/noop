@@ -277,7 +277,10 @@ struct WorkoutDetailView: View {
                      accent: row.maxHr != nil ? StrandPalette.metricRose : StrandPalette.textTertiary)
             StatTile(label: "Calories",
                      value: row.energyKcal.map { grouped($0) } ?? "–",
-                     caption: row.energyKcal != nil ? "kcal" : nil,
+                     // A manual session with no estimate says why instead of a bare dash: its calories come
+                     // from strap heart rate over the window (the rescore), which this session does not have yet.
+                     caption: row.energyKcal != nil ? "kcal"
+                         : (WorkoutSource.classify(row.source) == .manual ? String(localized: "Needs strap HR") : nil),
                      accent: row.energyKcal != nil ? StrandPalette.metricAmber : StrandPalette.textTertiary)
             if row.distanceM != nil {
                 StatTile(label: "Distance",

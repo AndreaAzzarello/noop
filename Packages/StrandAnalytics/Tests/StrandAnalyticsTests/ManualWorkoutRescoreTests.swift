@@ -106,4 +106,21 @@ final class ManualWorkoutRescoreTests: XCTestCase {
         // And it's idempotent: re-running over the now-good value is a no-op.
         XCTAssertFalse(ManualWorkoutRescore.improves(s, over: s.kcal))
     }
+
+    // MARK: - Read ids and merge (manual workouts saved under the active strap)
+
+    func testReadIdsActiveFirstThenCanonical() {
+        XCTAssertEqual(ManualWorkoutRescore.readIds(active: "my-whoop", canonical: "my-whoop"), ["my-whoop"])
+        XCTAssertEqual(ManualWorkoutRescore.readIds(active: "whoop-AB12", canonical: "my-whoop"),
+                       ["whoop-AB12", "my-whoop"])
+    }
+
+    func testMergeFirstWinsKeepsEarlierListOnSharedSecond() {
+        let a = [HRSample(ts: 10, bpm: 100), HRSample(ts: 12, bpm: 102)]
+        let b = [HRSample(ts: 11, bpm: 90), HRSample(ts: 12, bpm: 50), HRSample(ts: 13, bpm: 91)]
+        let merged = ManualWorkoutRescore.mergeFirstWins([a, b])
+        XCTAssertEqual(merged.map(\.ts), [10, 11, 12, 13])
+        XCTAssertEqual(merged.map(\.bpm), [100, 90, 102, 91])
+        XCTAssertEqual(ManualWorkoutRescore.mergeFirstWins([a]), a)
+    }
 }

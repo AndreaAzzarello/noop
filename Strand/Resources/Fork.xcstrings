@@ -766,6 +766,18 @@
         }
       }
     },
+    "Needs strap HR" : {
+      "comment" : "Caption under the empty Calories tile of a manual workout: the estimate needs strap heart rate over the session.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serve la FC del cinturino"
+          }
+        }
+      }
+    },
     "New alarm" : {
       "comment" : "Editor title.",
       "extractionState" : "manual",

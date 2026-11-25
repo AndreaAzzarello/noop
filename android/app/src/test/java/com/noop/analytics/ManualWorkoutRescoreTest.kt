@@ -79,4 +79,18 @@ class ManualWorkoutRescoreTest {
         assertTrue(ManualWorkoutRescore.improves(s, stored))
         assertFalse(ManualWorkoutRescore.improves(s, s.kcal))   // re-running over the good value is a no-op
     }
+
+    // Oracle: Swift `ManualWorkoutRescore.readIds` / `mergeFirstWins` over the same inputs (swift test output).
+    @Test fun readIdsActiveFirstThenCanonical() {
+        assertEquals(listOf("my-whoop"), ManualWorkoutRescore.readIds("my-whoop", "my-whoop"))
+        assertEquals(listOf("whoop-AB12", "my-whoop"), ManualWorkoutRescore.readIds("whoop-AB12", "my-whoop"))
+    }
+
+    @Test fun mergeFirstWinsMatchesSwiftOracle() {
+        val a = listOf(HrSample("a", 10, 100), HrSample("a", 12, 102))
+        val b = listOf(HrSample("b", 11, 90), HrSample("b", 12, 50), HrSample("b", 13, 91))
+        val merged = com.noop.data.WhoopRepository.mergeHrByTs(listOf(a, b))
+        assertEquals(listOf(10L, 11L, 12L, 13L), merged.map { it.ts })
+        assertEquals(listOf(100, 90, 102, 91), merged.map { it.bpm })
+    }
 }

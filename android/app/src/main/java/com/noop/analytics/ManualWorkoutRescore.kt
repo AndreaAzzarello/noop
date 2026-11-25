@@ -27,6 +27,12 @@ object ManualWorkoutRescore {
      *  window (recompute ≈ current) is a no-op and the pass is idempotent. */
     const val IMPROVEMENT_MARGIN_KCAL = 1.0
 
+    /** The device ids a manual workout's row and HR can live under: the ACTIVE strap first (a manual workout is
+     *  saved under it, and a re-added or 5/MG strap banks its HR there), then the canonical id. One id when the
+     *  two coincide. Twin of Swift `ManualWorkoutRescore.readIds` and of `WhoopRepository.importedSourceIdsFor`. */
+    fun readIds(active: String, canonical: String): List<String> =
+        if (active == canonical) listOf(canonical) else listOf(active, canonical)
+
     /** Does this manual workout currently look under-scored? The gate the post-sync pass uses so a
      *  well-scored workout (a 4.0's dense live HR) is never touched. */
     fun looksUnderScored(currentKcal: Double?): Boolean =
