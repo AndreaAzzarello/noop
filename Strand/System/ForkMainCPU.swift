@@ -138,6 +138,7 @@ enum ForkMainCPU {
     /// Opens a point. Returns -1 off the main thread, which `end` ignores.
     static func begin(_ point: Point) -> Int {
         guard onMain else { return -1 }
+        ForkRunLoopMeter.touched = true // fork-perf: TEMP (this run-loop iteration ran a BLE call site)
         return meter.begin(point, at: ForkEnergyCounters.threadCPUNanos())
     }
 

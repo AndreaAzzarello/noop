@@ -42,6 +42,11 @@ final class ForkEnergyCounters: @unchecked Sendable {
         // "the first thread of task_threads": its CPU, the samples where the first thread was not the main one, and
         // the samples taken before the main thread was captured. `cpuThrMainMs` stays as it was, to compare a day.
         case cpuThrMainRealMs, mainThreadMismatch, mainThreadUnknown
+        // Main run-loop iterations (`ForkRunLoopMeter`): count in the foreground and in the background, by thread-CPU band
+        // (<1, 1-10, 10-100, >100 ms), their total CPU ms, the part in iterations a BLE call site touched, the part in
+        // the background, and the LiveState change notices that fell inside iterations.
+        case rlIterFg, rlIterBg, rlBandLt1, rlBand1to10, rlBand10to100, rlBandGt100
+        case rlCpuMs, rlCpuBleMs, rlCpuBgMs, rlWillChange
         // Re-score passes that returned at a gate (nothing new since the last run); their CPU is not in cpuRescoreMs.
         case rescoreGateSkipped
         // The Night card: its load task started, its load finished, its content appeared on screen.
@@ -323,6 +328,7 @@ final class ForkEnergyCounters: @unchecked Sendable {
         lock.lock()
         loadIfNeeded()
         Self.captureMainThreadIfNeeded()
+        if counter == .liveWillChange { ForkRunLoopMeter.noteWillChange() }
         let key = Self.bucket(for: now, timeZone: timeZone)
         hours[key, default: [:]][counter.rawValue, default: 0] += amount
         // The process CPU total is sampled at most every 5 minutes and booked to the hour of the sample.
@@ -389,6 +395,7 @@ final class ForkEnergyCounters: @unchecked Sendable {
             lines.append("\(day) total: " + Self.format(perDay[day] ?? [:]))
             if let split = Self.mainSplitLine(perDay[day] ?? [:]) { lines.append("\(day) " + split) }
             if let check = Self.mainCheckLine(perDay[day] ?? [:]) { lines.append("\(day) " + check) }
+            lines.append(contentsOf: ForkRunLoopMeter.reportLines(day: day, counts: perDay[day] ?? [:]))
         }
         lines.append("— last \(lastHours) h —")
         for hour in data.keys.sorted().suffix(lastHours) {
