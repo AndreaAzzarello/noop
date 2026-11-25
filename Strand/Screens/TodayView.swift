@@ -1633,6 +1633,8 @@ struct TodayView: View {
             }
             #if os(iOS)
             .noopSheetPresentation(largeFirst: true)
+            // One flat base under the whole sheet, so the strip below the last card (home indicator) matches the page.
+            .presentationBackground(StrandPalette.surfaceBase)
             #else
             .frame(width: 620, height: 720)
             #endif

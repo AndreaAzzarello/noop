@@ -75,16 +75,18 @@ struct WorkoutDetailView: View {
     var body: some View {
         ScreenScaffold(title: "\(WorkoutSource.displaySport(row.sport))",
                        subtitle: "\(dateLabel(row.startTs))",
-                       // PERF: chart/map-heavy column (a MapKit route map, the session HR curve, the
-                       // zone-split chart and the effort card). The LazyVStack path builds the off-screen
-                       // ones on demand — byte-identical layout — so a tall detail doesn't materialise the
-                       // map + both charts before the header is even on screen.
-                       lazy: true,
+                       // Eager column: a handful of fixed cards whose heights change after `load()` (HR curve,
+                       // zones, recovery, the count-up Effort). A LazyVStack keeps its first height estimate for
+                       // the cards it has not built, so the scroll content ended short and the last card was cut.
+                       // The map and charts still build only their own data on appear.
+                       lazy: false,
                        // The day-of-sky liquid backdrop, matching the Workouts list this detail opens from
                        // and every other liquid screen. Fixed and full-bleed; it does not scroll. This
                        // screen is presented in a sheet wrapped in a NavigationStack by WorkoutsView, so it
                        // needs no extra macOS NavigationStack of its own.
-                       topBackground: liquidScaffoldSky()) {
+                       topBackground: liquidScaffoldSky(),
+                       // A sheet has no floating tab bar over it: a normal bottom margin, then the safe area.
+                       bottomClearance: NoopMetrics.space8) {
             headerCard
             statStrip
             routeCard
