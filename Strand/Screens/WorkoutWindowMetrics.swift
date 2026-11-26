@@ -63,6 +63,68 @@ enum WorkoutWindowMetrics {
         return nil
     }
 
+    // MARK: Estimated distance (display only)
+    //
+    // The strap has no GPS. For sports where walking or running dominates, distance is estimated as
+    // steps x stride length. Never stored, never written to Health, never part of the backup: it is a
+    // readout, so it has no Android twin obligation. Expected error: about 15-20% for walk/run,
+    // 25-35% for racket and field sports.
+
+    struct DistanceEstimate: Equatable {
+        let meters: Double
+        let stepLengthM: Double
+        let cadenceSpm: Double
+    }
+
+    static let racketSports: Set<String> = ["Tennis", "Padel", "Squash", "Badminton", "Pickleball"]
+    static let fieldSports: Set<String> = ["Soccer", "Basketball", "Handball", "Rugby", "Field hockey", "Lacrosse"]
+
+    /// Sports that may show an estimated distance: on-foot, racket and field sports. Table tennis and
+    /// volleyball are left out (steps are close to in place), as is everything with no footfalls.
+    static let distanceEstimateSports: Set<String> =
+        WorkoutCatalog.onFootSportNames.union(racketSports).union(fieldSports)
+
+    static func supportsDistanceEstimate(sport: String) -> Bool {
+        let q = sport.trimmingCharacters(in: .whitespaces)
+        return distanceEstimateSports.contains { $0.caseInsensitiveCompare(q) == .orderedSame }
+    }
+
+    static let walkStrideFactor = 0.415
+    static let runStrideFactor = 0.55
+    static let racketStrideFactor = 0.35
+    static let fallbackHeightCm = 170.0   // same fallback as `estimateBoutCalories`
+
+    /// Estimated distance for a session, or nil when it would not be trustworthy: unsupported sport, a
+    /// recorded distance exists (it wins, so two readouts cannot disagree), fewer than 500 steps, a
+    /// window under 5 minutes, cadence outside 50...220 steps/min, or a result under 200 m.
+    static func estimateDistance(sport: String, steps: Int, durationS: Double, avgHr: Int?,
+                                 hrMax: Double, heightCm: Double,
+                                 recordedDistanceM: Double?) -> DistanceEstimate? {
+        guard supportsDistanceEstimate(sport: sport) else { return nil }
+        if let recordedDistanceM, recordedDistanceM > 0 { return nil }
+        guard steps >= 500, durationS.isFinite, durationS >= 300 else { return nil }
+        let cadence = Double(steps) / (durationS / 60.0)
+        guard cadence >= 50, cadence <= 220 else { return nil }
+
+        let height = (heightCm.isFinite && heightCm >= 120 && heightCm <= 220) ? heightCm : fallbackHeightCm
+        let q = sport.trimmingCharacters(in: .whitespaces)
+        let isRacket = racketSports.contains { $0.caseInsensitiveCompare(q) == .orderedSame }
+
+        let factor: Double
+        if isRacket {
+            factor = racketStrideFactor
+        } else if let avgHr, hrMax > 0, Double(avgHr) < 0.6 * hrMax {
+            factor = walkStrideFactor
+        } else {
+            let t = min(max((cadence - 120) / 30, 0), 1)
+            factor = walkStrideFactor + t * (runStrideFactor - walkStrideFactor)
+        }
+        let stride = height / 100.0 * factor
+        let meters = Double(steps) * stride
+        guard meters >= 200 else { return nil }
+        return DistanceEstimate(meters: meters, stepLengthM: stride, cadenceSpm: cadence)
+    }
+
     // MARK: Effort
 
     struct Effort: Equatable {
