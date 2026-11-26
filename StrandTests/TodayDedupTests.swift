@@ -59,18 +59,20 @@ final class TodayDedupTests: XCTestCase {
         XCTAssertTrue(TodayDedup.showsLastWorkouts(todaysWorkoutShownAbove: false))
     }
 
-    func testRecentListDropsTodaysWorkoutsOnlyWhileViewingToday() {
+    func testRecentListDropsTheWorkoutsOfTheShownDay() {
         let today = row(ts(day: 24, hour: 8)), yesterday = row(ts(day: 23, hour: 8))
         let rows = [today, yesterday]
-        XCTAssertEqual(TodayDedup.excludingToday(rows, isViewingToday: true, now: now, calendar: cal).map(\.startTs),
+        XCTAssertEqual(TodayDedup.excludingShown(rows, day: now, now: now, calendar: cal).map(\.startTs),
                        [yesterday.startTs])
-        XCTAssertEqual(TodayDedup.excludingToday(rows, isViewingToday: false, now: now, calendar: cal).map(\.startTs),
-                       [today.startTs, yesterday.startTs])
+        // Browsing yesterday: the card shows yesterday's workout, so the list drops that one and keeps today's.
+        XCTAssertEqual(TodayDedup.excludingShown(rows, day: Date(timeIntervalSince1970: TimeInterval(yesterday.startTs)),
+                                                 now: now, calendar: cal).map(\.startTs),
+                       [today.startTs])
     }
 
     func testAWorkoutTheCardDoesNotShowStaysInTheList() {
         let later = row(ts(day: 24, hour: 15))   // starts after `now`: the card ignores it, so the list keeps it
-        XCTAssertEqual(TodayDedup.excludingToday([later], isViewingToday: true, now: now, calendar: cal).count, 1)
+        XCTAssertEqual(TodayDedup.excludingShown([later], day: now, now: now, calendar: cal).count, 1)
     }
 
     // MARK: Heart-rate chart

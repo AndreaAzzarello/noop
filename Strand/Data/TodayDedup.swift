@@ -29,12 +29,11 @@ enum TodayDedup {
     /// The "Last workouts" section repeats the workout summary card while today has a workout.
     static func showsLastWorkouts(todaysWorkoutShownAbove: Bool) -> Bool { !todaysWorkoutShownAbove }
 
-    /// Workouts for a recent-activity list, without the ones today's summary card already shows. Only applies while
-    /// viewing today, because the card itself only shows then.
-    static func excludingToday(_ rows: [WorkoutRow], isViewingToday: Bool, now: Date,
+    /// Workouts for a recent-activity list, without the ones the summary card above already shows for the selected
+    /// day (`day`: `now` while viewing today). The card shows them on every day, so the list always drops them.
+    static func excludingShown(_ rows: [WorkoutRow], day: Date, now: Date,
                                calendar: Calendar = .current) -> [WorkoutRow] {
-        guard isViewingToday else { return rows }
-        let shown = Set(TodayWorkoutSummary.todaysWorkouts(rows, now: now, calendar: calendar).map(\.startTs))
+        let shown = Set(TodayWorkoutSummary.workouts(rows, onDayOf: day, now: now, calendar: calendar).map(\.startTs))
         return rows.filter { !shown.contains($0.startTs) }
     }
 

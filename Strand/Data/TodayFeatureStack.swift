@@ -26,12 +26,14 @@ enum TodayFeatureStack {
         enabled && !handledThisSession && hasCandidate
     }
 
-    static func items(showsDetection: Bool, includesDetection: Bool, hasWorkoutToday: Bool,
+    /// `hasWorkoutOnDay` is about the SELECTED day: today's workouts while viewing today, that day's otherwise.
+    /// A past day has no Night card (its alarms and bedtime are about tonight), only the detected and workout cards.
+    static func items(showsDetection: Bool, includesDetection: Bool, hasWorkoutOnDay: Bool,
                       isViewingToday: Bool, now: Date, calendar: Calendar = .current) -> [Item] {
         var out: [Item] = []
         if includesDetection && showsDetection { out.append(.detected) }
+        if hasWorkoutOnDay { out.append(.workout) }
         guard isViewingToday else { return out }
-        if hasWorkoutToday { out.append(.workout) }
         let compact = calendar.component(.hour, from: now) >= compactFromHour
         out.append(.night(compact ? .compact : .full))
         return out

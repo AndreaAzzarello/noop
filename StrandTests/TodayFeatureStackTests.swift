@@ -15,7 +15,7 @@ final class TodayFeatureStackTests: XCTestCase {
 
     private func items(detect: Bool = false, include: Bool = true, workout: Bool = false, today: Bool = true,
                        hour: Int = 8, minute: Int = 0) -> [TodayFeatureStack.Item] {
-        TodayFeatureStack.items(showsDetection: detect, includesDetection: include, hasWorkoutToday: workout,
+        TodayFeatureStack.items(showsDetection: detect, includesDetection: include, hasWorkoutOnDay: workout,
                                 isViewingToday: today, now: date(hour: hour, minute: minute), calendar: calendar)
     }
 
@@ -42,9 +42,11 @@ final class TodayFeatureStackTests: XCTestCase {
         XCTAssertEqual(items(detect: true, include: false, workout: true), [.workout, .night(.full)])
     }
 
-    func testPastDaysShowNeitherWorkoutNorNightButStillTheDetectedCard() {
-        XCTAssertEqual(items(workout: true, today: false), [])
-        XCTAssertEqual(items(detect: true, workout: true, today: false), [.detected])
+    func testPastDaysShowTheirWorkoutButNeverTheNightCard() {
+        XCTAssertEqual(items(workout: true, today: false), [.workout])
+        XCTAssertEqual(items(workout: false, today: false), [])
+        XCTAssertEqual(items(detect: true, workout: true, today: false), [.detected, .workout])
+        XCTAssertEqual(items(detect: true, workout: false, today: false), [.detected])
     }
 
     func testDetectionVisibilityIsOneRule() {

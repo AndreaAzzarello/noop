@@ -12,6 +12,8 @@ struct TodayFeatureStackView: View {
 
     let workouts: [WorkoutRow]
     let isViewingToday: Bool
+    /// An instant of the selected calendar day (`selectedLogicalDay`); ignored while viewing today.
+    let day: Date
     /// False on the classic Today, which keeps its own detected-workout card above the sections.
     let includesDetection: Bool
 
@@ -20,19 +22,20 @@ struct TodayFeatureStackView: View {
 
     var body: some View {
         let now = Date()
+        let shownDay = isViewingToday ? now : day
         let items = TodayFeatureStack.items(
             showsDetection: TodayFeatureStack.showsDetection(
                 enabled: keys.bool(PuffinExperiment.autoDetectWorkoutsKey, default: false),
                 handledThisSession: suggestion.handledThisSession,
                 hasCandidate: suggestion.candidate != nil),
             includesDetection: includesDetection,
-            hasWorkoutToday: !TodayWorkoutSummary.todaysWorkouts(workouts, now: now).isEmpty,
+            hasWorkoutOnDay: !TodayWorkoutSummary.workouts(workouts, onDayOf: shownDay, now: now).isEmpty,
             isViewingToday: isViewingToday,
             now: now)
         ForEach(items, id: \.self) { item in
             switch item {
             case .detected: AutoWorkoutCard()
-            case .workout: TodayWorkoutSummaryCard(workouts: workouts, isViewingToday: isViewingToday)
+            case .workout: TodayWorkoutSummaryCard(workouts: workouts, isViewingToday: isViewingToday, day: shownDay)
             case .night(let style): NightSummaryCard(style: style)
             }
         }

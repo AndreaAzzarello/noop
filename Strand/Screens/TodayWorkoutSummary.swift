@@ -20,11 +20,11 @@ enum TodayWorkoutSummary {
     /// How many zones the one-line summary names at most.
     static let maxHighlights = 2
 
-    /// Workouts that started today (calendar day of `now`) and not after `now`, newest first.
-    /// Same "today" rule as `AutoWorkoutCard` (`Calendar.isDateInToday` on the start time).
-    static func todaysWorkouts(_ rows: [WorkoutRow], now: Date,
-                               calendar: Calendar = .current) -> [WorkoutRow] {
-        let dayStart = calendar.startOfDay(for: now)
+    /// Workouts that started on the calendar day of `day` and not after `now`, newest first. For today `day` is
+    /// `now`; for a past day it is any instant of that day, and the "not after now" bound never bites.
+    static func workouts(_ rows: [WorkoutRow], onDayOf day: Date, now: Date,
+                         calendar: Calendar = .current) -> [WorkoutRow] {
+        let dayStart = calendar.startOfDay(for: day)
         guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return [] }
         let lo = Int(dayStart.timeIntervalSince1970)
         let hi = Int(dayEnd.timeIntervalSince1970)
@@ -32,6 +32,13 @@ enum TodayWorkoutSummary {
         return rows
             .filter { $0.startTs >= lo && $0.startTs < hi && $0.startTs <= nowTs }
             .sorted { $0.startTs > $1.startTs }
+    }
+
+    /// Workouts that started today (calendar day of `now`) and not after `now`, newest first.
+    /// Same "today" rule as `AutoWorkoutCard` (`Calendar.isDateInToday` on the start time).
+    static func todaysWorkouts(_ rows: [WorkoutRow], now: Date,
+                               calendar: Calendar = .current) -> [WorkoutRow] {
+        workouts(rows, onDayOf: now, now: now, calendar: calendar)
     }
 
     /// Per-zone minutes for a row, with the same precedence `WorkoutDetailView` applies: the imported

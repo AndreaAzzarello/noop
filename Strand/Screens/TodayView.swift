@@ -1476,7 +1476,7 @@ struct TodayView: View {
                 AutoWorkoutCard()
                 // Fallback only: the summary normally follows the rings (`.hero`), see todaySection.
                 if !sectionOrder.contains(.hero) {
-                    TodayFeatureStackView(workouts: workouts, isViewingToday: selectedDayOffset == 0, includesDetection: false) // fork
+                    TodayFeatureStackView(workouts: workouts, isViewingToday: selectedDayOffset == 0, day: selectedLogicalDay, includesDetection: false) // fork
                 }
                 // The "still building" and "new here?" prompts are about getting today's scores going,
                 // so they stay anchored to today rather than reappearing on every navigated past day.
@@ -1928,7 +1928,7 @@ struct TodayView: View {
         switch section {
         case .hero:
             classicHeroSection
-            TodayFeatureStackView(workouts: workouts, isViewingToday: selectedDayOffset == 0, includesDetection: false) // fork
+            TodayFeatureStackView(workouts: workouts, isViewingToday: selectedDayOffset == 0, day: selectedLogicalDay, includesDetection: false) // fork
         case .liveSession:
             if liveSessionsBeta { liveSessionStartSection }
         case .synthesis:
@@ -4171,7 +4171,7 @@ struct TodayView: View {
         // #1702: window HERE, not on `workouts`. That array is shared — it also feeds the Data Sources
         // Apple-workout count and the HR chart's sport glyphs, both all-time by design — so windowing it
         // at the source would silently shrink two unrelated numbers on this same screen.
-        let recent = TodayDedup.excludingToday(Self.recentWorkoutsFeed(workouts), isViewingToday: selectedDayOffset == 0, now: Date()) // fork
+        let recent = TodayDedup.excludingShown(Self.recentWorkoutsFeed(workouts), day: selectedDayOffset == 0 ? Date() : selectedLogicalDay, now: Date()) // fork
         if !recent.isEmpty {
             VStack(alignment: .leading, spacing: NoopMetrics.gap) {
                 // "14 days" describes the window, like Android's today_workouts_14_days. The old

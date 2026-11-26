@@ -24,19 +24,20 @@ struct TodayWorkoutSummaryCard: View {
 
     /// Workout rows already loaded by the host screen (any order, any range).
     let workouts: [WorkoutRow]
-    /// False while browsing a past day: today's workouts are not shown over another day's data.
+    /// False while browsing a past day: the card then shows THAT day's workouts (no "Today" prefix).
     let isViewingToday: Bool
+    /// The calendar day the card is about: `now` while viewing today, the selected day otherwise.
+    let day: Date
 
     /// Most compact rows shown below the featured workout.
     private static let maxCompactRows = 3
 
     var body: some View {
-        if isViewingToday {
-            let today = TodayWorkoutSummary.todaysWorkouts(workouts, now: Date())
-            if let featured = today.first {
-                TodayWorkoutSummaryContent(featured: featured,
-                                           others: Array(today.dropFirst().prefix(Self.maxCompactRows)))
-            }
+        let shown = TodayWorkoutSummary.workouts(workouts, onDayOf: day, now: Date())
+        if let featured = shown.first {
+            TodayWorkoutSummaryContent(featured: featured,
+                                       others: Array(shown.dropFirst().prefix(Self.maxCompactRows)),
+                                       isToday: isViewingToday)
         }
     }
 }
@@ -47,6 +48,8 @@ private struct TodayWorkoutSummaryContent: View {
 
     let featured: WorkoutRow
     let others: [WorkoutRow]
+    /// Only today's featured row carries the "Today" prefix; a past day's date is already in the day bar.
+    let isToday: Bool
 
     @EnvironmentObject private var repo: Repository
     @EnvironmentObject private var profile: ProfileStore
@@ -100,6 +103,7 @@ private struct TodayWorkoutSummaryContent: View {
         let zoneSet: HRZoneSet
         let retrySeq: Int
         let effortScaleRaw: String
+        let isToday: Bool
     }
 
     private var zoneSet: HRZoneSet { profile.hrZoneSet }
@@ -107,7 +111,7 @@ private struct TodayWorkoutSummaryContent: View {
     private var loadKey: LoadKey {
         let empty = samples.map { $0.points.isEmpty } ?? true
         return LoadKey(rows: [featured] + others, zoneSet: zoneSet, retrySeq: empty ? repo.refreshSeq : 0,
-                       effortScaleRaw: effortScaleRaw)
+                       effortScaleRaw: effortScaleRaw, isToday: isToday)
     }
 
     // MARK: Body
@@ -328,7 +332,7 @@ private struct TodayWorkoutSummaryContent: View {
         // Sample-independent part first, so the header and compact rows never wait on the database.
         let scale = UnitPrefs.resolveEffortScale(effortScaleRaw)
         let base = Self.makeDisplay(featured: row, others: others, samples: samples?.row == row ? samples : nil,
-                                    zoneSet: zoneSet, effortScale: scale)
+                                    zoneSet: zoneSet, effortScale: scale, includeToday: isToday)
         display = base
 
         if let cached = samples, cached.row == row, cached.zoneSet == zoneSet, !cached.points.isEmpty {
@@ -345,12 +349,12 @@ private struct TodayWorkoutSummaryContent: View {
         let loaded = Samples(row: row, zoneSet: zoneSet, points: points, derivedMinutes: derived)
         samples = loaded
         display = Self.makeDisplay(featured: row, others: others, samples: loaded, zoneSet: zoneSet,
-                                   effortScale: scale)
+                                   effortScale: scale, includeToday: isToday)
     }
 
     private static func makeDisplay(featured row: WorkoutRow, others: [WorkoutRow],
                                     samples: Samples?, zoneSet: HRZoneSet,
-                                    effortScale: EffortScale) -> Display {
+                                    effortScale: EffortScale, includeToday: Bool) -> Display {
         let formatter = AppClock.hourMinuteFormatter()
         let system = distanceSystem()
         let points = samples?.points ?? []
@@ -376,7 +380,7 @@ private struct TodayWorkoutSummaryContent: View {
 
         return Display(
             name: WorkoutSource.displaySport(row.sport),
-            header: line(for: row, includeToday: true, includeAvg: false, formatter: formatter, system: system),
+            header: line(for: row, includeToday: includeToday, includeAvg: false, formatter: formatter, system: system),
             avgHr: avg,
             effort: WorkoutWindowMetrics.effort(strain: row.strain, scale: effortScale),
             kcal: row.energyKcal.flatMap { $0.isFinite && $0 > 0 ? Self.kcalFormatter.string(from: NSNumber(value: Int($0.rounded()))) : nil },

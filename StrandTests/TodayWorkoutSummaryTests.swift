@@ -46,6 +46,15 @@ final class TodayWorkoutSummaryTests: XCTestCase {
         XCTAssertEqual(kept.map(\.startTs), [b.startTs, c.startTs, a.startTs])
     }
 
+    func testAPastDayKeepsItsOwnWorkoutsWholeDay() {
+        let evening = row(ts(day: 23, hour: 20, minute: 3)), morning = row(ts(day: 23, hour: 7))
+        let today = row(ts(day: 24, hour: 8))
+        let yesterday = Date(timeIntervalSince1970: TimeInterval(evening.startTs))
+        let kept = TodayWorkoutSummary.workouts([today, morning, evening], onDayOf: yesterday, now: now, calendar: cal)
+        XCTAssertEqual(kept.map(\.startTs), [evening.startTs, morning.startTs])
+        XCTAssertTrue(TodayWorkoutSummary.workouts([today], onDayOf: yesterday, now: now, calendar: cal).isEmpty)
+    }
+
     // MARK: zone minutes
 
     func testImportedSplitWinsOverDerived() {
