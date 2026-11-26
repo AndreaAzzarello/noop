@@ -356,4 +356,49 @@ final class WeeklyDigestTests: XCTestCase {
         }
         return out
     }
+
+    // MARK: - Structured focal points (localisation identity)
+
+    private func series(_ v: Double, _ days: ClosedRange<Int>) -> [String: Double] {
+        var m: [String: Double] = [:]
+        for d in days { m[String(format: "2026-06-%02d", d)] = v }
+        return m
+    }
+
+    /// focalItems must render byte-identical to focalPoints in every branch.
+    func testFocalItemsMatchLegacyStringsInEveryBranch() {
+        // Effort down hard, Charge up (mover + underloaded balance).
+        var effort = series(33, 1...7); effort.merge(series(14, 8...14)) { $1 }
+        var charge = series(60, 1...7); charge.merge(series(62, 8...14)) { $1 }
+        let moved = WeeklyDigestEngine.build(byMetric: [.effort: effort, .charge: charge],
+                                             anchorDay: "2026-06-13")
+        XCTAssertEqual(moved.focalItems.map(\.englishText), moved.focalPoints)
+        XCTAssertEqual(moved.focalItems.first,
+                       .mover(metric: .effort, direction: -1, magnitude: .percent(58),
+                              thisAvg: 14, lastAvg: 33, goodness: -1))
+        XCTAssertEqual(moved.focalItems.last, .balance(.underloaded))
+
+        // Sparse current week, sparse previous week, steady, steady-with-rest.
+        let early = WeeklyDigestEngine.build(byMetric: [.rest: series(80, 8...9)], anchorDay: "2026-06-09")
+        XCTAssertEqual(early.focalItems, [.earlyWeek(days: 2)])
+        XCTAssertEqual(early.focalItems.map(\.englishText), early.focalPoints)
+
+        var sparsePrev = series(80, 6...6); sparsePrev.merge(series(80, 8...12)) { $1 }
+        let sp = WeeklyDigestEngine.build(byMetric: [.rest: sparsePrev], anchorDay: "2026-06-12")
+        XCTAssertEqual(sp.focalItems, [.sparseLastWeek(days: 1)])
+        XCTAssertEqual(sp.focalItems.map(\.englishText), sp.focalPoints)
+
+        let steady = WeeklyDigestEngine.build(byMetric: [.rest: series(80, 1...14)], anchorDay: "2026-06-12")
+        XCTAssertEqual(steady.focalItems.map(\.englishText), steady.focalPoints)
+        XCTAssertEqual(steady.focalItems, [.steadyRest(sd: 0)])
+    }
+
+    func testAmountMagnitudeKeepsUnitAndEnglishText() {
+        let item = WeeklyFocalPoint.mover(metric: .rhr, direction: 1, magnitude: .amount(0.4, unit: "bpm"),
+                                          thisAvg: 55, lastAvg: 55, goodness: -1)
+        XCTAssertEqual(item.englishText, "Resting HR is up 0.4 bpm week over week (avg 55 vs 55), worth a look.")
+        let pts = WeeklyFocalPoint.mover(metric: .charge, direction: -1, magnitude: .amount(0.5, unit: ""),
+                                         thisAvg: 60, lastAvg: 60, goodness: -1)
+        XCTAssertTrue(pts.englishText.contains("down 0.5 pts week over week"))
+    }
 }

@@ -1863,6 +1863,456 @@
         }
       }
     },
+    "weeklyDigest.balance.balanced" : {
+      "comment" : "Week in review balance line.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Effort and Charge tracked together this week: a sustainable load."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa settimana Sforzo e Carica sono andati di pari passo: un carico sostenibile."
+          }
+        }
+      }
+    },
+    "weeklyDigest.balance.insufficient" : {
+      "comment" : "Week in review balance line.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not enough Effort and Charge days this week to read your balance."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa settimana non ci sono abbastanza giorni di Sforzo e Carica per valutare l'equilibrio."
+          }
+        }
+      }
+    },
+    "weeklyDigest.balance.overreaching" : {
+      "comment" : "Week in review balance line.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your Effort outpaced your Charge this week: you leaned into the red. Watch for a recovery dip."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa settimana lo Sforzo ha superato la Carica: hai spinto nel rosso. Occhio a un calo del recupero."
+          }
+        }
+      }
+    },
+    "weeklyDigest.balance.underloaded" : {
+      "comment" : "Week in review balance line.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You carried more Charge than you spent this week: there's room to push if you want it."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa settimana hai accumulato più Carica di quanta ne hai spesa: c'è margine per spingere, se vuoi."
+          }
+        }
+      }
+    },
+    "weeklyDigest.early.one" : {
+      "comment" : "Week in review, current week too sparse (1 day).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only %lld day into this week so far, too early to call a week-over-week trend yet."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo %lld giorno di questa settimana finora: troppo presto per parlare di una tendenza."
+          }
+        }
+      }
+    },
+    "weeklyDigest.early.other" : {
+      "comment" : "Week in review, current week too sparse.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only %lld days into this week so far, too early to call a week-over-week trend yet."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo %lld giorni di questa settimana finora: troppo presto per parlare di una tendenza."
+          }
+        }
+      }
+    },
+    "weeklyDigest.mover.down.amount.good" : {
+      "comment" : "Week in review focal point. Args: metric name, change (percent or amount+unit), this-week average, last-week average.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is down %2$@ week over week (avg %3$lld vs %4$lld), a good sign."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ in calo di %2$@ rispetto alla settimana scorsa (media %3$lld contro %4$lld), un buon segno."
+          }
+        }
+      }
+    },
+    "weeklyDigest.mover.down.amount.look" : {
+      "comment" : "Week in review focal point. Args: metric name, change (percent or amount+unit), this-week average, last-week average.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is down %2$@ week over week (avg %3$lld vs %4$lld), worth a look."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ in calo di %2$@ rispetto alla settimana scorsa (media %3$lld contro %4$lld), vale un'occhiata."
+          }
+        }
+      }
+    },
+    "weeklyDigest.mover.down.amount.plain" : {
+      "comment" : "Week in review focal point. Args: metric name, change (percent or amount+unit), this-week average, last-week average.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is down %2$@ week over week (avg %3$lld vs %4$lld)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ in calo di %2$@ rispetto alla settimana scorsa (media %3$lld contro %4$lld)."
+          }
+        }
+      }
+    },
+    "weeklyDigest.mover.down.pct.good" : {
+      "comment" : "Week in review focal point. Args: metric name, change (percent or amount+unit), this-week average, last-week average.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is down %2$@ week over week (avg %3$lld vs %4$lld), a good sign."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ in calo del %2$@ rispetto alla settimana scorsa (media %3$lld contro %4$lld), un buon segno."
+          }
+        }
+      }
+    },
+    "weeklyDigest.mover.down.pct.look" : {
+      "comment" : "Week in review focal point. Args: metric name, change (percent or amount+unit), this-week average, last-week average.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is down %2$@ week over week (avg %3$lld vs %4$lld), worth a look."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ in calo del %2$@ rispetto alla settimana scorsa (media %3$lld contro %4$lld), vale un'occhiata."
+          }
+        }
+      }
+    },
+    "weeklyDigest.mover.down.pct.plain" : {
+      "comment" : "Week in review focal point. Args: metric name, change (percent or amount+unit), this-week average, last-week average.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is down %2$@ week over week (avg %3$lld vs %4$lld)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ in calo del %2$@ rispetto alla settimana scorsa (media %3$lld contro %4$lld)."
+          }
+        }
+      }
+    },
+    "weeklyDigest.mover.flat.amount.plain" : {
+      "comment" : "Week in review focal point, unchanged (not normally reachable).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is flat %2$@ week over week (avg %3$lld vs %4$lld)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ stabile (%2$@) rispetto alla settimana scorsa (media %3$lld contro %4$lld)."
+          }
+        }
+      }
+    },
+    "weeklyDigest.mover.flat.pct.plain" : {
+      "comment" : "Week in review focal point, unchanged (not normally reachable).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is flat %2$@ week over week (avg %3$lld vs %4$lld)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ stabile (%2$@) rispetto alla settimana scorsa (media %3$lld contro %4$lld)."
+          }
+        }
+      }
+    },
+    "weeklyDigest.mover.up.amount.good" : {
+      "comment" : "Week in review focal point. Args: metric name, change (percent or amount+unit), this-week average, last-week average.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is up %2$@ week over week (avg %3$lld vs %4$lld), a good sign."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ in aumento di %2$@ rispetto alla settimana scorsa (media %3$lld contro %4$lld), un buon segno."
+          }
+        }
+      }
+    },
+    "weeklyDigest.mover.up.amount.look" : {
+      "comment" : "Week in review focal point. Args: metric name, change (percent or amount+unit), this-week average, last-week average.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is up %2$@ week over week (avg %3$lld vs %4$lld), worth a look."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ in aumento di %2$@ rispetto alla settimana scorsa (media %3$lld contro %4$lld), vale un'occhiata."
+          }
+        }
+      }
+    },
+    "weeklyDigest.mover.up.amount.plain" : {
+      "comment" : "Week in review focal point. Args: metric name, change (percent or amount+unit), this-week average, last-week average.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is up %2$@ week over week (avg %3$lld vs %4$lld)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ in aumento di %2$@ rispetto alla settimana scorsa (media %3$lld contro %4$lld)."
+          }
+        }
+      }
+    },
+    "weeklyDigest.mover.up.pct.good" : {
+      "comment" : "Week in review focal point. Args: metric name, change (percent or amount+unit), this-week average, last-week average.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is up %2$@ week over week (avg %3$lld vs %4$lld), a good sign."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ in aumento del %2$@ rispetto alla settimana scorsa (media %3$lld contro %4$lld), un buon segno."
+          }
+        }
+      }
+    },
+    "weeklyDigest.mover.up.pct.look" : {
+      "comment" : "Week in review focal point. Args: metric name, change (percent or amount+unit), this-week average, last-week average.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is up %2$@ week over week (avg %3$lld vs %4$lld), worth a look."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ in aumento del %2$@ rispetto alla settimana scorsa (media %3$lld contro %4$lld), vale un'occhiata."
+          }
+        }
+      }
+    },
+    "weeklyDigest.mover.up.pct.plain" : {
+      "comment" : "Week in review focal point. Args: metric name, change (percent or amount+unit), this-week average, last-week average.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is up %2$@ week over week (avg %3$lld vs %4$lld)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ in aumento del %2$@ rispetto alla settimana scorsa (media %3$lld contro %4$lld)."
+          }
+        }
+      }
+    },
+    "weeklyDigest.sparseLast.one" : {
+      "comment" : "Week in review, previous week too sparse (1 day).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last week only had %lld day of data, so week-over-week changes are rough, not a trend."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La settimana scorsa aveva solo %lld giorno di dati: i confronti sono indicativi, non una tendenza."
+          }
+        }
+      }
+    },
+    "weeklyDigest.sparseLast.other" : {
+      "comment" : "Week in review, previous week too sparse.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last week only had %lld days of data, so week-over-week changes are rough, not a trend."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La settimana scorsa aveva solo %lld giorni di dati: i confronti sono indicativi, non una tendenza."
+          }
+        }
+      }
+    },
+    "weeklyDigest.steady.plain" : {
+      "comment" : "Week in review steady line.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A steady week: no metric moved meaningfully from last week."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settimana stabile: nessuna metrica si è mossa in modo significativo rispetto alla settimana scorsa."
+          }
+        }
+      }
+    },
+    "weeklyDigest.steady.rest" : {
+      "comment" : "Week in review steady line. Arg: Rest standard deviation.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A steady week: Rest held even (±%@ pts) and nothing moved much."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settimana stabile: il Riposo è rimasto costante (±%@ pti) e nient'altro si è mosso molto."
+          }
+        }
+      }
+    },
+    "weeklyDigest.unit.pts" : {
+      "comment" : "Week in review: unit for a change in a 0-100 score.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pts"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pti"
+          }
+        }
+      }
+    },
     "yrs" : {
       "comment" : "Unit suffix after the fitness age value on the Today card.",
       "extractionState" : "manual",

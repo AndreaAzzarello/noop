@@ -161,10 +161,14 @@ public struct WeeklyDigest: Equatable, Sendable {
     public let balance: BalanceRead
     /// 1–2 plain-English focal points, most salient first.
     public let focalPoints: [String]
+    /// The same focal points as stable structured values (localisable by the UI layer);
+    /// `focalItems.map(\.englishText) == focalPoints`. Empty when built by a legacy caller.
+    public let focalItems: [WeeklyFocalPoint]
 
     public init(weekStart: String, weekEnd: String, metrics: [WeeklyMetricSummary],
                 daysWithData: Int, sleepConsistencySD: Double?, balance: BalanceRead,
-                focalPoints: [String]) {
+                focalPoints: [String], focalItems: [WeeklyFocalPoint] = []) {
+        self.focalItems = focalItems
         self.weekStart = weekStart
         self.weekEnd = weekEnd
         self.metrics = metrics
@@ -182,6 +186,59 @@ public struct WeeklyDigest: Equatable, Sendable {
     /// True when no metric carried a single reading this week (caller can show an
     /// empty state instead of a digest).
     public var isEmpty: Bool { daysWithData == 0 }
+}
+
+/// A stable, structured identity for one focal-point line, so a UI layer can localise it without
+/// parsing English. `englishText` is byte-identical to the legacy `focalPoints` strings.
+public enum WeeklyFocalPoint: Equatable, Sendable {
+    public enum Magnitude: Equatable, Sendable {
+        /// Whole-number percent change (already rounded, absolute value).
+        case percent(Int)
+        /// Absolute change in the metric's own units (already rounded to 1 dp and display-scaled);
+        /// `unit` is "" for the unitless 0-100 scores (rendered "pts").
+        case amount(Double, unit: String)
+    }
+
+    case mover(metric: WeeklyMetric, direction: Int, magnitude: Magnitude,
+               thisAvg: Int, lastAvg: Int, goodness: Int)
+    case balance(BalanceRead)
+    case earlyWeek(days: Int)
+    case sparseLastWeek(days: Int)
+    case steadyRest(sd: Double)
+    case steady
+
+    /// The English sentence exactly as the engine has always emitted it.
+    public var englishText: String {
+        switch self {
+        case let .mover(metric, direction, magnitude, thisAvg, lastAvg, goodness):
+            let word = direction > 0 ? "up" : (direction < 0 ? "down" : "flat")
+            let mag: String
+            switch magnitude {
+            case .percent(let p): mag = "\(p)%"
+            case .amount(let v, let unit): mag = "\(v)\(unit.isEmpty ? " pts" : " " + unit)"
+            }
+            let frame: String
+            switch goodness {
+            case 1:  frame = ", a good sign"
+            case -1: frame = ", worth a look"
+            default: frame = ""
+            }
+            return "\(metric.label) is \(word) \(mag) week over week"
+                + " (avg \(thisAvg) vs \(lastAvg))\(frame)."
+        case .balance(let b):
+            return b.sentence
+        case .earlyWeek(let days):
+            return "Only \(days) \(days == 1 ? "day" : "days") into this week so far, too early to "
+                + "call a week-over-week trend yet."
+        case .sparseLastWeek(let days):
+            return "Last week only had \(days) \(days == 1 ? "day" : "days") of data, so week-over-week "
+                + "changes are rough, not a trend."
+        case .steadyRest(let sd):
+            return "A steady week: Rest held even (±\(sd) pts) and nothing moved much."
+        case .steady:
+            return "A steady week: no metric moved meaningfully from last week."
+        }
+    }
 }
 
 /// How this week's Effort (strain) sat against this week's Charge (recovery).
@@ -272,14 +329,15 @@ public enum WeeklyDigestEngine {
         let restConsistency: Double? = (restStat?.n ?? 0) >= 2 ? restStat?.stdev : nil
 
         let balance = balanceRead(summaries)
-        let focal = focalPoints(summaries: summaries, balance: balance,
-                                consistencySD: restConsistency,
-                                effortDisplayFactor: effortDisplayFactor)
+        let items = focalItems(summaries: summaries, balance: balance,
+                               consistencySD: restConsistency,
+                               effortDisplayFactor: effortDisplayFactor)
+        let focal = items.map(\.englishText)
 
         return WeeklyDigest(
             weekStart: monday, weekEnd: sunday, metrics: summaries,
             daysWithData: (daysSeen ?? []).count, sleepConsistencySD: restConsistency,
-            balance: balance, focalPoints: focal)
+            balance: balance, focalPoints: focal, focalItems: items)
     }
 
     // MARK: - Balance read
@@ -321,6 +379,14 @@ public enum WeeklyDigestEngine {
                             balance: BalanceRead,
                             consistencySD: Double?,
                             effortDisplayFactor: Double = 1.0) -> [String] {
+        focalItems(summaries: summaries, balance: balance, consistencySD: consistencySD,
+                   effortDisplayFactor: effortDisplayFactor).map(\.englishText)
+    }
+
+    static func focalItems(summaries: [WeeklyMetricSummary],
+                           balance: BalanceRead,
+                           consistencySD: Double?,
+                           effortDisplayFactor: Double = 1.0) -> [WeeklyFocalPoint] {
         // Rank movers by |normalised move|, significant (enough days) first.
         let movers = summaries
             .filter { $0.weekOverWeek.current.n >= minDaysForFocus
@@ -328,17 +394,17 @@ public enum WeeklyDigestEngine {
                    && abs($0.normalisedMove) >= focusThreshold }
             .sorted { abs($0.normalisedMove) > abs($1.normalisedMove) }
 
-        var lines: [String] = []
+        var lines: [WeeklyFocalPoint] = []
 
         if let top = movers.first {
-            lines.append(moverSentence(top, effortDisplayFactor: effortDisplayFactor))
+            lines.append(moverItem(top, effortDisplayFactor: effortDisplayFactor))
         }
 
         // Supporting line: prefer a non-trivial balance read, else the 2nd mover.
         if balance == .overreaching || balance == .underloaded {
-            lines.append(balance.sentence)
+            lines.append(.balance(balance))
         } else if movers.count >= 2 {
-            lines.append(moverSentence(movers[1], effortDisplayFactor: effortDisplayFactor))
+            lines.append(moverItem(movers[1], effortDisplayFactor: effortDisplayFactor))
         }
 
         // Nothing cleared the mover bar. Distinguish three very different reasons:
@@ -355,17 +421,13 @@ public enum WeeklyDigestEngine {
             let currentDays = summaries.map { $0.weekOverWeek.current.n }.max() ?? 0
             let prevDays = summaries.map { $0.weekOverWeek.previous.n }.max() ?? 0
             if currentDays >= 1 && currentDays < minDaysForFocus {
-                let dayWord = currentDays == 1 ? "day" : "days"
-                lines.append("Only \(currentDays) \(dayWord) into this week so far, too early to "
-                    + "call a week-over-week trend yet.")
+                lines.append(.earlyWeek(days: currentDays))
             } else if currentDays >= minDaysForFocus, prevDays >= 1, prevDays < minDaysForFocus {
-                let dayWord = prevDays == 1 ? "day" : "days"
-                lines.append("Last week only had \(prevDays) \(dayWord) of data, so week-over-week "
-                    + "changes are rough, not a trend.")
+                lines.append(.sparseLastWeek(days: prevDays))
             } else if let sd = consistencySD, sd <= 6.0 {
-                lines.append("A steady week: Rest held even (±\(round1(sd)) pts) and nothing moved much.")
+                lines.append(.steadyRest(sd: round1(sd)))
             } else {
-                lines.append("A steady week: no metric moved meaningfully from last week.")
+                lines.append(.steady)
             }
         }
 
@@ -378,24 +440,24 @@ public enum WeeklyDigestEngine {
     /// EFFORT averages (and its pts fallback) for display only — % is scale-invariant.
     static func moverSentence(_ s: WeeklyMetricSummary,
                               effortDisplayFactor: Double = 1.0) -> String {
+        moverItem(s, effortDisplayFactor: effortDisplayFactor).englishText
+    }
+
+    /// The structured form of `moverSentence` (same rounding, same framing inputs).
+    static func moverItem(_ s: WeeklyMetricSummary,
+                          effortDisplayFactor: Double = 1.0) -> WeeklyFocalPoint {
         let f = s.metric == .effort ? effortDisplayFactor : 1.0
-        let directionWord = s.wowDelta > 0 ? "up" : (s.wowDelta < 0 ? "down" : "flat")
-        let magnitude: String
+        let direction = s.wowDelta > 0 ? 1 : (s.wowDelta < 0 ? -1 : 0)
+        let magnitude: WeeklyFocalPoint.Magnitude
         if let pct = s.weekOverWeek.pctChange, abs(pct) >= 1 {
-            magnitude = "\(roundedInt(abs(pct)))%"
+            magnitude = .percent(roundedInt(abs(pct)))
         } else {
-            magnitude = "\(round1(abs(s.wowDelta) * f))\(s.metric.unit.isEmpty ? " pts" : " " + s.metric.unit)"
+            magnitude = .amount(round1(abs(s.wowDelta) * f), unit: s.metric.unit)
         }
-        let frame: String
-        switch s.wowGoodness {
-        case 1:  frame = ", a good sign"
-        case -1: frame = ", worth a look"
-        default: frame = ""
-        }
-        let thisAvg = roundedInt(s.thisWeek.mean * f)
-        let lastAvg = roundedInt(s.weekOverWeek.previous.mean * f)
-        return "\(s.metric.label) is \(directionWord) \(magnitude) week over week"
-            + " (avg \(thisAvg) vs \(lastAvg))\(frame)."
+        return .mover(metric: s.metric, direction: direction, magnitude: magnitude,
+                      thisAvg: roundedInt(s.thisWeek.mean * f),
+                      lastAvg: roundedInt(s.weekOverWeek.previous.mean * f),
+                      goodness: s.wowGoodness)
     }
 
     // MARK: - Range extraction

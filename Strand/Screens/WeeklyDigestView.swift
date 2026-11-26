@@ -113,6 +113,86 @@ struct WeeklyDigestView: View {
     }
 }
 
+// MARK: - Localized focal-point sentences
+
+/// Localises the engine's structured focal points (`WeeklyFocalPoint`) through the `Fork` catalogue.
+/// The engine keeps emitting its English text unchanged (shared contract with Android); this layer
+/// only renders the same facts in the app language. Symbolic keys are looked up at runtime, and an
+/// unresolved key falls back to the engine's English sentence, so a missing translation never leaks a key.
+enum WeeklyDigestText {
+
+    /// Two-letter language the running bundle chose ("it", "en", ...).
+    static var activeLanguage: String {
+        let l = Bundle.main.preferredLocalizations.first ?? "en"
+        return l.split(separator: "-").first.map(String.init) ?? l
+    }
+
+    static func lines(for digest: WeeklyDigest,
+                      bundle: Bundle = .main,
+                      language: String = activeLanguage) -> [String] {
+        guard !digest.focalItems.isEmpty else { return digest.focalPoints }
+        return digest.focalItems.map { text($0, bundle: bundle, language: language) }
+    }
+
+    static func balance(_ read: BalanceRead,
+                        bundle: Bundle = .main,
+                        language: String = activeLanguage) -> String {
+        text(.balance(read), bundle: bundle, language: language)
+    }
+
+    static func text(_ item: WeeklyFocalPoint,
+                     bundle: Bundle = .main,
+                     language: String = activeLanguage) -> String {
+        func lookup(_ key: String, _ args: CVarArg...) -> String {
+            let format = bundle.localizedString(forKey: key, value: nil, table: "Fork")
+            guard format != key else { return item.englishText }
+            return String(format: format, arguments: args)
+        }
+        func name(_ metric: WeeklyMetric) -> String {
+            bundle.localizedString(forKey: metric.label, value: nil, table: nil)
+        }
+        switch item {
+        case let .mover(metric, direction, magnitude, thisAvg, lastAvg, goodness):
+            let dir = direction > 0 ? "up" : (direction < 0 ? "down" : "flat")
+            let mag: String
+            let kind: String
+            switch magnitude {
+            case .percent(let p):
+                mag = "\(p)%"; kind = "pct"
+            case .amount(let v, let unit):
+                let unitText = unit.isEmpty ? lookup("weeklyDigest.unit.pts") : unit
+                mag = "\(decimal(v, language: language)) \(unitText)"; kind = "amount"
+            }
+            let frame = direction == 0 ? "plain" : (goodness == 1 ? "good" : (goodness == -1 ? "look" : "plain"))
+            return lookup("weeklyDigest.mover.\(dir).\(kind).\(frame)",
+                          name(metric), mag, thisAvg, lastAvg)
+        case .balance(let read):
+            return lookup("weeklyDigest.balance.\(read.rawValue)")
+        case .earlyWeek(let days):
+            return lookup(days == 1 ? "weeklyDigest.early.one" : "weeklyDigest.early.other", days)
+        case .sparseLastWeek(let days):
+            return lookup(days == 1 ? "weeklyDigest.sparseLast.one" : "weeklyDigest.sparseLast.other", days)
+        case .steadyRest(let sd):
+            return lookup("weeklyDigest.steady.rest", decimal(sd, language: language))
+        case .steady:
+            return lookup("weeklyDigest.steady.plain")
+        }
+    }
+
+    /// One-decimal number: Italian gets the comma; every other language keeps the engine's own
+    /// rendering, so English stays byte-identical to what the engine has always printed.
+    static func decimal(_ v: Double, language: String) -> String {
+        guard language == "it" else { return "\(v)" }
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "it")
+        f.numberStyle = .decimal
+        f.usesGroupingSeparator = false
+        f.minimumFractionDigits = 1
+        f.maximumFractionDigits = 1
+        return f.string(from: NSNumber(value: v)) ?? "\(v)"
+    }
+}
+
 // MARK: - Localized metric names
 
 extension WeeklyMetric {
@@ -300,13 +380,14 @@ struct WeeklyDigestContent: View {
     @ViewBuilder
     private var detailCard: some View {
         let signals = secondarySignals
-        let hasFocal = !digest.focalPoints.isEmpty
+        let focalLines = WeeklyDigestText.lines(for: digest)
+        let hasFocal = !focalLines.isEmpty
         if hasFocal || !signals.isEmpty || !compact {
             NoopCard {
                 VStack(alignment: .leading, spacing: 14) {
                     if hasFocal {
                         VStack(alignment: .leading, spacing: 8) {
-                            ForEach(Array(digest.focalPoints.enumerated()), id: \.offset) { _, line in
+                            ForEach(Array(focalLines.enumerated()), id: \.offset) { _, line in
                                 focalRow(line)
                             }
                         }
@@ -406,7 +487,7 @@ struct WeeklyDigestContent: View {
                     .font(StrandFont.footnote)
                     .foregroundStyle(StrandPalette.textTertiary)
             }
-            Text(digest.balance.sentence)
+            Text(WeeklyDigestText.balance(digest.balance))
                 .font(StrandFont.footnote)
                 .foregroundStyle(StrandPalette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
