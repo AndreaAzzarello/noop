@@ -317,6 +317,25 @@ final class ForkEnergyCountersTests: XCTestCase {
         XCTAssertEqual(Set(counters).count, counters.count)
     }
 
+    func testMeterCountsCallsPerPointAndOnlyOffersCallCountersForTheNewOnes() {
+        var meter = ForkMainCPU.Meter()
+        let a = meter.begin(.chunkAck, at: 0); meter.end(a, at: 1_000_000)
+        let b = meter.begin(.chunkAck, at: 2_000_000); meter.end(b, at: 3_000_000)
+        let c = meter.begin(.bleNotify, at: 4_000_000); meter.end(c, at: 5_000_000)
+        let calls = meter.drainCalls()
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertEqual(calls.first?.counter, .chunkAckCalls)
+        XCTAssertEqual(calls.first?.calls, 2)
+        XCTAssertTrue(meter.drainCalls().isEmpty)
+        let counters = ForkMainCPU.Point.allCases.compactMap(\.callsCounter)
+        XCTAssertEqual(Set(counters).count, counters.count)
+    }
+
+    func testOnlyTheLiveActivityPointsAreNotBLE() {
+        XCTAssertEqual(ForkMainCPU.Point.allCases.filter { !$0.isBLE }, [.liveActivity, .liveActivityList])
+        XCTAssertEqual(Set(ForkMainCPU.Point.allCases.map(\.label)).count, ForkMainCPU.Point.allCases.count)
+    }
+
     func testMainSplitLineNamesWhatIsAttributedAndWhatIsNot() {
         var counts: [String: Int] = [ForkEnergyCounters.Counter.cpuThrMainMs.rawValue: 1_000]
         XCTAssertNil(ForkEnergyCounters.mainSplitLine(counts))                    // nothing booked by a call site

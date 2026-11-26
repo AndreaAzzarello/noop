@@ -37,6 +37,48 @@ enum ForkMainCPU {
         case offload
         /// Combine sinks that run outside the points above.
         case sinks
+        /// The Backfiller's chunk callbacks on the main actor: `onBankedOffload`, the reject-archive sink (file I/O),
+        /// `ackTrim` and `onChunk`.
+        case chunkBanked, chunkRejectSink, chunkAck, chunkOnChunk
+        /// The live-HR banner refresh (`LiveActivityController.refreshBanner`) and, inside it, the `Activity.activities` listing.
+        case liveActivity, liveActivityList
+
+        /// The name the "main split" line gives this point.
+        var label: String {
+            switch self {
+            case .bleNotify: return "notify"
+            case .bleRouter: return "router"
+            case .bleStdHR: return "stdHR"
+            case .bleCollector: return "collector"
+            case .bleSmartWake: return "smartWake"
+            case .ingestHR: return "ingestHR"
+            case .log: return "log"
+            case .offload: return "offload"
+            case .sinks: return "sinks"
+            case .chunkBanked: return "chunkBanked"
+            case .chunkRejectSink: return "chunkReject"
+            case .chunkAck: return "chunkAck"
+            case .chunkOnChunk: return "chunkOnChunk"
+            case .liveActivity: return "liveActivity"
+            case .liveActivityList: return "liveActivityList"
+            }
+        }
+
+        /// Whether running this point marks the run-loop iteration as BLE-driven (`ForkRunLoopMeter.touched`).
+        var isBLE: Bool { self != .liveActivity && self != .liveActivityList }
+
+        /// The call counter of the newer points; nil for the ones that only book milliseconds.
+        var callsCounter: ForkEnergyCounters.Counter? {
+            switch self {
+            case .chunkBanked: return .chunkBankedCalls
+            case .chunkRejectSink: return .chunkRejectCalls
+            case .chunkAck: return .chunkAckCalls
+            case .chunkOnChunk: return .chunkOnChunkCalls
+            case .liveActivity: return .liveActivityCalls
+            case .liveActivityList: return .liveActivityListCalls
+            default: return nil
+            }
+        }
 
         var counter: ForkEnergyCounters.Counter {
             switch self {
@@ -49,6 +91,12 @@ enum ForkMainCPU {
             case .log: return .mainLogMs
             case .offload: return .mainOffloadMs
             case .sinks: return .mainSinksMs
+            case .chunkBanked: return .mainChunkBankedMs
+            case .chunkRejectSink: return .mainChunkRejectSinkMs
+            case .chunkAck: return .mainChunkAckMs
+            case .chunkOnChunk: return .mainChunkOnChunkMs
+            case .liveActivity: return .mainLiveActivityMs
+            case .liveActivityList: return .mainLiveActivityListMs
             }
         }
     }
@@ -57,6 +105,7 @@ enum ForkMainCPU {
     struct Meter {
         private var stack: [(serial: Int, point: Point, start: UInt64, child: UInt64)] = []
         private var exclusiveNs = [UInt64](repeating: 0, count: Point.allCases.count)
+        private var calls = [Int](repeating: 0, count: Point.allCases.count)
         private var nextSerial = 0
 
         var isIdle: Bool { stack.isEmpty }
@@ -65,6 +114,7 @@ enum ForkMainCPU {
         mutating func begin(_ point: Point, at now: UInt64) -> Int {
             let serial = nextSerial
             nextSerial += 1
+            calls[point.rawValue] += 1
             stack.append((serial, point, now, 0))
             return serial
         }
@@ -90,6 +140,17 @@ enum ForkMainCPU {
                 guard ms > 0 else { continue }
                 exclusiveNs[point.rawValue] %= 1_000_000
                 out.append((point, ms))
+            }
+            return out
+        }
+
+        /// Calls per point that has a call counter, since the last drain.
+        mutating func drainCalls() -> [(counter: ForkEnergyCounters.Counter, calls: Int)] {
+            var out: [(counter: ForkEnergyCounters.Counter, calls: Int)] = []
+            for point in Point.allCases {
+                let n = calls[point.rawValue]
+                calls[point.rawValue] = 0
+                if n > 0, let counter = point.callsCounter { out.append((counter, n)) }
             }
             return out
         }
@@ -138,7 +199,8 @@ enum ForkMainCPU {
     /// Opens a point. Returns -1 off the main thread, which `end` ignores.
     static func begin(_ point: Point) -> Int {
         guard onMain else { return -1 }
-        ForkRunLoopMeter.touched = true // fork-perf: TEMP (this run-loop iteration ran a BLE call site)
+        if point.isBLE { ForkRunLoopMeter.touched = true } // fork-perf: TEMP (this run-loop iteration ran a BLE call site)
+        ForkRunLoopMeter.noteRan(point) // fork-perf: TEMP
         return meter.begin(point, at: ForkEnergyCounters.threadCPUNanos())
     }
 
@@ -173,6 +235,7 @@ enum ForkMainCPU {
         guard now &- lastFlushNanos >= flushIntervalNanos else { return }
         lastFlushNanos = now
         for item in meter.drainMillis() { ForkEnergyCounters.shared.note(item.point.counter, by: item.ms) }
+        for item in meter.drainCalls() { ForkEnergyCounters.shared.note(item.counter, by: item.calls) }
         for cls in FrameClass.allCases where pendingFrames[cls.rawValue] > 0 {
             let c = cls.counters
             ForkEnergyCounters.shared.note(c.count, by: pendingFrames[cls.rawValue])

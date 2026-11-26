@@ -752,6 +752,8 @@ final class AppModel: ObservableObject {
         ForkEnergyCounters.shared.note(.offloadCompleted) // fork-perf: TEMP
         let forkOffloadCPU = ForkEnergyCounters.cpuNowMillis() // fork-perf: TEMP
         defer { ForkEnergyCounters.shared.noteCPU(.cpuOffloadMs, since: forkOffloadCPU) } // fork-perf: TEMP
+        ForkRunLoopMeter.refreshInFlight += 1 // fork-perf: TEMP (condition bit for slow run-loop iterations)
+        defer { ForkRunLoopMeter.refreshInFlight -= 1 } // fork-perf: TEMP
         await repo.refresh(days: 120)
         // fork-perf: asked once, BEFORE the re-score below advances the watermark: did this offload bank anything new?
         let bankedNewData = await intelligence.hasUnscoredRawData()

@@ -89,6 +89,26 @@ final class ForkEnergyCounters: @unchecked Sendable {
         case uiBodyBg
         // Inbound BLE notifications (all, and those on the data characteristic), strap-log lines and their main-thread ms.
         case bleFrames, bleRawFrames, logLines, logAppendMs
+        // Main-thread CPU (exclusive, ms) and calls of the offload chunk callbacks (`Backfiller`: onBankedOffload, the reject
+        // archive sink, ackTrim, onChunk) and of the live-HR banner (`LiveActivityController`: the refresh and the
+        // `Activity.activities` listing), plus the banner updates pushed to iOS.
+        case mainChunkBankedMs, mainChunkRejectSinkMs, mainChunkAckMs, mainChunkOnChunkMs
+        case mainLiveActivityMs, mainLiveActivityListMs
+        case chunkBankedCalls, chunkRejectCalls, chunkAckCalls, chunkOnChunkCalls
+        case liveActivityCalls, liveActivityListCalls, laPush
+        // Run-loop iterations over 100 ms (`ForkRunLoopMeter`), by the condition that held when they ended: total CPU ms, how
+        // many ran no `ForkMainCPU` call site at all, and per condition the count and CPU ms (an iteration counts under every
+        // condition that held). Then the same by selected tab (CPU ms; `None` = unknown).
+        case rlSlowMs, rlSlowNoPoint
+        case rlSlowBg, rlSlowBgMs, rlSlowLocked, rlSlowLockedMs, rlSlowCharging, rlSlowChargingMs
+        case rlSlowLowPower, rlSlowLowPowerMs, rlSlowOffload, rlSlowOffloadMs, rlSlowLiveActivity, rlSlowLiveActivityMs
+        case rlSlowRefresh, rlSlowRefreshMs, rlSlowWifi, rlSlowWifiMs, rlSlowCellular, rlSlowCellularMs
+        case rlSlowTab0, rlSlowTab1, rlSlowTab2, rlSlowTab3, rlSlowTab4, rlSlowTabNone
+        // Exposure: one tick per ~10 s flush, booked under the conditions that held at that moment, so a condition's share of
+        // the time is `rlExp<Cond> / rlExpTicks` (the denominator for the slow-iteration counters above).
+        case rlExpTicks, rlExpBg, rlExpLocked, rlExpCharging, rlExpLowPower, rlExpOffload, rlExpLiveActivity
+        case rlExpRefresh, rlExpWifi, rlExpCellular
+        case rlExpTab0, rlExpTab1, rlExpTab2, rlExpTab3, rlExpTab4, rlExpTabNone
     }
 
     /// Process CPU time so far, milliseconds (user + system), 0 when the system call fails.
@@ -406,10 +426,8 @@ final class ForkEnergyCounters: @unchecked Sendable {
     }
 
     /// The counters that book main-thread call sites (`ForkMainCPU`), in the order the split line names them.
-    private static let mainPoints: [(label: String, counter: Counter)] = [
-        ("notify", .mainBleNotifyMs), ("router", .mainBleRouterMs), ("stdHR", .mainBleStdHRMs),
-        ("collector", .mainBleCollectorMs), ("smartWake", .mainBleSmartWakeMs), ("ingestHR", .mainIngestHRMs),
-        ("log", .mainLogMs), ("offload", .mainOffloadMs), ("sinks", .mainSinksMs)]
+    private static let mainPoints: [(label: String, counter: Counter)] =
+        ForkMainCPU.Point.allCases.map { ($0.label, $0.counter) }
 
     /// "main split: main=… attributed=… (notify=… …) unattributed=… (n%)": the sampled main-thread CPU, what the call sites
     /// explain, and the rest. nil when nothing was sampled or no call site booked anything. The two come from different

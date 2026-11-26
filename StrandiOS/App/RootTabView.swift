@@ -128,6 +128,7 @@ struct RootTabView: View {
 
     var body: some View {
         let _ = ForkEnergyCounters.noteBodyEvaluated() // fork-perf: TEMP
+        let _ = ForkRunLoopMeter.noteTab(selectedTab) // fork-perf: TEMP
         // The platform tab bar is intentionally left fully native. iOS 26 supplies Liquid Glass and
         // its dynamic interaction with scrolling content automatically; older supported releases use
         // the corresponding system material and safe-area behaviour from the same TabView.

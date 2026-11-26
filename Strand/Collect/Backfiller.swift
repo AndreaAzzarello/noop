@@ -828,7 +828,9 @@ final class Backfiller {
             let rejected = d.rejected
             // Tally this chunk's outcome so a completed-but-empty session is distinguishable from a
             // caught-up one (#77 family): did it decode sensor rows, and was it console-only?
+            let forkOnChunk = ForkMainCPU.begin(.chunkOnChunk) // fork-perf: TEMP
             onChunk?(!decoded.isEmpty, decoded.isEmpty && rejected.isEmpty)
+            ForkMainCPU.end(forkOnChunk) // fork-perf: TEMP
             // A chunk that produced no rows AND held no genuine rejects was pure console output — say
             // so calmly so it doesn't read as data loss (the "rejected frames" red herring, #77/#120).
             if decoded.isEmpty && rejected.isEmpty {
@@ -879,7 +881,9 @@ final class Backfiller {
             ForkMainCPU.end(forkChunk) // fork-perf: TEMP
             do {
                 counts = try await store.insert(decoded, deviceId: deviceId)
+                let forkBanked = ForkMainCPU.begin(.chunkBanked) // fork-perf: TEMP
                 onBankedOffload(counts)
+                ForkMainCPU.end(forkBanked) // fork-perf: TEMP
             } catch {
                 // Diag (#601): the decoded rows couldn't be written — this is the "history stalls but live HR
                 // works" class. We return WITHOUT acking so the strap keeps this chunk and re-sends it next
@@ -888,6 +892,7 @@ final class Backfiller {
                 persistStalled = true   // #57: stall ALL further acks so an empty END can't advance past this
                 return
             }
+            let forkPostInsert = ForkMainCPU.begin(.offload) // fork-perf: TEMP (synchronous stretch after the insert, closed before the reject sink)
             // Success-side observability (#150): tally what actually persisted so the session can emit
             // "persisted N rows (M with motion) across K night(s)" — the win-rate signal a log never had.
             let tally = Backfiller.chunkTally(counts: counts, timestamps: decoded.gravity.map(\.ts) + decoded.hr.map(\.ts))
@@ -914,13 +919,17 @@ final class Backfiller {
             emitConnection("offload progress trim=\(trim) chunkRows=\(tally.rows) "
                 + "sessionRows=\(sessionRowsPersisted) sessionMotion=\(sessionMotionRows) nights=\(sessionNights)")
 
+            ForkMainCPU.end(forkPostInsert) // fork-perf: TEMP
             // #77 / #91: any genuinely-undecodable type-47 record in this chunk must be ARCHIVED
             // before we ack — the ack frees the strap's copy, so the archive is the only remaining
             // copy of an unmapped firmware's records. A genuine archive write FAILURE aborts the
             // chunk (no setCursor, no ack) so the strap re-sends it next session — no data loss
             // either way. (A full archive is reported as success by the sink; we still ack.)
             if !rejected.isEmpty, let rejectedSink {
-                guard rejectedSink(rejected, trim, family) else {
+                let forkReject = ForkMainCPU.begin(.chunkRejectSink) // fork-perf: TEMP
+                let archived = rejectedSink(rejected, trim, family)
+                ForkMainCPU.end(forkReject) // fork-perf: TEMP
+                guard archived else {
                     log?("Backfill: rejected-frame archive failed (trim=\(trim)) — holding ack so the strap re-sends.")
                     persistStalled = true   // #57
                     return
@@ -990,7 +999,9 @@ final class Backfiller {
             return
         }
 
+        let forkAck = ForkMainCPU.begin(.chunkAck) // fork-perf: TEMP
         ackTrim(trim, endData)
+        ForkMainCPU.end(forkAck) // fork-perf: TEMP
         lastAckedTrim = trim   // #364: record the advanced cursor for the auto-continue spin-detector
     }
 

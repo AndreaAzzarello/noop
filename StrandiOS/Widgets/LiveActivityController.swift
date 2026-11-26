@@ -84,6 +84,8 @@ final class LiveActivityController {
     /// (re-deriving it once scanned the whole history, #1051).
     private func refreshBanner(appActive: Bool? = nil) {
         guard let model else { return }
+        let forkBanner = ForkMainCPU.begin(.liveActivity) // fork-perf: TEMP
+        defer { ForkMainCPU.end(forkBanner); ForkRunLoopMeter.liveActivityShowing = activity != nil } // fork-perf: TEMP
         let connected = model.live.connected
         let day = model.repo.cachedWidgetAnchor()
         update(bpm: connected ? (model.bpm ?? model.live.heartRate) : nil,
@@ -119,7 +121,9 @@ final class LiveActivityController {
         // `Activity.activities` isn't reliably hydrated at the instant of process launch. A banner iOS ended is
         // removed here too, whichever run fed it: it can only show its last number.
         if activity == nil {
+            let forkList = ForkMainCPU.begin(.liveActivityList) // fork-perf: TEMP
             let listed = Activity<NOOPActivityAttributes>.activities
+            ForkMainCPU.end(forkList) // fork-perf: TEMP
             removeLeftovers(listed, beside: nil)
             if let adopted = listed.first(where: Self.isShowing) {
                 activity = adopted
@@ -171,6 +175,7 @@ final class LiveActivityController {
             lastPush = now
             shownState = state
             let staleDate = now.addingTimeInterval(Self.staleAfter)
+            ForkEnergyCounters.shared.note(.laPush) // fork-perf: TEMP
             Task { await activity.update(ActivityContent(state: state, staleDate: staleDate)) }
         } else if start(state, at: now) {
             log(state.bpm == nil ? "started, showing – until a heart rate arrives" : "started")
@@ -263,6 +268,7 @@ final class LiveActivityController {
             await act.end(nil, dismissalPolicy: .immediate)
         }
         self.activity = nil
+        ForkRunLoopMeter.liveActivityShowing = false // fork-perf: TEMP
         shownState = nil
         startedAt = nil
         isEnding = false
