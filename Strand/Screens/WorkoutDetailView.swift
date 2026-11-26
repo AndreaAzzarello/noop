@@ -71,6 +71,8 @@ struct WorkoutDetailView: View {
     @State private var steps: StepReadout?
     /// Steps for a court/field sport, which the on-foot readout above skips (WorkoutWindowMetrics).
     @State private var courtSteps: WorkoutWindowMetrics.Steps?
+    /// Display-only km estimate (steps x stride) for the Steps tile; nil when it would not be trustworthy.
+    @State private var estimatedDistance: WorkoutWindowMetrics.DistanceEstimate?
 
     var body: some View {
         ScreenScaffold(title: "\(WorkoutSource.displaySport(row.sport))",
@@ -123,6 +125,7 @@ struct WorkoutDetailView: View {
         let hrZoneSet = profile.hrZoneSet
         let hrMax = Double(profile.hrMax)
         let ticksPerStep = profile.stepTicksPerStep
+        let heightCm = profile.heightCm
         let startTs = row.startTs, endTs = row.endTs, source = row.source
         let rowSnapshot = row
 
@@ -156,7 +159,18 @@ struct WorkoutDetailView: View {
         let stepReadout = await stepsA
         let courtStepReadout = await courtA
 
+        // One estimate for whichever Steps tile applies (the on-foot and court sets never overlap).
+        let stepCount = stepReadout?.count ?? courtStepReadout?.count
+        let distanceEstimate = stepCount.flatMap {
+            WorkoutWindowMetrics.estimateDistance(
+                sport: rowSnapshot.sport, steps: $0,
+                durationS: rowSnapshot.durationS ?? Double(endTs - startTs),
+                avgHr: rowSnapshot.avgHr, hrMax: hrMax, heightCm: heightCm,
+                recordedDistanceM: rowSnapshot.distanceM)
+        }
+
         await MainActor.run {
+            self.estimatedDistance = distanceEstimate
             self.courtSteps = courtStepReadout
             self.route = routePoints
             self.hrPoints = points
@@ -293,11 +307,15 @@ struct WorkoutDetailView: View {
             if WorkoutCatalog.isOnFoot(row.sport) {
                 StatTile(label: "Steps",
                          value: steps.map { grouped(Double($0.count)) } ?? "–",
-                         caption: steps.map { $0.fromStrap ? String(localized: "strap")
-                                                          : String(localized: "phone") },
+                         caption: steps.map {
+                             WorkoutWindowMetrics.stepsCaption(
+                                 source: $0.fromStrap ? String(localized: "strap") : String(localized: "phone"),
+                                 estimate: estimatedDistance, system: distanceUnitSystem,
+                                 locale: AppLanguage.activeLocale)
+                         },
                          accent: steps != nil ? StrandPalette.metricCyan : StrandPalette.textTertiary)
             }
-            WorkoutCourtStepsTile(steps: courtSteps)
+            WorkoutCourtStepsTile(steps: courtSteps, estimate: estimatedDistance, system: distanceUnitSystem)
         }
     }
 

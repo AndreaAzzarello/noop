@@ -13,6 +13,18 @@
         }
       }
     },
+    "%@ · ≈ %@" : {
+      "comment" : "Steps tile caption: step source, then the estimated distance (the ≈ marks it as an estimate). Example: strap · ≈ 3.4 km.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · ≈ %2$@"
+          }
+        }
+      }
+    },
     "%@, under %lld beats per minute" : {
       "comment" : "VoiceOver label for the below-Zone-1 legend entry.",
       "extractionState" : "manual",

@@ -125,6 +125,31 @@ enum WorkoutWindowMetrics {
         return DistanceEstimate(meters: meters, stepLengthM: stride, cadenceSpm: cadence)
     }
 
+    /// "3,4 km" / "2.1 mi": one decimal in the app-language locale, unit by the distance system.
+    static func estimatedDistanceText(meters: Double, system: UnitSystem, locale: Locale) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.minimumFractionDigits = 1
+        f.maximumFractionDigits = 1
+        f.locale = locale
+        switch system {
+        case .metric:
+            let km = meters / 1000.0
+            return (f.string(from: NSNumber(value: km)) ?? String(format: "%.1f", km)) + " km"
+        case .imperial:
+            let mi = UnitFormatter.kmToMiles(meters / 1000.0)
+            return (f.string(from: NSNumber(value: mi)) ?? String(format: "%.1f", mi)) + " mi"
+        }
+    }
+
+    /// Caption under a step count: the source alone, or "source · ≈ distance" when an estimate exists.
+    static func stepsCaption(source: String, estimate: DistanceEstimate?, system: UnitSystem,
+                             locale: Locale) -> String {
+        guard let estimate else { return source }
+        let distance = estimatedDistanceText(meters: estimate.meters, system: system, locale: locale)
+        return String(localized: "\(source) · ≈ \(distance)", table: "Fork")
+    }
+
     // MARK: Effort
 
     struct Effort: Equatable {

@@ -25,6 +25,8 @@ struct WorkoutEffortTile: View {
 /// Steps for a court or field sport. Its body is empty unless a source counted steps in the window.
 struct WorkoutCourtStepsTile: View {
     let steps: WorkoutWindowMetrics.Steps?
+    var estimate: WorkoutWindowMetrics.DistanceEstimate? = nil
+    var system: UnitSystem = .metric
 
     private static let countFormatter: NumberFormatter = {
         let f = NumberFormatter()
@@ -38,7 +40,9 @@ struct WorkoutCourtStepsTile: View {
         if let steps {
             StatTile(label: "Steps",
                      value: Self.countFormatter.string(from: NSNumber(value: steps.count)) ?? "\(steps.count)",
-                     caption: Self.caption(steps.source),
+                     caption: WorkoutWindowMetrics.stepsCaption(source: Self.caption(steps.source),
+                                                                estimate: estimate, system: system,
+                                                                locale: AppLanguage.activeLocale),
                      accent: StrandPalette.metricCyan)
         }
     }

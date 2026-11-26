@@ -173,6 +173,28 @@ final class WorkoutWindowMetricsTests: XCTestCase {
         XCTAssertEqual(e.stepLengthM, 1.8 * 0.35, accuracy: 1e-9)
     }
 
+    // MARK: Estimated distance caption
+
+    func testDistanceTextUsesLocaleDecimalAndUnit() {
+        let it = Locale(identifier: "it_IT"), en = Locale(identifier: "en_US")
+        XCTAssertEqual(WorkoutWindowMetrics.estimatedDistanceText(meters: 3_400, system: .metric, locale: it), "3,4 km")
+        XCTAssertEqual(WorkoutWindowMetrics.estimatedDistanceText(meters: 3_400, system: .metric, locale: en), "3.4 km")
+        // 5000 m = 3.1069 mi.
+        XCTAssertEqual(WorkoutWindowMetrics.estimatedDistanceText(meters: 5_000, system: .imperial, locale: en), "3.1 mi")
+        XCTAssertEqual(WorkoutWindowMetrics.estimatedDistanceText(meters: 5_000, system: .imperial, locale: it), "3,1 mi")
+    }
+
+    func testCaptionIsJustTheSourceWithoutAnEstimate() {
+        XCTAssertEqual(WorkoutWindowMetrics.stepsCaption(source: "strap", estimate: nil, system: .metric,
+                                                         locale: Locale(identifier: "en_US")), "strap")
+    }
+
+    func testCaptionAppendsTheEstimate() {
+        let e = WorkoutWindowMetrics.DistanceEstimate(meters: 3_400, stepLengthM: 0.62, cadenceSpm: 83)
+        XCTAssertEqual(WorkoutWindowMetrics.stepsCaption(source: "strap", estimate: e, system: .metric,
+                                                         locale: Locale(identifier: "en_US")), "strap · ≈ 3.4 km")
+    }
+
     // MARK: Effort
 
     func testMissingOrNonFiniteStrainHasNoEffortTile() {
