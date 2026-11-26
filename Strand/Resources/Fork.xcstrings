@@ -826,6 +826,18 @@
         }
       }
     },
+    "Night" : {
+      "comment" : "Overline of the Today Night card on a past day.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notte"
+          }
+        }
+      }
+    },
     "No active alarms. Add or switch one on in the list." : {
       "comment" : "Smart Wake card summary.",
       "extractionState" : "manual",

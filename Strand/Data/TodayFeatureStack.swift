@@ -15,6 +15,8 @@ enum TodayFeatureStack {
         case detected
         case workout
         case night(NightStyle)
+        /// A past day's night: the sleep alone, never an alarm or a bedtime.
+        case pastNight
     }
 
     /// First hour of the day at which the Night card turns compact.
@@ -27,13 +29,17 @@ enum TodayFeatureStack {
     }
 
     /// `hasWorkoutOnDay` is about the SELECTED day: today's workouts while viewing today, that day's otherwise.
-    /// A past day has no Night card (its alarms and bedtime are about tonight), only the detected and workout cards.
-    static func items(showsDetection: Bool, includesDetection: Bool, hasWorkoutOnDay: Bool,
+    /// A past day has no live Night card (its alarms and bedtime are about tonight): it gets the sleep-only
+    /// `.pastNight` when that day has a sleep total (`hasSleepOnDay`, ignored while viewing today).
+    static func items(showsDetection: Bool, includesDetection: Bool, hasWorkoutOnDay: Bool, hasSleepOnDay: Bool,
                       isViewingToday: Bool, now: Date, calendar: Calendar = .current) -> [Item] {
         var out: [Item] = []
         if includesDetection && showsDetection { out.append(.detected) }
         if hasWorkoutOnDay { out.append(.workout) }
-        guard isViewingToday else { return out }
+        guard isViewingToday else {
+            if hasSleepOnDay { out.append(.pastNight) }
+            return out
+        }
         let compact = calendar.component(.hour, from: now) >= compactFromHour
         out.append(.night(compact ? .compact : .full))
         return out

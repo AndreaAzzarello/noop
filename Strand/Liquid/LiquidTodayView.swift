@@ -378,7 +378,7 @@ struct LiquidTodayView: View {
                     // fork: the detected-workout card, today's workout and the Night card are ONE stack ordered by
                     // `TodayFeatureStack`; it follows the rings (`.hero`) below, and sits here only when they are hidden.
                     if !sectionOrder.contains(.hero) {
-                        TodayFeatureStackView(workouts: workouts, isViewingToday: selectedDayOffset == 0, day: selectedLogicalDay, includesDetection: true)
+                        TodayFeatureStackView(workouts: workouts, isViewingToday: selectedDayOffset == 0, day: selectedLogicalDay, sleepDay: displayDay, includesDetection: true)
                     }
                     // #today-layout (parity with Android): every Today section — the Charge/Effort/Rest hero
                     // and Start-session included — renders in the user's saved order. Reorder via the Arrange
@@ -390,7 +390,7 @@ struct LiquidTodayView: View {
                         case .hero:
                             heroCard
                             if chargeLegacyRRGap { ChargeLegacyRRGapNote() }
-                            TodayFeatureStackView(workouts: workouts, isViewingToday: selectedDayOffset == 0, day: selectedLogicalDay, includesDetection: true) // fork
+                            TodayFeatureStackView(workouts: workouts, isViewingToday: selectedDayOffset == 0, day: selectedLogicalDay, sleepDay: displayDay, includesDetection: true) // fork
                         case .liveSession: if liveSessionsBeta { liveSessionStartRow }
                         case .synthesis: synthesisSection
                         case .keyMetrics: keyMetricsSection

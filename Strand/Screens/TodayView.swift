@@ -1476,7 +1476,7 @@ struct TodayView: View {
                 AutoWorkoutCard()
                 // Fallback only: the summary normally follows the rings (`.hero`), see todaySection.
                 if !sectionOrder.contains(.hero) {
-                    TodayFeatureStackView(workouts: workouts, isViewingToday: selectedDayOffset == 0, day: selectedLogicalDay, includesDetection: false) // fork
+                    TodayFeatureStackView(workouts: workouts, isViewingToday: selectedDayOffset == 0, day: selectedLogicalDay, sleepDay: displayDay, includesDetection: false) // fork
                 }
                 // The "still building" and "new here?" prompts are about getting today's scores going,
                 // so they stay anchored to today rather than reappearing on every navigated past day.
@@ -1928,7 +1928,7 @@ struct TodayView: View {
         switch section {
         case .hero:
             classicHeroSection
-            TodayFeatureStackView(workouts: workouts, isViewingToday: selectedDayOffset == 0, day: selectedLogicalDay, includesDetection: false) // fork
+            TodayFeatureStackView(workouts: workouts, isViewingToday: selectedDayOffset == 0, day: selectedLogicalDay, sleepDay: displayDay, includesDetection: false) // fork
         case .liveSession:
             if liveSessionsBeta { liveSessionStartSection }
         case .synthesis:

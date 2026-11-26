@@ -13,9 +13,10 @@ final class TodayFeatureStackTests: XCTestCase {
         calendar.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: hour, minute: minute))!
     }
 
-    private func items(detect: Bool = false, include: Bool = true, workout: Bool = false, today: Bool = true,
+    private func items(detect: Bool = false, include: Bool = true, workout: Bool = false, sleep: Bool = false,
+                       today: Bool = true,
                        hour: Int = 8, minute: Int = 0) -> [TodayFeatureStack.Item] {
-        TodayFeatureStack.items(showsDetection: detect, includesDetection: include, hasWorkoutOnDay: workout,
+        TodayFeatureStack.items(showsDetection: detect, includesDetection: include, hasWorkoutOnDay: workout, hasSleepOnDay: sleep,
                                 isViewingToday: today, now: date(hour: hour, minute: minute), calendar: calendar)
     }
 
@@ -47,6 +48,18 @@ final class TodayFeatureStackTests: XCTestCase {
         XCTAssertEqual(items(workout: false, today: false), [])
         XCTAssertEqual(items(detect: true, workout: true, today: false), [.detected, .workout])
         XCTAssertEqual(items(detect: true, workout: false, today: false), [.detected])
+    }
+
+    func testAPastDayStacksWorkoutThenItsNight() {
+        XCTAssertEqual(items(workout: true, sleep: true, today: false), [.workout, .pastNight])
+        XCTAssertEqual(items(workout: false, sleep: true, today: false), [.pastNight])
+        XCTAssertEqual(items(detect: true, workout: true, sleep: true, today: false), [.detected, .workout, .pastNight])
+        XCTAssertEqual(items(workout: true, sleep: false, today: false), [.workout])
+    }
+
+    func testTodayIsUnchangedBySleepOnDay() {
+        XCTAssertEqual(items(workout: true, sleep: true), [.workout, .night(.full)])
+        XCTAssertEqual(items(sleep: true, hour: 15), [.night(.compact)])
     }
 
     func testDetectionVisibilityIsOneRule() {

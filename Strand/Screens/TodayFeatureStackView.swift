@@ -14,6 +14,8 @@ struct TodayFeatureStackView: View {
     let isViewingToday: Bool
     /// An instant of the selected calendar day (`selectedLogicalDay`); ignored while viewing today.
     let day: Date
+    /// The selected day's metric row, for the past-day Night card; unused while viewing today.
+    let sleepDay: DailyMetric?
     /// False on the classic Today, which keeps its own detected-workout card above the sections.
     let includesDetection: Bool
 
@@ -30,6 +32,7 @@ struct TodayFeatureStackView: View {
                 hasCandidate: suggestion.candidate != nil),
             includesDetection: includesDetection,
             hasWorkoutOnDay: !TodayWorkoutSummary.workouts(workouts, onDayOf: shownDay, now: now).isEmpty,
+            hasSleepOnDay: PastNight.hasSleep(sleepDay),
             isViewingToday: isViewingToday,
             now: now)
         ForEach(items, id: \.self) { item in
@@ -37,6 +40,8 @@ struct TodayFeatureStackView: View {
             case .detected: AutoWorkoutCard()
             case .workout: TodayWorkoutSummaryCard(workouts: workouts, isViewingToday: isViewingToday, day: shownDay)
             case .night(let style): NightSummaryCard(style: style)
+            case .pastNight:
+                if let sleepDay { PastNightSummaryCard(metric: sleepDay, dayStart: Calendar.current.startOfDay(for: day)) }
             }
         }
     }
