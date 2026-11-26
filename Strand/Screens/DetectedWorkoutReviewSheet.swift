@@ -102,7 +102,8 @@ struct DetectedWorkoutReviewSheet: View {
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .frame(maxWidth: .infinity)
             .noopSheetPresentation(largeFirst: true)
-            .background(NoopChromeSurface())
+            // One flat base under the whole sheet, so the strip below the last button (home indicator) matches the page.
+            .presentationBackground(StrandPalette.surfaceBase)
         #endif
     }
 

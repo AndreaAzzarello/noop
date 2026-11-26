@@ -141,7 +141,8 @@ struct ManualWorkoutSheet: View {
         // sheet's width and sizes to content height instead.
         .frame(maxWidth: .infinity)
         .noopSheetPresentation(largeFirst: true)
-        .background(NoopChromeSurface())
+        // One flat base under the whole sheet, so the strip below the last button (home indicator) matches the page.
+        .presentationBackground(StrandPalette.surfaceBase)
         // Lets the user dismiss the decimal pad (which has no return key) and reach Cancel/Add.
         .keyboardDoneToolbar($focusedField)
         #endif
