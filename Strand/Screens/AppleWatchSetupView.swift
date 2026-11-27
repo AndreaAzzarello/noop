@@ -60,6 +60,8 @@ struct AppleWatchSetupView: View {
         #else
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .noopSheetPresentation(largeFirst: true)
+        // One flat base under the whole sheet, so the strip below the last control (home indicator) matches the page.
+        .presentationBackground(StrandPalette.surfaceBase)
         #endif
         .background(StrandPalette.surfaceBase)
     }

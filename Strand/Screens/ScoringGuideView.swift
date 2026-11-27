@@ -122,6 +122,8 @@ struct ScoringGuideView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // A long explainer scroll → open full-height, with a grabber for swipe-to-dismiss.
         .noopSheetPresentation(largeFirst: true)
+        // One flat base under the whole sheet, so the strip below the last control (home indicator) matches the page.
+        .presentationBackground(StrandPalette.surfaceBase)
         #endif
         .background(StrandPalette.surfaceBase)
     }

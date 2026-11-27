@@ -1348,7 +1348,12 @@ private struct ExtendedBatteryProbeResultView: View {
         }
         .padding(20)
         .frame(minWidth: 340, minHeight: 260)
+        #if os(iOS)
+        // One flat base under the whole sheet, so the strip below the last control (home indicator) matches the page.
+        .presentationBackground(StrandPalette.surfaceBase)
+        #else
         .background(NoopChromeSurface())
+        #endif
     }
 }
 
@@ -1453,7 +1458,12 @@ private struct BodyLocationProbeResultView: View {
         }
         .padding(20)
         .frame(minWidth: 340, minHeight: 260)
+        #if os(iOS)
+        // One flat base under the whole sheet, so the strip below the last control (home indicator) matches the page.
+        .presentationBackground(StrandPalette.surfaceBase)
+        #else
         .background(NoopChromeSurface())
+        #endif
     }
 }
 
@@ -1575,7 +1585,12 @@ private struct FeatureFlagProbeResultView: View {
         }
         .padding(20)
         .frame(minWidth: 340, minHeight: 260)
+        #if os(iOS)
+        // One flat base under the whole sheet, so the strip below the last control (home indicator) matches the page.
+        .presentationBackground(StrandPalette.surfaceBase)
+        #else
         .background(NoopChromeSurface())
+        #endif
     }
 }
 
@@ -1609,7 +1624,12 @@ private struct EcgWristSheet: View {
         }
         .padding(20)
         .frame(minWidth: 340, minHeight: 220)
+        #if os(iOS)
+        // One flat base under the whole sheet, so the strip below the last control (home indicator) matches the page.
+        .presentationBackground(StrandPalette.surfaceBase)
+        #else
         .background(NoopChromeSurface())
+        #endif
     }
 }
 
@@ -1656,7 +1676,12 @@ private struct EcgProbeResultView: View {
         }
         .padding(20)
         .frame(minWidth: 340, minHeight: 260)
+        #if os(iOS)
+        // One flat base under the whole sheet, so the strip below the last control (home indicator) matches the page.
+        .presentationBackground(StrandPalette.surfaceBase)
+        #else
         .background(NoopChromeSurface())
+        #endif
     }
 }
 
@@ -1730,7 +1755,12 @@ private struct DeviceConfigProbeResultView: View {
         }
         .padding(20)
         .frame(minWidth: 340, minHeight: 260)
+        #if os(iOS)
+        // One flat base under the whole sheet, so the strip below the last control (home indicator) matches the page.
+        .presentationBackground(StrandPalette.surfaceBase)
+        #else
         .background(NoopChromeSurface())
+        #endif
     }
 }
 

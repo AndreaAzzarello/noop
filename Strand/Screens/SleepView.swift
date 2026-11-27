@@ -2868,7 +2868,12 @@ private struct SleepTimeEditor: View {
         }
         .padding(NoopMetrics.screenPadding)
         .frame(minWidth: 360)
+        #if os(iOS)
+        // One flat base under the whole sheet, so the strip below the last control (home indicator) matches the page.
+        .presentationBackground(StrandPalette.surfaceBase)
+        #else
         .background(NoopChromeSurface())
+        #endif
         // #940 guard 1: a time-only roll that lands the bed in the future, or at/after the night's
         // wake, almost always means the PREVIOUS evening (23:00 "yesterday", not tonight). Snap the
         // date back a day so the picker visibly shows the night the user meant. Pure rule + tests:
