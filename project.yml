@@ -360,6 +360,11 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_EMIT_LOC_STRINGS: YES
+      configs:
+        Release:
+          # Keep local symbols in Release so ForkMainStackSampler can symbolicate frames on-device.
+          STRIP_STYLE: debugging
+          STRIP_SWIFT_SYMBOLS: NO
     dependencies:
       - package: WhoopProtocol
       - package: WhoopStore
