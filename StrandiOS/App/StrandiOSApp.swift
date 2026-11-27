@@ -101,6 +101,7 @@ struct StrandiOSApp: App {
         MetricKitLog.shared.attach(to: model.live)
         ForkMetricKitProbe.shared.attach() // fork-perf: TEMP
         ForkRunLoopMeter.install() // fork-perf: TEMP
+        ForkMainStackSampler.start() // fork-perf: TEMP
         // The buzz and the strap-gesture claim are injected, so the controller itself knows nothing
         // about BLE and stays testable.
         let liftSession = LiftSessionController(

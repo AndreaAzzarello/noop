@@ -109,6 +109,15 @@ final class ForkEnergyCounters: @unchecked Sendable {
         case rlExpTicks, rlExpBg, rlExpLocked, rlExpCharging, rlExpLowPower, rlExpOffload, rlExpLiveActivity
         case rlExpRefresh, rlExpWifi, rlExpCellular
         case rlExpTab0, rlExpTab1, rlExpTab2, rlExpTab3, rlExpTab4, rlExpTabNone
+        // The main-thread stack sampler's own cost (`ForkMainStackSampler`): suspending samples taken, ticks classified as
+        // waiting (no suspension), microseconds the main thread stayed suspended, ms spent resolving names and aggregating,
+        // the watchdog thread's own CPU ms, ms writing the aggregates, samples dropped (hourly cap, unprimed tick, failed
+        // read), walks cut at 24 frames, dictionary keys refused, frames resolved and how many had no symbol name.
+        case stackSamples, stackWaitSamples, stackSampleUs, stackProcessMs, stackWatchdogMs, stackWriteMs
+        case stackDropped, stackWalkTruncated, stackKeyOverflow, stackFrames, stackFramesNoSymbol
+        // The counters' own bookkeeping: disk writes of the hour buckets, their ms (and the part on the main thread), bytes
+        // written, and `note` calls made on the main thread.
+        case countersFlushes, countersFlushMs, countersFlushMainMs, countersFlushBytes, countersNoteMain
     }
 
     /// Process CPU time so far, milliseconds (user + system), 0 when the system call fails.
@@ -134,6 +143,9 @@ final class ForkEnergyCounters: @unchecked Sendable {
     // Written and read under `lock` only (`note`), so no further synchronisation is needed.
     private static var mainPort: mach_port_t = 0
     private static var mainThreadCaptured: Bool { mainPort != 0 }
+
+    /// The captured main-thread port, nil before `captureMainThreadIfNeeded` ran on the main thread. Read it on the main thread.
+    static func mainThreadPort() -> mach_port_t? { mainPort == 0 ? nil : mainPort }
 
     /// Remember the main thread's port. A no-op off the main thread or once captured.
     static func captureMainThreadIfNeeded() {
@@ -320,6 +332,9 @@ final class ForkEnergyCounters: @unchecked Sendable {
     private var lastCPUSample = Date.distantPast
     private var lastCPUMillis = 0
     private var lastThreadCPU: [UInt64: Int] = [:]
+    // The counters' own cost, booked into the current hour after each disk write (lock held).
+    private var noteMainPending = 0
+    private var flushRemainderUs = 0, flushMainRemainderUs = 0
     static let cpuSampleInterval: TimeInterval = 300
 
     init(fileURL: URL?, timeZone: TimeZone = .current) {
@@ -348,6 +363,7 @@ final class ForkEnergyCounters: @unchecked Sendable {
         lock.lock()
         loadIfNeeded()
         Self.captureMainThreadIfNeeded()
+        if pthread_main_np() != 0 { noteMainPending += 1 }
         if counter == .liveWillChange { ForkRunLoopMeter.noteWillChange() }
         let key = Self.bucket(for: now, timeZone: timeZone)
         hours[key, default: [:]][counter.rawValue, default: 0] += amount
@@ -416,7 +432,9 @@ final class ForkEnergyCounters: @unchecked Sendable {
             if let split = Self.mainSplitLine(perDay[day] ?? [:]) { lines.append("\(day) " + split) }
             if let check = Self.mainCheckLine(perDay[day] ?? [:]) { lines.append("\(day) " + check) }
             lines.append(contentsOf: ForkRunLoopMeter.reportLines(day: day, counts: perDay[day] ?? [:]))
+            lines.append(contentsOf: ForkMainStackSampler.reportLines(day: day, counts: perDay[day] ?? [:]))
         }
+        lines.append(contentsOf: ForkMainStackSampler.last24Lines())
         lines.append("— last \(lastHours) h —")
         for hour in data.keys.sorted().suffix(lastHours) {
             lines.append("\(hour)h: " + Self.format(data[hour] ?? [:]))
@@ -479,9 +497,23 @@ final class ForkEnergyCounters: @unchecked Sendable {
         if hours.count > Self.keptHours {
             for key in hours.keys.sorted().dropLast(Self.keptHours) { hours[key] = nil }
         }
+        let started = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
         guard let data = try? JSONEncoder().encode(hours) else { return }
         try? data.write(to: fileURL, options: .atomic)
         dirty = false
         lastFlush = now
+        // fork-perf: TEMP — what this write cost, booked into the current hour (so the next write carries it).
+        let micros = Int((clock_gettime_nsec_np(CLOCK_UPTIME_RAW) &- started) / 1000)
+        let key = Self.bucket(for: now, timeZone: timeZone)
+        func book(_ c: Counter, _ n: Int) { if n > 0 { hours[key, default: [:]][c.rawValue, default: 0] += n } }
+        flushRemainderUs += micros
+        book(.countersFlushMs, flushRemainderUs / 1000); flushRemainderUs %= 1000
+        if pthread_main_np() != 0 {
+            flushMainRemainderUs += micros
+            book(.countersFlushMainMs, flushMainRemainderUs / 1000); flushMainRemainderUs %= 1000
+        }
+        book(.countersFlushes, 1); book(.countersFlushBytes, data.count); book(.countersNoteMain, noteMainPending)
+        noteMainPending = 0
+        dirty = true
     }
 }

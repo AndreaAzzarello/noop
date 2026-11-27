@@ -646,6 +646,18 @@
         }
       }
     },
+    "Main-thread stack sampler" : {
+      "comment" : "Test Centre switch (TEMP energy audit).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Campionatore di stack del main"
+          }
+        }
+      }
+    },
     "Manage alarms" : {
       "comment" : "Smart Wake card link to the list.",
       "extractionState" : "manual",
@@ -1158,6 +1170,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SMART WAKE"
+          }
+        }
+      }
+    },
+    "Samples what the main thread runs during slow run-loop iterations. Function names and counts only." : {
+      "comment" : "Caption under the stack sampler switch (TEMP energy audit).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Campiona cosa esegue il thread principale durante le iterazioni lente del run-loop. Solo nomi di funzione e conteggi."
           }
         }
       }

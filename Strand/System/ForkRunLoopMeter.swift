@@ -366,12 +366,14 @@ enum ForkRunLoopMeter {
             touched = false
             ranMask = 0
             started = true
+            ForkMainStackSampler.iterationBegan(startWall) // fork-perf: TEMP
             if signposter.isEnabled { intervalState = signposter.beginInterval("iteration") }
         }
         // Last in the sleep sequence, after SwiftUI's and Core Animation's own `beforeWaiting` commits.
         let end = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, true, CFIndex.max) { _, _ in
             guard started else { return }
             started = false
+            ForkMainStackSampler.iterationEnded() // fork-perf: TEMP
             let cpu = ForkEnergyCounters.threadCPUNanos() &- startCPU
             let nowWall = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
             if let state = intervalState { signposter.endInterval("iteration", state); intervalState = nil }
