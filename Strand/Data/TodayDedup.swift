@@ -10,14 +10,10 @@ enum TodayDedup {
     /// The three overnight vitals the Recovery Vitals card repeats.
     static let vitalTiles: Set<KeyMetric> = [.hrv, .restingHr, .respiratory]
 
-    /// The Key-Metric tiles worth drawing: no ring score while the rings are on screen, and no Blood Oxygen tile
-    /// that has nothing to say (the strap never banks it on WHOOP 5.0). Order is kept.
-    static func keyMetrics(_ enabled: [KeyMetric], heroVisible: Bool, hasBloodOxygenValue: Bool) -> [KeyMetric] {
-        enabled.filter { metric in
-            if heroVisible && ringTiles.contains(metric) { return false }
-            if metric == .bloodOxygen && !hasBloodOxygenValue { return false }
-            return true
-        }
+    /// The Key-Metric tiles to draw: always 6 or 8, no ring score (the rings show them), order kept. A tile with nothing
+    /// to say (Blood Oxygen on WHOOP 5.0) is kept and reads "—", so the grid never falls out of balance.
+    static func keyMetrics(_ enabled: [KeyMetric]) -> [KeyMetric] {
+        KeyMetricGrid.normalized(enabled)
     }
 
     /// The Recovery Vitals card repeats HRV, resting HR and respiration; it is dropped only when the Key Metrics

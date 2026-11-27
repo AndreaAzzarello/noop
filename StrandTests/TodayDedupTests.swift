@@ -21,23 +21,18 @@ final class TodayDedupTests: XCTestCase {
 
     // MARK: Key metrics
 
-    func testRingScoresDropWhileTheRingsAreVisibleAndKeepTheRestInOrder() {
-        let out = TodayDedup.keyMetrics(KeyMetric.defaultOrder, heroVisible: true, hasBloodOxygenValue: true)
-        XCTAssertEqual(out, [.hrv, .restingHr, .bloodOxygen, .respiratory, .steps, .weight, .calories])
+    func testRingScoresNeverReachTheGridAndTheGridIsCompletedToEight() {
+        let out = TodayDedup.keyMetrics(KeyMetric.defaultOrder)
+        XCTAssertEqual(out, [.hrv, .restingHr, .bloodOxygen, .respiratory, .steps, .weight, .calories, .skinTemp])
     }
 
-    func testRingScoresReturnWhenTheRingsAreHidden() {
-        let out = TodayDedup.keyMetrics(KeyMetric.defaultOrder, heroVisible: false, hasBloodOxygenValue: true)
-        XCTAssertEqual(out, KeyMetric.defaultOrder)
+    func testBloodOxygenWithNothingToSayStaysSoTheGridKeepsItsBalance() {
+        let out = TodayDedup.keyMetrics([.hrv, .bloodOxygen, .steps, .weight, .calories, .skinTemp])
+        XCTAssertEqual(out, [.hrv, .bloodOxygen, .steps, .weight, .calories, .skinTemp])
     }
 
-    func testBloodOxygenWithNothingToSayIsDropped() {
-        let out = TodayDedup.keyMetrics([.hrv, .bloodOxygen, .steps], heroVisible: false, hasBloodOxygenValue: false)
-        XCTAssertEqual(out, [.hrv, .steps])
-    }
-
-    func testAnEmptySelectionStaysEmpty() {
-        XCTAssertEqual(TodayDedup.keyMetrics([], heroVisible: true, hasBloodOxygenValue: false), [])
+    func testAnEmptySelectionIsCompletedToSix() {
+        XCTAssertEqual(TodayDedup.keyMetrics([]), [.hrv, .restingHr, .bloodOxygen, .respiratory, .steps, .weight])
     }
 
     // MARK: Recovery vitals

@@ -49,6 +49,18 @@
         }
       }
     },
+    "%lld metrics selected" : {
+      "comment" : "Key Metrics editor: how many metrics are selected, shown while the count is valid (6 or 8).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld metriche selezionate"
+          }
+        }
+      }
+    },
     "%lld min early" : {
       "comment" : "Alarm row: early window length.",
       "extractionState" : "manual",
@@ -188,6 +200,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modificali nella card Smart Wake qui sotto."
+          }
+        }
+      }
+    },
+    "Choose 6 or 8 metrics to save." : {
+      "comment" : "Key Metrics editor: shown while the selection is not 6 or 8; Save is disabled.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scegli 6 oppure 8 metriche per salvare."
           }
         }
       }
@@ -1644,6 +1668,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Attiva una sveglia per l'ora consigliata per andare a letto"
+          }
+        }
+      }
+    },
+    "Two columns: 6 or 8 metrics keep every row full." : {
+      "comment" : "Key Metrics editor footer explaining the 6-or-8 rule.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Due colonne: con 6 o 8 metriche ogni riga resta piena."
           }
         }
       }

@@ -260,7 +260,7 @@ struct TodayView: View {
     @AppStorage("selectedWhoopModel") private var selectedWhoopModelRaw = ""
     @AppStorage("today.keyMetricsDetailed") private var keyMetricsDetailed = false
     @AppStorage("today.keyMetricsWindowDays") private var keyMetricsWindowDays = 14
-    private var enabledKeyMetrics: [KeyMetric] { KeyMetricPrefs.decodeEnabled(keyMetricsRaw) }
+    private var enabledKeyMetrics: [KeyMetric] { KeyMetricPrefs.decodeGrid(keyMetricsRaw) }
 
     // "Your cards" customisable dashboard (WHOOP "My Dashboard"), a persisted, reorderable selection of
     // metric cards. Empty/unset shows the sensible default set (Stress / Fitness age / Vitality + HRV +

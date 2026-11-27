@@ -58,6 +58,31 @@ enum KeyMetric: String, CaseIterable, Identifiable {
         .charge, .effort, .rest, .hrv, .restingHr,
         .bloodOxygen, .respiratory, .steps, .weight, .calories,
     ]
+
+    /// What the editor offers: every tile except the three scores the rings already show (Rest, Effort, Charge), plus
+    /// Skin Temp. Eight tiles, so the grid can be filled to 6 or 8.
+    static let editorOptions: [KeyMetric] = defaultOrder.filter { !TodayDedup.ringTiles.contains($0) } + [.skinTemp]
+}
+
+/// The rule that keeps the Key Metrics grid balanced: two columns, so always 6 or 8 tiles, never a lone one in a row.
+/// The editor only saves a selection of 6 or 8; this normalizes what is already stored (a layout saved before the rule,
+/// a hand-edited value, a default) when it is read, so the grid on screen and the editor can never disagree.
+enum KeyMetricGrid {
+    static let allowedCounts = [6, 8]
+    static var maxCount: Int { allowedCounts.last ?? 8 }
+
+    static func isValidSelection(count: Int) -> Bool { allowedCounts.contains(count) }
+
+    /// The tiles to draw for a stored selection: ring tiles dropped (the rings show them), duplicates dropped, order kept;
+    /// more than 8 cut to the first 8; fewer than 6 (or 7) completed from `KeyMetric.editorOptions` in their order.
+    static func normalized(_ selected: [KeyMetric]) -> [KeyMetric] {
+        var seen = Set<KeyMetric>()
+        var out = selected.filter { !TodayDedup.ringTiles.contains($0) && seen.insert($0).inserted }
+        if out.count > maxCount { out = Array(out.prefix(maxCount)) }
+        let target = out.count <= (allowedCounts.first ?? 6) ? (allowedCounts.first ?? 6) : maxCount
+        for metric in KeyMetric.editorOptions where out.count < target && !out.contains(metric) { out.append(metric) }
+        return out
+    }
 }
 
 /// Display-only persistence for the Key-Metrics layout. Holds an ORDERED list of the enabled tiles; a
@@ -69,6 +94,11 @@ enum KeyMetricPrefs {
     /// Encode an ordered list of enabled tiles into the stored comma-joined string.
     static func encode(_ metrics: [KeyMetric]) -> String {
         metrics.map(\.rawValue).joined(separator: ",")
+    }
+
+    /// The tiles the grid draws for a stored string: `decodeEnabled` through `KeyMetricGrid.normalized`.
+    static func decodeGrid(_ raw: String) -> [KeyMetric] {
+        KeyMetricGrid.normalized(decodeEnabled(raw))
     }
 
     /// Decode the stored string into an ordered list of enabled tiles. An empty/unset string yields the

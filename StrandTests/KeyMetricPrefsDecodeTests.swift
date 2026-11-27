@@ -58,3 +58,54 @@ final class KeyMetricPrefsDecodeTests: XCTestCase {
         XCTAssertFalse(KeyMetricPrefs.decodeEnabled("").contains(.skinTemp))
     }
 }
+
+// MARK: - Balanced grid (6 or 8 tiles)
+
+final class KeyMetricGridTests: XCTestCase {
+
+    func testTheEditorOffersEightTilesAndNoRingScore() {
+        XCTAssertEqual(KeyMetric.editorOptions,
+                       [.hrv, .restingHr, .bloodOxygen, .respiratory, .steps, .weight, .calories, .skinTemp])
+    }
+
+    func testOnlySixAndEightAreValidSelections() {
+        for n in 0...12 { XCTAssertEqual(KeyMetricGrid.isValidSelection(count: n), n == 6 || n == 8, "\(n)") }
+    }
+
+    func testAValidSelectionIsKeptAsIs() {
+        let six: [KeyMetric] = [.steps, .hrv, .weight, .restingHr, .calories, .skinTemp]
+        XCTAssertEqual(KeyMetricGrid.normalized(six), six)
+        XCTAssertEqual(KeyMetricGrid.normalized(KeyMetric.editorOptions), KeyMetric.editorOptions)
+    }
+
+    func testRingScoresAndDuplicatesAreDroppedThenTheGridIsCompleted() {
+        let out = KeyMetricGrid.normalized([.charge, .steps, .effort, .steps, .rest])
+        XCTAssertEqual(out, [.steps, .hrv, .restingHr, .bloodOxygen, .respiratory, .weight])
+    }
+
+    func testSevenIsCompletedToEightAndMoreThanEightIsCut() {
+        XCTAssertEqual(KeyMetricGrid.normalized(Array(KeyMetric.editorOptions.prefix(7))), KeyMetric.editorOptions)
+        let nine = KeyMetric.editorOptions + [.charge]
+        XCTAssertEqual(KeyMetricGrid.normalized(nine), KeyMetric.editorOptions)
+    }
+
+    func testTheCompletionKeepsTheUsersOrderAndAppendsInEditorOrder() {
+        let out = KeyMetricGrid.normalized([.skinTemp, .calories, .weight, .steps, .respiratory])
+        XCTAssertEqual(out, [.skinTemp, .calories, .weight, .steps, .respiratory, .hrv])
+    }
+
+    func testAFreshInstallDrawsEight() {
+        XCTAssertEqual(KeyMetricPrefs.decodeGrid("").count, 8)
+        XCTAssertEqual(KeyMetricPrefs.decodeGrid("garbage").count, 6)
+    }
+
+    func testEveryResultIsValidAndFreeOfRingTiles() {
+        for mask in 0..<(1 << KeyMetric.allCases.count) {
+            let picked = KeyMetric.allCases.enumerated().filter { mask & (1 << $0.offset) != 0 }.map(\.element)
+            let out = KeyMetricGrid.normalized(picked)
+            XCTAssertTrue(KeyMetricGrid.isValidSelection(count: out.count))
+            XCTAssertTrue(out.allSatisfy { !TodayDedup.ringTiles.contains($0) })
+            XCTAssertEqual(Set(out).count, out.count)
+        }
+    }
+}

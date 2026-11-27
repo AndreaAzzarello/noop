@@ -88,8 +88,8 @@ struct TodayCustomizationSheet: View {
             hidden: fullSectionOrder.filter { hiddenSectionSet.contains($0) }
         )
         let metrics = EditableLayoutDraft(
-            visible: KeyMetricPrefs.decodeEnabled(keyMetricsRaw.wrappedValue),
-            allItems: KeyMetric.defaultOrder
+            visible: KeyMetricPrefs.decodeGrid(keyMetricsRaw.wrappedValue),
+            allItems: KeyMetric.editorOptions
         )
         let cards = EditableLayoutDraft(
             visible: DashboardCardPrefs.decodeEnabled(dashboardCardsRaw.wrappedValue),
@@ -144,6 +144,7 @@ struct TodayCustomizationSheet: View {
                 case .keyMetrics:
                     KeyMetricsCustomizationPage(
                         draft: $keyMetricDraft,
+                        selectionIsValid: keyMetricSelectionIsValid,
                         detailed: $detailed,
                         windowDays: $windowDays,
                         onReset: resetCurrentLayout
@@ -180,6 +181,11 @@ struct TodayCustomizationSheet: View {
         #endif
     }
 
+    /// The Key Metrics grid is two columns, so the selection must be 6 or 8 tiles; Save waits until it is.
+    private var keyMetricSelectionIsValid: Bool {
+        KeyMetricGrid.isValidSelection(count: keyMetricDraft.visible.count)
+    }
+
     private func openConfiguration(_ section: TodaySection) {
         switch section {
         case .keyMetrics:
@@ -202,8 +208,8 @@ struct TodayCustomizationSheet: View {
             )
         case .keyMetrics:
             keyMetricDraft = EditableLayoutDraft(
-                visible: KeyMetric.defaultOrder,
-                allItems: KeyMetric.defaultOrder
+                visible: KeyMetricPrefs.decodeGrid(""),
+                allItems: KeyMetric.editorOptions
             )
             detailed = false
             windowDays = 14
@@ -244,6 +250,7 @@ struct TodayCustomizationSheet: View {
         }
         ToolbarItem(placement: .confirmationAction) {
             Button("Save", action: save)
+                .disabled(!keyMetricSelectionIsValid)
         }
     }
 }
@@ -308,6 +315,7 @@ private struct TodaySectionsCustomizationPage: View {
 
 private struct KeyMetricsCustomizationPage: View {
     @Binding var draft: EditableLayoutDraft<KeyMetric>
+    let selectionIsValid: Bool
     @Binding var detailed: Bool
     @Binding var windowDays: Int
     let onReset: () -> Void
@@ -325,6 +333,22 @@ private struct KeyMetricsCustomizationPage: View {
             onConfigure: { _ in },
             onReset: onReset
         ) {
+            Section {
+                if selectionIsValid {
+                    Label(String(localized: "\(draft.visible.count) metrics selected", table: "Fork"),
+                          systemImage: "checkmark.circle")
+                        .foregroundStyle(StrandPalette.textSecondary)
+                } else {
+                    Label(String(localized: "Choose 6 or 8 metrics to save.", table: "Fork"),
+                          systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(StrandPalette.metricAmber)
+                }
+            } footer: {
+                Text("Two columns: 6 or 8 metrics keep every row full.", tableName: "Fork")
+                    .font(StrandFont.footnote)
+                    .foregroundStyle(StrandPalette.textTertiary)
+            }
+
             Section("Display") {
                 Picker("Key Metrics", selection: $detailed) {
                     Text("Today").tag(false)

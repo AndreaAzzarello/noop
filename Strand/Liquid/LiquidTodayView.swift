@@ -121,13 +121,8 @@ struct LiquidTodayView: View {
     @ScopedAppStorage("today.keyMetricsWindowDays") private var keyMetricsWindowDays = 14
     @State private var kSparks: [String: [(String, Double)]] = [:]
     private var enabledKeyMetrics: [KeyMetric] { KeyMetricPrefs.decodeEnabled(keyMetricsRaw) }
-    // fork: the tiles actually drawn: no ring score while the rings show, no Blood Oxygen tile with no value (its
-    // value rule is the tile's own: today's or the carried prior row, or the opt-in candidate).
-    private var shownKeyMetrics: [KeyMetric] {
-        TodayDedup.keyMetrics(enabledKeyMetrics, heroVisible: sectionOrder.contains(.hero),
-                              hasBloodOxygenValue: displayDay?.spo2Pct != nil || vitalsDay?.spo2Pct != nil
-                                  || PuffinExperiment.spo2CandidateDisplayEnabled)
-    }
+    // fork: the tiles actually drawn: always 6 or 8 (two balanced columns), no ring score; a tile with no value reads "—".
+    private var shownKeyMetrics: [KeyMetric] { TodayDedup.keyMetrics(enabledKeyMetrics) }
 
     /// #1001: TODAY's in-progress Effort, scored live in `load()` over the same window this view already
     /// resolves for its other reads. nil for a navigated past day, and nil when the scorer has too few

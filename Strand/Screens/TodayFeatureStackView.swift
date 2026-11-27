@@ -39,10 +39,18 @@ struct TodayFeatureStackView: View {
             switch item {
             case .detected: AutoWorkoutCard()
             case .workout: TodayWorkoutSummaryCard(workouts: workouts, isViewingToday: isViewingToday, day: shownDay)
-            case .night(let style): NightSummaryCard(style: style)
+            case .night(let style): sleepLink { NightSummaryCard(style: style) }
             case .pastNight:
-                if let sleepDay { PastNightSummaryCard(metric: sleepDay, dayStart: Calendar.current.startOfDay(for: day)) }
+                if let sleepDay {
+                    sleepLink { PastNightSummaryCard(metric: sleepDay, dayStart: Calendar.current.startOfDay(for: day)) }
+                }
             }
         }
+    }
+
+    /// The Night card opens the Sleep chart (`TabRoute.sleep`, registered by every stack that hosts a Today root).
+    private func sleepLink<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        NavigationLink(value: TabRoute.sleep) { content() }
+            .buttonStyle(LiquidPressStyle())
     }
 }
