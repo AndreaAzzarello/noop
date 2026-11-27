@@ -787,9 +787,11 @@ final class IntelligenceEngine: ObservableObject {
         var forkTrigger: String? // fork-perf: TEMP
         var forkPre0 = 0 // fork-perf: TEMP (CPU when the pass cleared its gates)
         var forkPost0: Int? // fork-perf: TEMP (CPU when the day loop returned)
+        var forkPostMain0 = 0 // fork-perf: TEMP (main-thread CPU µs at the same moment)
         defer {
             if forkTrigger != nil, let started = runningPassStart { ForkEnergyCounters.shared.note(.rescoreWallMs, by: Int((DispatchTime.now().uptimeNanoseconds &- started) / 1_000_000)) } // fork-perf: TEMP
             if let forkPost0 { ForkEnergyCounters.shared.noteCPU(.rescorePostMs, since: forkPost0) } // fork-perf: TEMP
+            if forkPost0 != nil { ForkEnergyCounters.shared.note(.rescorePostMainMs, by: max(0, ForkEnergyCounters.mainThreadCPUMicros() - forkPostMain0) / 1000) } // fork-perf: TEMP
             if let forkCPU { ForkEnergyCounters.shared.noteCPU(.cpuRescoreMs, since: forkCPU) } // fork-perf: TEMP
             if let forkCPU, let forkTrigger { ForkEnergyCounters.shared.noteRescore(trigger: forkTrigger, cpuSince: forkCPU) } // fork-perf: TEMP
             computing = false
@@ -1298,6 +1300,7 @@ final class IntelligenceEngine: ObservableObject {
                                 out.append(cached.scan)
                                 dayCacheReused += 1
                                 forkTally.keyMs += forkTally.lap() // fork-perf: TEMP
+                                forkTally.keyMainUs += forkTally.lastMainUs // fork-perf: TEMP
                                 continue
                             }
                             let why = AnalyzeRecentDayCache.missReason(cachedKey: cached.key, freshKey: key)
@@ -1312,6 +1315,7 @@ final class IntelligenceEngine: ObservableObject {
                 // what decides whether narrowing the read windows is worth building at all. Measured, not
                 // guessed, for the same reason the day-cache duration is.
                 forkTally.keyMs += forkTally.lap() // fork-perf: TEMP
+                forkTally.keyMainUs += forkTally.lastMainUs // fork-perf: TEMP
                 let tPrep0 = Date()
                 let hr = await hrWindow.rows(owner: owner, from: from, to: to)
                 guard hr.count >= IntelligenceEngine.minHrSamples else {
@@ -1319,6 +1323,7 @@ final class IntelligenceEngine: ObservableObject {
                     // sparse-history installs where reads dominate most.
                     dayPrepSeconds += Date().timeIntervalSince(tPrep0)
                     forkTally.prepMs += forkTally.lap() // fork-perf: TEMP
+                    forkTally.prepMainUs += forkTally.lastMainUs // fork-perf: TEMP
                     skippedSleepDays.append((day: day, hrSamples: hr.count))
                     continue
                 }
@@ -1535,6 +1540,7 @@ final class IntelligenceEngine: ObservableObject {
                 let tScore0 = Date()
                 dayPrepSeconds += tScore0.timeIntervalSince(tPrep0)
                 forkTally.prepMs += forkTally.lap() // fork-perf: TEMP
+                forkTally.prepMainUs += forkTally.lastMainUs // fork-perf: TEMP
                 let forkScoreThr0 = ForkEnergyCounters.threadCPUNanos() // fork-perf: TEMP (analyzeDay is synchronous: one thread)
                 // #1770 follow-up: the Effort ring's funnel. Collected here rather than sent straight
                 // to `diagnosticSink`, because that sink is main-actor isolated and this loop is not —
@@ -1925,6 +1931,7 @@ final class IntelligenceEngine: ObservableObject {
         // to completion above (`.value` awaited), so there is no concurrent access.
         dayScanCache = updatedDayScanCache
         forkPost0 = ForkEnergyCounters.cpuNowMillis() // fork-perf: TEMP
+        forkPostMain0 = ForkEnergyCounters.mainThreadCPUMicros() // fork-perf: TEMP
         // #1538: the pass after the day loop was never measured. The cost line above brackets the loop and
         // is emitted the moment it returns, so a pass whose time went somewhere later reported a small
         // prep/score and no account of the rest — which is where the steps calibration was re-folding sixty

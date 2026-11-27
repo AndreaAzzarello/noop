@@ -74,6 +74,9 @@ final class ForkEnergyCounters: @unchecked Sendable {
         // the process did meanwhile. `rescoreWallMs` is the wall time of the passes (uptime, gates included).
         case rescorePreMs, rescoreKeyMs, rescorePrepMs, rescoreScoreMs, rescoreScoreThrMs
         case rescoreLoopRestMs, rescorePaceMs, rescorePostMs, rescoreWallMs
+        // The MAIN thread's CPU while the key, prep and post phases ran (thread CPU, valid across awaits). The phase
+        // figures above are process CPU and include it, so `rescoreKeyMs - rescoreKeyMainMs` is what the pass itself cost.
+        case rescoreKeyMainMs, rescorePrepMainMs, rescorePostMainMs
         // Main-thread CPU by call site (`ForkMainCPU`), thread-CPU ms, EXCLUSIVE: a point's figure leaves out the points it
         // called, so they add up. `cpuThrMainMs` minus their sum is what no point explains.
         case mainBleNotifyMs, mainBleRouterMs, mainBleStdHRMs, mainBleCollectorMs, mainBleSmartWakeMs
@@ -238,6 +241,22 @@ final class ForkEnergyCounters: @unchecked Sendable {
         return out
     }
 
+    /// CPU (user + system) of the captured MAIN thread so far, microseconds; 0 before it is captured. Callable from any
+    /// thread: a `thread_info` read of the main port, so it stays valid across the awaits a phase spans.
+    static func mainThreadCPUMicros() -> Int {
+        guard mainPort != 0 else { return 0 }
+        var info = thread_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<thread_basic_info>.size / MemoryLayout<integer_t>.size)
+        let kr = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                thread_info(mainPort, thread_flavor_t(THREAD_BASIC_INFO), $0, &count)
+            }
+        }
+        guard kr == KERN_SUCCESS else { return 0 }
+        func us(_ t: time_value_t) -> Int { Int(t.seconds) * 1_000_000 + Int(t.microseconds) }
+        return us(info.user_time) + us(info.system_time)
+    }
+
     /// CPU time of the calling thread so far, nanoseconds (0 when the clock is unavailable).
     static func threadCPUNanos() -> UInt64 {
         clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
@@ -247,10 +266,17 @@ final class ForkEnergyCounters: @unchecked Sendable {
     /// and the caller books it to the bucket that just ended.
     struct RescorePhaseTally {
         var keyMs = 0, prepMs = 0, scoreMs = 0, scoreThreadUs = 0, restMs = 0, paceMs = 0
+        /// Main-thread CPU (µs) during the key and prep laps, booked by the caller from `lastMainUs`.
+        var keyMainUs = 0, prepMainUs = 0
+        /// The main thread's CPU (µs) since the previous lap, as of the last `lap()`.
+        private(set) var lastMainUs = 0
         private var mark = ForkEnergyCounters.cpuNowMillis()
+        private var mainMark = ForkEnergyCounters.mainThreadCPUMicros()
         mutating func lap() -> Int {
             let now = ForkEnergyCounters.cpuNowMillis()
-            defer { mark = now }
+            let mainNow = ForkEnergyCounters.mainThreadCPUMicros()
+            defer { mark = now; mainMark = mainNow }
+            lastMainUs = max(0, mainNow - mainMark)
             return max(0, now - mark)
         }
     }
@@ -260,6 +286,8 @@ final class ForkEnergyCounters: @unchecked Sendable {
         note(.rescorePreMs, by: preMs, at: now)
         note(.rescoreKeyMs, by: tally.keyMs, at: now)
         note(.rescorePrepMs, by: tally.prepMs, at: now)
+        note(.rescoreKeyMainMs, by: tally.keyMainUs / 1000, at: now)
+        note(.rescorePrepMainMs, by: tally.prepMainUs / 1000, at: now)
         note(.rescoreScoreMs, by: tally.scoreMs, at: now)
         note(.rescoreScoreThrMs, by: tally.scoreThreadUs / 1000, at: now)
         note(.rescoreLoopRestMs, by: tally.restMs, at: now)

@@ -214,6 +214,24 @@ final class ForkEnergyCountersTests: XCTestCase {
         XCTAssertEqual(hour?["rescorePaceMs"], 1_200)
     }
 
+    func testRescorePhasesBookTheMainThreadShareOfKeyAndPrep() {
+        let c = ForkEnergyCounters(fileURL: nil, timeZone: utc)
+        var tally = ForkEnergyCounters.RescorePhaseTally()
+        tally.keyMainUs = 12_900; tally.prepMainUs = 4_100
+        let now = date("2026-11-24T09:00:00Z")
+        c.noteRescorePhases(preMs: 0, tally, at: now)
+        let hour = c.snapshot()["2026-11-24 09"]
+        XCTAssertEqual(hour?["rescoreKeyMainMs"], 12)
+        XCTAssertEqual(hour?["rescorePrepMainMs"], 4)
+    }
+
+    func testRescoreLapReportsTheMainShareWithoutGoingNegative() {
+        var tally = ForkEnergyCounters.RescorePhaseTally()
+        _ = tally.lap()
+        XCTAssertGreaterThanOrEqual(tally.lastMainUs, 0)
+        XCTAssertGreaterThanOrEqual(ForkEnergyCounters.mainThreadCPUMicros(), 0)
+    }
+
     func testRescoreLapsAreNonNegativeAndThreadClockAdvances() {
         var tally = ForkEnergyCounters.RescorePhaseTally()
         XCTAssertGreaterThanOrEqual(tally.lap(), 0)
